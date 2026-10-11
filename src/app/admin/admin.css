@@ -1,0 +1,170 @@
+/*
+  Admin design system — a clean, premium LIGHT SaaS palette scoped to the
+  admin area. Applied via the `.admin-root` class on the admin layout so it
+  never affects the customer-facing storefront.
+
+  Tokens mirror the shape of the storefront theme (surface / foreground /
+  muted / gold / royal) for a consistent brand feel.
+*/
+
+.admin-root {
+  /* surfaces */
+  --a-bg: #f6f7fb; /* page base (cool light grey) */
+  --a-surface: #ffffff; /* cards / panels */
+  --a-surface-2: #f1f2f7; /* raised / hover */
+  --a-border: rgba(20, 20, 40, 0.08);
+  --a-border-strong: rgba(20, 20, 40, 0.16);
+
+  /* text */
+  --a-fg: #1a1733; /* primary text (deep ink) */
+  --a-muted: #6b6786; /* secondary text */
+  --a-faint: #9a97ad; /* tertiary */
+
+  /* brand accents (shared with the store) */
+  --a-gold: #c9942a;
+  --a-gold-soft: rgba(201, 148, 42, 0.12);
+  --a-royal: #6a2ee0;
+  --a-royal-soft: rgba(122, 69, 245, 0.1);
+
+  /* status */
+  --a-green: #059669;
+  --a-blue: #0284c7;
+  --a-rose: #e11d48;
+
+  background: var(--a-bg);
+  color: var(--a-fg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* soft ambient tint behind the dashboard */
+.admin-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(122, 69, 245, 0.06), transparent 60%),
+    radial-gradient(50rem 35rem at 100% 0%, rgba(201, 148, 42, 0.06), transparent 55%);
+  z-index: 0;
+}
+
+.admin-root > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* thin scrollbars inside the admin */
+.admin-root *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.admin-root *::-webkit-scrollbar-thumb {
+  background: rgba(20, 20, 40, 0.14);
+  border-radius: 999px;
+}
+.admin-root *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Sidebar nav — thin, auto-hiding scrollbar (only shows on hover) */
+.admin-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s;
+}
+.admin-nav-scroll:hover {
+  scrollbar-color: rgba(20, 20, 40, 0.18) transparent;
+}
+.admin-nav-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.admin-nav-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  transition: background 0.3s;
+}
+.admin-nav-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(20, 20, 40, 0.18);
+}
+.admin-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Skeleton shimmer (admin) */
+@keyframes adminShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.admin-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(20, 20, 40, 0.06),
+    transparent
+  );
+  animation: adminShimmer 1.6s infinite;
+}
+
+/* ------------------------------------------------------------------ *
+ * Rich text editor (Tiptap) — in-editor content styling.
+ * ------------------------------------------------------------------ */
+.admin-root .prose-admin h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 1.1rem 0 0.5rem;
+  color: var(--a-fg);
+}
+.admin-root .prose-admin h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.9rem 0 0.4rem;
+  color: var(--a-fg);
+}
+.admin-root .prose-admin p {
+  margin: 0.5rem 0;
+  color: var(--a-fg);
+}
+.admin-root .prose-admin ul,
+.admin-root .prose-admin ol {
+  margin: 0.5rem 0;
+  padding-left: 1.4rem;
+}
+.admin-root .prose-admin ul {
+  list-style: disc;
+}
+.admin-root .prose-admin ol {
+  list-style: decimal;
+}
+.admin-root .prose-admin li {
+  margin: 0.25rem 0;
+}
+.admin-root .prose-admin blockquote {
+  border-left: 3px solid var(--a-gold);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: var(--a-muted);
+  font-style: italic;
+}
+.admin-root .prose-admin a {
+  color: var(--a-royal);
+  text-decoration: underline;
+}
+.admin-root .prose-admin img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+}
+.admin-root .prose-admin hr {
+  border: none;
+  border-top: 1px solid var(--a-border);
+  margin: 1.25rem 0;
+}
+.admin-root .prose-admin:focus {
+  outline: none;
+}

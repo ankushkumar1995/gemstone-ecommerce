@@ -36,6 +36,7 @@ import {
 import { ProductGalleryField } from "./product-gallery-field";
 import { TagInput, ContentSections, VideosEditor } from "./product-form-fields";
 import { CollectionsSelect, RelatedProductsPicker } from "./product-relations-field";
+import { ProductVariantsManager } from "./product-variants-manager";
 
 const BADGES = [
   { value: "", label: "None" },
@@ -48,7 +49,7 @@ const PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn",
   (p) => ({ value: p, label: p })
 );
 
-type TabKey = "general" | "content" | "media" | "seo" | "organise" | "workflow";
+type TabKey = "general" | "variants" | "content" | "media" | "seo" | "organise" | "workflow";
 
 const fade = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
@@ -66,6 +67,13 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
   const { toast } = useAdminToast();
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<TabKey>("general");
+
+  /**
+   * The live product record used by the Variants tab. It starts from `editing`
+   * and is replaced whenever a variant action returns an updated product, so
+   * the server-computed stock rollups are reflected immediately.
+   */
+  const [liveProduct, setLiveProduct] = useState<Product | null>(editing ?? null);
 
   /* basics (controlled so values survive tab switches) */
   const [name, setName] = useState(editing?.name ?? "");
@@ -85,6 +93,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
   const [images, setImages] = useState<string[]>(
     editing?.images?.length ? editing.images : editing?.image ? [editing.image] : []
   );
+  const [imageAlts, setImageAlts] = useState<Record<string, string>>(editing?.imageAlts ?? {});
   const [category, setCategory] = useState<string>(editing?.category ?? "");
   const [badge, setBadge] = useState<string>(editing?.badge ?? "");
   const [planet, setPlanet] = useState<string>(editing?.attributes.planet ?? "Jupiter");
@@ -156,6 +165,12 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
       return;
     }
 
+    if (!category.trim()) {
+      toast("Please select a category", "error");
+      setTab("general");
+      return;
+    }
+
     const qty = Number(stockQty || 0);
     const dto: CreateProductDto = {
       name,
@@ -164,6 +179,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
       mrp: Number(mrp || price || 0),
       image: images[0] || "",
       images,
+      imageAlts,
       shortDescription,
       badge: (badge || undefined) as CreateProductDto["badge"],
       status: status as CreateProductDto["status"],
@@ -205,8 +221,11 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
 
     if (res.ok) {
       toast(isEdit ? "Product updated" : "Product created", "success");
-      router.push("/admin/products");
-      router.refresh();
+      // Let the toast paint before we navigate away. The toast provider lives
+      // in the (dashboard) layout so it survives this client navigation and the
+      // message stays visible on the products list. (No router.refresh() — it
+      // remounts the subtree and would kill the toast; the list reloads itself.)
+      setTimeout(() => router.push("/admin/products"), 150);
     } else {
       toast(res.message, "error");
     }
@@ -214,6 +233,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
 
   const tabs: { value: TabKey; label: string }[] = [
     { value: "general", label: "General" },
+    { value: "variants", label: "Variants" },
     { value: "content", label: "Content" },
     { value: "media", label: "Media" },
     { value: "seo", label: "SEO" },
@@ -308,6 +328,20 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
 
             <div className="space-y-6">
               <Card>
+                <SectionTitle icon={Boxes} title="Category" />
+                <div className="mt-4 space-y-4">
+                  <Field label="Category" required hint="Which catalogue category this product belongs to">
+                    <AdminDropdown
+                      value={category}
+                      options={categoryOptions}
+                      onChange={setCategory}
+                      placeholder={categoryOptions.length ? "Select category" : "No categories yet"}
+                      className="w-full"
+                    />
+                  </Field>
+                </div>
+              </Card>
+              <Card>
                 <SectionTitle icon={Gem} title="Pricing" />
                 <div className="mt-4 space-y-4">
                   <Field label="Price (₹)" required>
@@ -333,6 +367,34 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
           </div>
         )}
 
+        {tab === "variants" && (
+          <Card>
+            <SectionTitle icon={Boxes} title="Variants" />
+            <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>
+              Size / metal / carat variations with their own SKU, price and stock.
+              Product-level stock rolls up from these automatically.
+            </p>
+            <div className="mt-4">
+              {liveProduct ? (
+                <ProductVariantsManager product={liveProduct} onProductChange={setLiveProduct} />
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center"
+                  style={{ borderColor: "var(--a-border)" }}
+                >
+                  <Boxes size={26} style={{ color: "var(--a-faint)" }} />
+                  <p className="mt-2 text-sm font-medium" style={{ color: "var(--a-fg)" }}>
+                    Save the product first
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--a-faint)" }}>
+                    Variants are managed per product. Create this product, then add variants here.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
         {tab === "content" && (
           <Card>
             <SectionTitle icon={FileText} title="Rich content sections" />
@@ -350,7 +412,12 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
             <Card>
               <SectionTitle icon={ImageIcon} title="Gallery" />
               <div className="mt-4">
-                <ProductGalleryField images={images} onChange={setImages} />
+                <ProductGalleryField
+                  images={images}
+                  onChange={setImages}
+                  alts={imageAlts}
+                  onAltsChange={setImageAlts}
+                />
               </div>
             </Card>
             <Card>
@@ -380,7 +447,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
               <SectionTitle icon={SearchIcon} title="Search engine optimisation" />
               <div className="mt-4 space-y-4">
                 <Field label="Meta title" hint={`${seoTitle.length}/70 characters`}>
-                  <AdminInput value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} maxLength={70} placeholder="Natural Ruby (Manik) — Certified | Nakshatra" />
+                  <AdminInput value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} maxLength={70} placeholder="Natural Ruby (Manik) — Certified | Astrounkle" />
                 </Field>
                 <Field label="Meta description" hint={`${seoDesc.length}/180 characters`}>
                   <AdminTextarea value={seoDesc} onChange={(e) => setSeoDesc(e.target.value)} maxLength={180} rows={3} placeholder="Buy certified natural ruby…" />
@@ -406,7 +473,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
               <SectionTitle icon={SearchIcon} title="Search preview" />
               <div className="mt-4 rounded-lg border p-4" style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)" }}>
                 <p className="truncate text-xs" style={{ color: "var(--a-muted)" }}>
-                  nakshatra.com › product › {editing?.slug ?? "new-gemstone"}
+                  astrounkle.com › product › {editing?.slug ?? "new-gemstone"}
                 </p>
                 <p className="mt-1 truncate text-base font-medium text-[#1a0dab]">
                   {seoTitle || editing?.name || "Product title"}
@@ -444,16 +511,26 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
 
             <div className="space-y-6">
               <Card>
-                <SectionTitle icon={Boxes} title="Taxonomy" />
+                <SectionTitle icon={Boxes} title="Badges & Tags" />
                 <div className="mt-4 space-y-4">
-                  <Field label="Category">
-                    <AdminDropdown
-                      value={category}
-                      options={categoryOptions}
-                      onChange={setCategory}
-                      placeholder={categoryOptions.length ? "Select category" : "No categories yet"}
-                      className="w-full"
-                    />
+                  <Field label="Category" hint="Managed in the General tab">
+                    <div
+                      className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm"
+                      style={{ borderColor: "var(--a-border)", color: category ? "var(--a-fg)" : "var(--a-faint)" }}
+                    >
+                      <span>
+                        {category
+                          ? categoryOptions.find((c) => c.value === category)?.label ?? category
+                          : "Not set — choose in General"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTab("general")}
+                        className="text-xs font-medium text-[var(--a-gold)] hover:underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </Field>
                   <Field label="Badge">
                     <AdminDropdown value={badge} options={BADGES} onChange={setBadge} className="w-full" />

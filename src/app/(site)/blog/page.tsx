@@ -3,9 +3,9 @@ import { articleService } from "@/modules/blog";
 import { BlogListView } from "@/components/blog/blog-list-view";
 
 export const metadata: Metadata = {
-  title: "The Gemstone Journal — Nakshatra Blog",
+  title: "The Gemstone Journal — Astrounkle Blog",
   description:
-    "Guides, astrology insights and buying tips on gemstones, planets, zodiac and Vedic remedies from Nakshatra's experts.",
+    "Guides, astrology insights and buying tips on gemstones, planets, zodiac and Vedic remedies from Astrounkle's experts.",
 };
 
 // Blog is now dynamic (admin-managed) — always render the latest published set.

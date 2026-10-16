@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 /**
@@ -24,9 +25,9 @@ const display = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Nakshatra — Luxury Gemstones & Astrology",
-  description:
-    "Certified natural gemstones curated by your zodiac, with expert astrological guidance.",
+  metadataBase: new URL(BRAND.url),
+  title: BRAND.metaTitle,
+  description: BRAND.metaDescription,
 };
 
 export default function RootLayout({

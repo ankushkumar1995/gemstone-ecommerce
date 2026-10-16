@@ -66,6 +66,95 @@ export const orderService = {
     return ok(o);
   },
 
+  /** All orders belonging to a single customer, newest first. */
+  async listByCustomer(customerId: string): Promise<Result<Order[]>> {
+    const repo = getOrderRepository();
+    return ok(await repo.findByCustomer(customerId));
+  },
+
+  /**
+   * Customer self-service cancel. Ownership is enforced (the order must belong
+   * to this customer) and only PRE-SHIP orders (pending/confirmed) can be
+   * cancelled by the customer — once packed/shipped they must contact support.
+   * Reuses updateStatus so stock is restocked + stats reverted correctly.
+   */
+  async cancelByCustomer(orderId: string, customerId: string): Promise<Result<Order>> {
+    const repo = getOrderRepository();
+    const order = await repo.findById(orderId);
+    if (!order) return fail(AppErrors.notFound("Order not found"));
+    if (order.customerId !== customerId) {
+      return fail(AppErrors.forbidden("This order doesn't belong to your account"));
+    }
+    if (!["pending", "confirmed"].includes(order.status)) {
+      return fail(
+        AppErrors.validation(
+          "This order can no longer be cancelled online. Please contact support.",
+        ),
+      );
+    }
+    return this.updateStatus(orderId, "cancelled");
+  },
+
+  /** Find an order by its gateway (Razorpay) order id — for verify/webhook. */
+  async findByRazorpayOrderId(razorpayOrderId: string): Promise<Order | null> {
+    const repo = getOrderRepository();
+    return repo.findByRazorpayOrderId(razorpayOrderId);
+  },
+
+  /** Attach the gateway order id to a freshly-created pending order. */
+  async attachRazorpayOrder(orderId: string, razorpayOrderId: string): Promise<void> {
+    const repo = getOrderRepository();
+    const order = await repo.findById(orderId);
+    if (!order) return;
+    await repo.update(orderId, {
+      payment: { ...(order.payment ?? { provider: "razorpay" }), provider: "razorpay", razorpayOrderId },
+    });
+  },
+
+  /**
+   * Mark an online-payment order as PAID after its signature has been verified
+   * by the caller. Idempotent: if the order is already paid it's a no-op (so a
+   * client callback + webhook racing can't double-commit stock or stats).
+   *
+   * On first success it stores the gateway refs, flips paymentStatus→paid, and
+   * transitions pending→confirmed (which commits stock + records the order on
+   * the customer via the normal lifecycle).
+   */
+  async markPaid(
+    orderId: string,
+    refs: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature?: string },
+  ): Promise<Result<Order>> {
+    const repo = getOrderRepository();
+    const order = await repo.findById(orderId);
+    if (!order) return fail(AppErrors.notFound("Order not found"));
+
+    // Idempotency guard — already settled.
+    if (order.paymentStatus === "paid") return ok(order);
+
+    // Persist the gateway refs + payment status first.
+    await repo.update(orderId, {
+      paymentStatus: "paid",
+      payment: {
+        provider: "razorpay",
+        razorpayOrderId: refs.razorpayOrderId,
+        razorpayPaymentId: refs.razorpayPaymentId,
+        razorpaySignature: refs.razorpaySignature,
+        paidAt: new Date().toISOString(),
+      },
+      activity: [logEntry("payment", "Payment captured via Razorpay"), ...order.activity].slice(0, 50),
+    });
+
+    // Transition pending → confirmed to commit stock + customer stats. If the
+    // order was already in a committed state, leave the status as-is.
+    if (order.status === "pending") {
+      const confirmed = await this.updateStatus(orderId, "confirmed");
+      if (!confirmed.ok) return confirmed;
+      return confirmed;
+    }
+    const fresh = await repo.findById(orderId);
+    return fresh ? ok(fresh) : fail(AppErrors.notFound("Order not found"));
+  },
+
   /**
    * Create an order. Builds line items from live product snapshots, computes
    * pricing, commits stock + records the customer if the order is created in
@@ -85,9 +174,24 @@ export const orderService = {
       return fail(AppErrors.validation("Provide a customer or guest details"));
     }
 
+    // Store settings are the source of truth for tax, shipping, qty limits and
+    // the order-number prefix (callers may still override tax/shipping per order).
+    const settingsRes = await settingsService.get();
+    const settings = settingsRes.ok ? settingsRes.value : null;
+    const minQty = settings?.order.minQtyPerItem ?? 1;
+    const maxQty = settings?.order.maxQtyPerItem ?? 0; // 0 = no max
+
     // build items from product snapshots + validate stock availability
     const items: OrderItem[] = [];
     for (const line of dto.items) {
+      // enforce per-item quantity limits from settings
+      if (line.qty < minQty) {
+        return fail(AppErrors.validation(`Minimum quantity per item is ${minQty}`));
+      }
+      if (maxQty > 0 && line.qty > maxQty) {
+        return fail(AppErrors.validation(`Maximum quantity per item is ${maxQty}`));
+      }
+
       const pRes = await productService.getById(line.productId);
       if (!pRes.ok) return fail(AppErrors.validation(`Product ${line.productId} not found`));
       const p = pRes.value;
@@ -125,20 +229,41 @@ export const orderService = {
       }
     }
 
-    // pricing
+    // pricing — driven by store settings, with per-order overrides allowed
     const subtotal = items.reduce((s, it) => s + it.lineTotal, 0);
     const discount = dto.discount ?? 0;
-    const shipping = dto.shipping ?? 0;
     const taxable = Math.max(0, subtotal - discount);
-    const tax = dto.taxRate ? Math.round((taxable * dto.taxRate) / 100) : 0;
+
+    // enforce minimum order value from checkout settings (on the taxable amount)
+    const minOrderValue = settings?.checkout.minOrderValue ?? 0;
+    if (minOrderValue > 0 && taxable < minOrderValue) {
+      return fail(
+        AppErrors.validation(`Minimum order value is ₹${minOrderValue.toLocaleString("en-IN")}`),
+      );
+    }
+
+    // Shipping: explicit override wins; else compute from settings
+    // (free at/above the threshold, otherwise the flat rate).
+    let shipping: number;
+    if (dto.shipping !== undefined) {
+      shipping = dto.shipping;
+    } else if (settings) {
+      const { freeShippingThreshold, flatRate } = settings.shipping;
+      shipping = freeShippingThreshold > 0 && taxable >= freeShippingThreshold ? 0 : flatRate;
+    } else {
+      shipping = 0;
+    }
+
+    // Tax: explicit taxRate override wins; else the settings GST rate.
+    const taxRate = dto.taxRate ?? settings?.tax.rate ?? 0;
+    const tax = taxRate ? Math.round((taxable * taxRate) / 100) : 0;
     const grandTotal = taxable + shipping + tax;
 
     const now = new Date().toISOString();
     const status = dto.status ?? "pending";
 
     // order-number prefix comes from store settings (falls back to "NK")
-    const settingsRes = await settingsService.get();
-    const prefix = settingsRes.ok ? settingsRes.value.order.numberPrefix : "NK";
+    const prefix = settings?.order.numberPrefix ?? "NK";
 
     const order: Order = {
       id: newId("ord"),
@@ -180,7 +305,10 @@ export const orderService = {
         );
       }
       if (created.pricing.couponCode) {
-        await couponService.recordUsage(created.pricing.couponCode, created.pricing.subtotal);
+        await couponService.recordUsage(created.pricing.couponCode, created.pricing.subtotal, {
+          customerId: created.customerId,
+          orderNumber: created.orderNumber,
+        });
       }
     }
 
@@ -227,7 +355,10 @@ export const orderService = {
         );
       }
       if (order.pricing.couponCode) {
-        await couponService.recordUsage(order.pricing.couponCode, order.pricing.subtotal);
+        await couponService.recordUsage(order.pricing.couponCode, order.pricing.subtotal, {
+          customerId: order.customerId,
+          orderNumber: order.orderNumber,
+        });
       }
     }
     // release stock when leaving a committed state into cancel/refund
@@ -339,7 +470,13 @@ export const orderService = {
     return ok(updated);
   },
 
-  /** Apply a stock delta per line across every item in the order. */
+  /**
+   * Apply a stock delta per line across every item in the order.
+   *  • direction -1 → sale committed: reduce stock + bump each product's
+   *    lifetime `soldCount`.
+   *  • direction +1 → reversal (cancel/refund): restock. `soldCount` is a
+   *    cumulative lifetime metric and is intentionally NOT decremented.
+   */
   async commitStock(order: Order, direction: -1 | 1): Promise<void> {
     const reason = direction < 0 ? `order ${order.orderNumber}` : `order ${order.orderNumber} reversed`;
     for (const item of order.items) {
@@ -347,6 +484,9 @@ export const orderService = {
         variantId: item.variantId,
         reason,
       });
+      if (direction < 0 && item.qty > 0) {
+        await productService.incrementCounter(item.productId, "sold", item.qty);
+      }
     }
   },
 };

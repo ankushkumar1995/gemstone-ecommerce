@@ -4,12 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
-import { categories } from "@/data/categories";
+import type { Category } from "@/types";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StaggerContainer, staggerItem } from "@/components/ui/reveal";
 import { Container } from "@/components/ui/container";
 
-export function Categories() {
+export function Categories({ categories = [] }: { categories?: Category[] }) {
   return (
     <section className="py-20">
       <Container>

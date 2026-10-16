@@ -3,14 +3,15 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, X } from "lucide-react";
-import { products as allProducts } from "@/data/products";
-import { categories } from "@/data/categories";
 import { zodiacSigns } from "@/data/zodiac";
 import { ProductCard } from "@/components/ui/product-card";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Dropdown } from "@/components/ui/dropdown";
 import { cn, discountPercent } from "@/lib/utils";
-import type { ProductCategory, ZodiacSign } from "@/types";
+import type { Product, ProductCategory, ZodiacSign } from "@/types";
+
+/** Minimal category shape the filter sidebar needs (from the DB). */
+type ShopCategory = { slug: string; title: string };
 
 type SortKey = "featured" | "price-asc" | "price-desc" | "rating";
 
@@ -22,17 +23,19 @@ const sortOptions: { key: SortKey; label: string }[] = [
 ];
 
 export function ShopView({
+  products,
+  categories,
   initialCategory,
   initialZodiac,
   initialSale = false,
 }: {
+  products: Product[];
+  categories: ShopCategory[];
   initialCategory?: ProductCategory;
   initialZodiac?: ZodiacSign;
   initialSale?: boolean;
 }) {
-  const [category, setCategory] = useState<ProductCategory | "all">(
-    initialCategory ?? "all"
-  );
+  const [category, setCategory] = useState<string>(initialCategory ?? "all");
   const [zodiac, setZodiac] = useState<ZodiacSign | "all">(
     initialZodiac ?? "all"
   );
@@ -41,7 +44,7 @@ export function ShopView({
   const [mobileFilters, setMobileFilters] = useState(false);
 
   const filtered = useMemo(() => {
-    let list = [...allProducts];
+    let list = [...products];
     if (category !== "all") list = list.filter((p) => p.category === category);
     if (zodiac !== "all") list = list.filter((p) => p.zodiac.includes(zodiac));
     if (saleOnly)
@@ -59,7 +62,7 @@ export function ShopView({
         break;
     }
     return list;
-  }, [category, zodiac, saleOnly, sort]);
+  }, [products, category, zodiac, saleOnly, sort]);
 
   const activeFilters =
     (category !== "all" ? 1 : 0) +

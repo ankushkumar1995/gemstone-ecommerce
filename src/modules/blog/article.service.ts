@@ -68,7 +68,7 @@ export const articleService = {
       category: dto.category.trim(),
       readMins: dto.readMins ?? estimateReadMins(body, content),
       image: dto.image?.trim() || PLACEHOLDER_IMAGE,
-      author: dto.author?.trim() || "Nakshatra Team",
+      author: dto.author?.trim() || "Astrounkle Team",
       authorRole: dto.authorRole?.trim() || "Editorial",
       date: dto.date || new Date().toISOString(),
       tags: dto.tags ?? [],

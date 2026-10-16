@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { getFeatured } from "@/data/products";
+import type { Product } from "@/types";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StaggerContainer } from "@/components/ui/reveal";
 import { ProductCard } from "@/components/ui/product-card";
 import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 
-export function FeaturedProducts() {
-  const products = getFeatured(8);
-
+export function FeaturedProducts({ products = [] }: { products?: Product[] }) {
   return (
     <section className="py-20">
       <Container>

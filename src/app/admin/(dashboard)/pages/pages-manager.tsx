@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, FileText, CheckCircle2, PencilRuler, Eye, Pencil, Trash2, Send, Archive } from "lucide-react";
 import type { CmsPage } from "@/modules/pages";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import {
   PageHeader,
   AdminButton,
@@ -33,9 +34,7 @@ export function PagesManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = pages.length;

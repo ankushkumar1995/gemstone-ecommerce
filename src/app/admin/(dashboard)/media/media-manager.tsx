@@ -1,12 +1,12 @@
 "use client";
 
-import { ImageIcon, HardDrive, CalendarDays } from "lucide-react";
+import { ImageIcon, HardDrive, Cloud, Loader2 } from "lucide-react";
 import { useMedia } from "@/lib/media-store";
 import { PageHeader, Card, StatCard } from "../../_components";
 import { MediaLibrary } from "../../_components/media/media-library";
 
 export function MediaManager() {
-  const { items } = useMedia();
+  const { items, syncing } = useMedia();
   const totalSize = items.reduce((s, m) => s + (m.size ?? 0), 0);
 
   return (
@@ -18,10 +18,15 @@ export function MediaManager() {
         <StatCard
           icon={HardDrive}
           value={totalSize ? `${(totalSize / 1024 / 1024).toFixed(1)} MB` : "—"}
-          label="Uploaded Size"
+          label="Total Size"
           tone="gold"
         />
-        <StatCard icon={CalendarDays} value="Mock" label="Storage (demo)" tone="green" />
+        <StatCard
+          icon={syncing ? Loader2 : Cloud}
+          value={syncing ? "Syncing…" : "Amazon S3"}
+          label="Storage (live)"
+          tone="green"
+        />
       </div>
 
       <Card>

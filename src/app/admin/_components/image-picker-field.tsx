@@ -13,30 +13,43 @@
 
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { UploadCloud, X, Images } from "lucide-react";
-import { useMedia } from "@/lib/media-store";
+import { UploadCloud, X, Images, Loader2 } from "lucide-react";
+import { adminApi } from "@/lib/admin-api";
 import { AdminButton } from "./ui";
+import { useAdminToast } from "./toast";
 import { MediaPickerModal } from "./media-picker";
 
 export function ImagePickerField({
   value,
   onChange,
   aspect = "aspect-[16/9]",
+  folder = "media",
 }: {
   value: string;
   onChange: (url: string) => void;
   /** tailwind aspect class for the preview box */
   aspect?: string;
+  /** S3 folder to upload into (e.g. "categories", "products"). */
+  folder?: string;
 }) {
-  const { addFiles } = useMedia();
+  const { toast } = useAdminToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const [created] = addFiles(files); // uploads to library + returns items
-    if (created) onChange(created.url);
+    const file = files[0];
+    setUploading(true);
+    const res = await adminApi.storage.upload(file, folder);
+    setUploading(false);
+    if (res.ok) {
+      onChange(res.data.url); // real, persistent S3 URL
+      toast("Image uploaded", "success");
+    } else {
+      toast(res.message, "error");
+    }
   };
 
   return (
@@ -92,21 +105,34 @@ export function ImagePickerField({
             className="flex h-11 w-11 items-center justify-center rounded-full"
             style={{ background: "var(--a-surface-2)", color: "var(--a-gold)" }}
           >
-            <UploadCloud size={22} />
+            {uploading ? <Loader2 size={22} className="animate-spin" /> : <UploadCloud size={22} />}
           </motion.span>
           <p className="mt-3 text-sm font-medium" style={{ color: "var(--a-fg)" }}>
-            Drag an image or <span className="text-[var(--a-gold)]">browse</span>
+            {uploading ? (
+              "Uploading…"
+            ) : (
+              <>
+                Drag an image or <span className="text-[var(--a-gold)]">browse</span>
+              </>
+            )}
           </p>
           <p className="mt-0.5 text-xs" style={{ color: "var(--a-faint)" }}>
-            PNG or JPG from your computer
+            PNG, JPG, WEBP — uploaded to secure storage
           </p>
         </div>
       )}
 
       {/* actions row */}
       <div className="mt-2 flex gap-2">
-        <AdminButton type="button" variant="outline" className="flex-1" onClick={() => inputRef.current?.click()}>
-          <UploadCloud size={15} /> Upload
+        <AdminButton
+          type="button"
+          variant="outline"
+          className="flex-1"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />}
+          {uploading ? "Uploading…" : "Upload"}
         </AdminButton>
         <AdminButton type="button" variant="outline" className="flex-1" onClick={() => setPickerOpen(true)}>
           <Images size={15} /> Media Library

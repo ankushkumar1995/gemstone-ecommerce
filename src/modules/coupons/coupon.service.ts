@@ -8,7 +8,7 @@ import { AppErrors } from "@/core/errors";
 import { newId } from "@/core/id";
 import { auditService } from "@/modules/audit";
 import { getCouponRepository } from "./coupon.repository";
-import type { Coupon, CouponValidation } from "./coupon.types";
+import type { Coupon, CouponStatus, CouponValidation, PublicCoupon } from "./coupon.types";
 import type { CreateCouponDto, UpdateCouponDto } from "./coupon.schema";
 
 /** Compute the discount a coupon yields for a given subtotal. */
@@ -22,30 +22,62 @@ function computeDiscount(coupon: Coupon, subtotal: number): number {
   return Math.min(discount, subtotal);
 }
 
-/** Check whether a coupon is currently usable (window, limit, active). */
-function usabilityError(coupon: Coupon, subtotal: number): string | null {
+/** Derive the lifecycle status (not stored) from window + limits + active. */
+function deriveStatus(coupon: Coupon): CouponStatus {
+  if (!coupon.active) return "disabled";
+  const now = Date.now();
+  if (coupon.startsAt && new Date(coupon.startsAt).getTime() > now) return "scheduled";
+  if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < now) return "expired";
+  if (coupon.usageLimit && coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit)
+    return "exhausted";
+  return "live";
+}
+
+/** Attach the derived status to a coupon for API responses. */
+function withStatus(coupon: Coupon): Coupon {
+  return { ...coupon, status: deriveStatus(coupon) };
+}
+
+/** How many times a given customer has already redeemed this coupon. */
+function timesUsedBy(coupon: Coupon, customerId?: string): number {
+  if (!customerId) return 0;
+  return (coupon.redemptions ?? []).filter((r) => r.customerId === customerId).length;
+}
+
+/**
+ * Check whether a coupon is currently usable (window, limits, active, per-
+ * customer limit). `customerId` is optional (guest checkout).
+ */
+function usabilityError(coupon: Coupon, subtotal: number, customerId?: string): string | null {
   if (!coupon.active) return "This coupon is no longer active";
   const now = Date.now();
   if (coupon.startsAt && new Date(coupon.startsAt).getTime() > now) return "This coupon isn't active yet";
   if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < now) return "This coupon has expired";
   if (coupon.usageLimit && coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit)
     return "This coupon has reached its usage limit";
+  if (
+    coupon.perCustomerLimit &&
+    coupon.perCustomerLimit > 0 &&
+    timesUsedBy(coupon, customerId) >= coupon.perCustomerLimit
+  )
+    return "You've already used this coupon the maximum number of times";
   if (subtotal < coupon.minCartValue)
-    return `Add ₹${coupon.minCartValue - subtotal} more to use this coupon`;
+    return `Add ₹${(coupon.minCartValue - subtotal).toLocaleString("en-IN")} more to use this coupon`;
   return null;
 }
 
 export const couponService = {
   async list(): Promise<Result<Coupon[]>> {
     const repo = getCouponRepository();
-    return ok(await repo.findAll());
+    const all = await repo.findAll();
+    return ok(all.map(withStatus));
   },
 
   async getById(id: string): Promise<Result<Coupon>> {
     const repo = getCouponRepository();
     const c = await repo.findById(id);
     if (!c) return fail(AppErrors.notFound("Coupon not found"));
-    return ok(c);
+    return ok(withStatus(c));
   },
 
   async create(dto: CreateCouponDto): Promise<Result<Coupon>> {
@@ -63,10 +95,13 @@ export const couponService = {
       minCartValue: dto.minCartValue ?? 0,
       maxDiscount: dto.maxDiscount || undefined,
       usageLimit: dto.usageLimit || undefined,
+      perCustomerLimit: dto.perCustomerLimit || undefined,
       usedCount: 0,
+      redemptions: [],
       startsAt: dto.startsAt || undefined,
       expiresAt: dto.expiresAt || undefined,
       active: dto.active ?? true,
+      isPublic: dto.isPublic ?? false,
       createdAt: new Date().toISOString(),
     };
     const createdCoupon = await repo.create(coupon);
@@ -100,9 +135,11 @@ export const couponService = {
       ...(dto.minCartValue !== undefined && { minCartValue: dto.minCartValue }),
       ...(dto.maxDiscount !== undefined && { maxDiscount: dto.maxDiscount || undefined }),
       ...(dto.usageLimit !== undefined && { usageLimit: dto.usageLimit || undefined }),
+      ...(dto.perCustomerLimit !== undefined && { perCustomerLimit: dto.perCustomerLimit || undefined }),
       ...(dto.startsAt !== undefined && { startsAt: dto.startsAt || undefined }),
       ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt || undefined }),
       ...(dto.active !== undefined && { active: dto.active }),
+      ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
     };
 
     const updated = await repo.update(id, patch);
@@ -114,7 +151,24 @@ export const couponService = {
       entityLabel: updated.code,
       summary: `Updated coupon ${updated.code}`,
     });
-    return ok(updated);
+    return ok(withStatus(updated));
+  },
+
+  /** Quick enable/disable toggle (admin). */
+  async toggleActive(id: string, active: boolean): Promise<Result<Coupon>> {
+    const repo = getCouponRepository();
+    const existing = await repo.findById(id);
+    if (!existing) return fail(AppErrors.notFound("Coupon not found"));
+    const updated = await repo.update(id, { active });
+    if (!updated) return fail(AppErrors.notFound("Coupon not found"));
+    await auditService.record({
+      action: "update",
+      entity: "coupon",
+      entityId: updated.id,
+      entityLabel: updated.code,
+      summary: `${active ? "Enabled" : "Disabled"} coupon ${updated.code}`,
+    });
+    return ok(withStatus(updated));
   },
 
   async remove(id: string): Promise<Result<{ id: string }>> {
@@ -136,12 +190,12 @@ export const couponService = {
    * Validate a code against a cart subtotal. Used by the storefront checkout
    * to show the discount before placing the order.
    */
-  async validate(code: string, subtotal: number): Promise<Result<CouponValidation>> {
+  async validate(code: string, subtotal: number, customerId?: string): Promise<Result<CouponValidation>> {
     const repo = getCouponRepository();
     const coupon = await repo.findByCode(code);
     if (!coupon) return fail(AppErrors.notFound("Invalid coupon code"));
 
-    const err = usabilityError(coupon, subtotal);
+    const err = usabilityError(coupon, subtotal, customerId);
     if (err) return fail(AppErrors.validation(err));
 
     const discount = computeDiscount(coupon, subtotal);
@@ -149,14 +203,73 @@ export const couponService = {
   },
 
   /**
-   * Record a redemption (called by the order flow when an order with a coupon
-   * is confirmed). Re-validates then increments usedCount. No-op if invalid.
+   * Storefront "Available offers" — the PUBLIC coupons the shopper can see and
+   * one-tap apply at checkout. Secret/targeted coupons (isPublic=false) are
+   * NEVER listed here; they still work if the exact code is typed.
+   *
+   * Each entry carries an eligibility check against the current cart subtotal
+   * so the UI can show "Apply" vs a reason (e.g. "Add ₹X more"). Expired/
+   * disabled/exhausted/not-yet-started coupons are filtered out entirely.
    */
-  async recordUsage(code: string, subtotal: number): Promise<void> {
+  async listPublic(subtotal: number, customerId?: string): Promise<Result<PublicCoupon[]>> {
+    const repo = getCouponRepository();
+    const all = await repo.findAll();
+    const now = Date.now();
+
+    const visible = all.filter((c) => {
+      if (!c.isPublic) return false;
+      if (!c.active) return false;
+      // hide not-yet-started, expired, and fully-exhausted coupons
+      if (c.startsAt && new Date(c.startsAt).getTime() > now) return false;
+      if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return false;
+      if (c.usageLimit && c.usageLimit > 0 && c.usedCount >= c.usageLimit) return false;
+      return true;
+    });
+
+    const out: PublicCoupon[] = visible.map((c) => {
+      const err = usabilityError(c, subtotal, customerId);
+      const eligible = err === null;
+      return {
+        code: c.code,
+        description: c.description,
+        type: c.type,
+        value: c.value,
+        minCartValue: c.minCartValue,
+        maxDiscount: c.maxDiscount,
+        expiresAt: c.expiresAt,
+        previewDiscount: eligible ? computeDiscount(c, subtotal) : 0,
+        eligible,
+        reason: err ?? undefined,
+      };
+    });
+
+    // Best savings first, but eligible ones ahead of ineligible.
+    out.sort((a, b) => {
+      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      return b.previewDiscount - a.previewDiscount;
+    });
+    return ok(out);
+  },
+
+  /**
+   * Record a redemption (called by the order flow when an order with a coupon
+   * is confirmed). Re-validates, then atomically increments usage + appends a
+   * ledger entry. The atomic increment is race-safe against the usage limit.
+   * No-op if invalid or the limit was reached concurrently.
+   */
+  async recordUsage(
+    code: string,
+    subtotal: number,
+    opts?: { customerId?: string; orderNumber?: string },
+  ): Promise<void> {
     const repo = getCouponRepository();
     const coupon = await repo.findByCode(code);
     if (!coupon) return;
-    if (usabilityError(coupon, subtotal)) return;
-    await repo.update(coupon.id, { usedCount: coupon.usedCount + 1 });
+    if (usabilityError(coupon, subtotal, opts?.customerId)) return;
+    await repo.incrementUsage(code, {
+      customerId: opts?.customerId,
+      orderNumber: opts?.orderNumber,
+      at: new Date().toISOString(),
+    });
   },
 };

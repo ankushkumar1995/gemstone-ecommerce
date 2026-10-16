@@ -12,9 +12,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const res = await serviceService.getActiveBySlug(slug);
-  if (!res.ok) return { title: "Service Not Found — Nakshatra" };
+  if (!res.ok) return { title: "Service Not Found — Astrounkle" };
   return {
-    title: `${res.value.title} — Astrology Services | Nakshatra`,
+    title: `${res.value.title} — Astrology Services | Astrounkle`,
     description: res.value.description,
   };
 }

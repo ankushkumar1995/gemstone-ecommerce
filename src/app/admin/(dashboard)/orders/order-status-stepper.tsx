@@ -7,7 +7,7 @@
 
 import { motion } from "framer-motion";
 import { Check, XCircle } from "lucide-react";
-import { ORDER_PIPELINE, type OrderStatus } from "@/modules/orders";
+import { ORDER_PIPELINE, type OrderStatus } from "@/modules/orders/order.types";
 import { STATUS_META } from "./order-status";
 
 export function OrderStatusStepper({ status }: { status: OrderStatus }) {

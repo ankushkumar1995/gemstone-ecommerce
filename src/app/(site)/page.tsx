@@ -15,23 +15,31 @@ import { BlogPreview } from "@/components/sections/blog-preview";
 import { Newsletter } from "@/components/sections/newsletter";
 import { articleService } from "@/modules/blog";
 import { bannerService } from "@/modules/banners";
+import { productService } from "@/modules/products";
+import { categoryService } from "@/modules/categories";
 
-// Homepage pulls live blog + banner content from the admin.
+// Homepage pulls live blog, banner, product + category content from the admin.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [blogRes, bannerRes] = await Promise.all([
+  const [blogRes, bannerRes, productsRes, categoriesRes] = await Promise.all([
     articleService.listPublished(),
     bannerService.forPlacement("promo"),
+    productService.listActive(),
+    categoryService.list(),
   ]);
   const latestArticles = (blogRes.ok ? blogRes.value : []).slice(0, 3);
   const promoBanner = bannerRes.ok && bannerRes.value[0] ? bannerRes.value[0] : null;
+  const products = productsRes.ok ? productsRes.value : [];
+  const categories = (categoriesRes.ok ? categoriesRes.value : []).filter(
+    (c) => (c.status ?? "active") === "active",
+  );
   return (
     <>
       <Hero />
       <TrustBand />
-      <Categories />
-      <CollectionTabs />
+      <Categories categories={categories} />
+      <CollectionTabs products={products} />
       <About />
       <ShopByZodiac />
       <ShopByPlanet />

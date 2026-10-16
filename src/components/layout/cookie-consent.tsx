@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Cookie, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const STORAGE_KEY = "nakshatra-cookie-consent";
+const STORAGE_KEY = "astrounkle-cookie-consent";
 
 /**
  * Cookie consent banner. Appears once (bottom-left) until the user accepts or

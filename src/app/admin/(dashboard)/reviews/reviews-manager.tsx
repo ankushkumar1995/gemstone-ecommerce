@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Star, MessageSquare, Check, X, Trash2, Clock, CheckCircle2, Reply } from "lucide-react";
 import type { Review, ReviewStatus } from "@/modules/reviews";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import {
   PageHeader,
   StatCard,
@@ -59,9 +60,7 @@ export function ReviewsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const pending = reviews.filter((r) => r.status === "pending").length;

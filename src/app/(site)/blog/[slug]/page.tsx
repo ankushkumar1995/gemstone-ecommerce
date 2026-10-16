@@ -13,10 +13,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const res = await articleService.getPublishedBySlug(slug);
-  if (!res.ok) return { title: "Article Not Found — Nakshatra" };
+  if (!res.ok) return { title: "Article Not Found — Astrounkle" };
   const article = res.value;
   return {
-    title: article.seo?.metaTitle || `${article.title} — Nakshatra Journal`,
+    title: article.seo?.metaTitle || `${article.title} — Astrounkle Journal`,
     description: article.seo?.metaDescription || article.excerpt,
   };
 }

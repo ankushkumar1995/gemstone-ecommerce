@@ -1,95 +1,27 @@
 /**
- * Orders domain — repository. Mock in-memory store, pre-seeded so the admin
- * orders view has data. Swap for Mongo later via getOrderRepository().
+ * Orders domain — repository.
+ *
+ * Two implementations behind one interface:
+ *  • mock  — in-memory, pre-seeded (used when DATA_SOURCE_ORDERS != mongo).
+ *  • mongo — Mongoose model (production), soft-delete aware.
  */
 
-import { env } from "@/core/config/env";
+import { dataSourceFor } from "@/core/config/env";
+import { orders as seed } from "@/data/orders";
 import type { Order } from "./order.types";
+import type { OrderDoc } from "./order.model";
 
 export interface OrderRepository {
   findAll(): Promise<Order[]>;
   findById(id: string): Promise<Order | null>;
+  findByCustomer(customerId: string): Promise<Order[]>;
+  findByRazorpayOrderId(razorpayOrderId: string): Promise<Order | null>;
   create(order: Order): Promise<Order>;
   update(id: string, patch: Partial<Order>): Promise<Order | null>;
   remove(id: string): Promise<boolean>;
 }
 
-const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
-
-const store: Order[] = [
-  {
-    id: "ord_seed_1",
-    orderNumber: "NK-2026-1042",
-    customerId: "cus_seed_1",
-    customer: { name: "Ananya Sharma", email: "ananya@example.com", phone: "+91 90000 11111" },
-    items: [
-      {
-        productId: "p1",
-        name: "Royal Ruby Signet Ring",
-        image:
-          "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=80",
-        sku: "NK-RUBY-001",
-        unitPrice: 42999,
-        qty: 1,
-        lineTotal: 42999,
-      },
-    ],
-    pricing: { subtotal: 42999, discount: 0, shipping: 0, tax: 1290, grandTotal: 44289 },
-    shippingAddress: {
-      name: "Ananya Sharma",
-      phone: "+91 90000 11111",
-      line1: "12 Residency Road",
-      city: "Jaipur",
-      state: "Rajasthan",
-      postalCode: "302001",
-      country: "India",
-    },
-    status: "shipped",
-    paymentStatus: "paid",
-    paymentMethod: "upi",
-    fulfillment: { courier: "BlueDart", trackingNumber: "BD123456789", shippedAt: daysAgo(2) },
-    activity: [
-      { id: "oa1", at: daysAgo(2), type: "fulfillment", message: "Shipped via BlueDart (BD123456789)", actor: "Admin" },
-      { id: "oa2", at: daysAgo(5), type: "status", message: "Status changed to confirmed", actor: "Admin" },
-      { id: "oa3", at: daysAgo(6), type: "created", message: "Order placed", actor: "System" },
-    ],
-    placedAt: daysAgo(6),
-    updatedAt: daysAgo(2),
-  },
-  {
-    id: "ord_seed_2",
-    orderNumber: "NK-2026-0988",
-    customerId: "cus_seed_2",
-    customer: { name: "Rohan Mehta", email: "rohan@example.com", phone: "+91 98888 22222" },
-    items: [
-      {
-        productId: "p2",
-        name: "Celestial Blue Sapphire Ring",
-        image:
-          "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=900&q=80",
-        unitPrice: 68999,
-        qty: 1,
-        lineTotal: 68999,
-      },
-    ],
-    pricing: { subtotal: 68999, discount: 5000, couponCode: "WELCOME5K", shipping: 0, tax: 1920, grandTotal: 65919 },
-    shippingAddress: {
-      name: "Rohan Mehta",
-      line1: "4th Floor, Nirmal Tower",
-      city: "Mumbai",
-      state: "Maharashtra",
-      postalCode: "400021",
-      country: "India",
-    },
-    status: "pending",
-    paymentStatus: "unpaid",
-    paymentMethod: "cod",
-    fulfillment: {},
-    activity: [{ id: "ob1", at: daysAgo(1), type: "created", message: "Order placed", actor: "System" }],
-    placedAt: daysAgo(1),
-    updatedAt: daysAgo(1),
-  },
-];
+const store: Order[] = seed.map((o) => ({ ...o }));
 
 const mockOrderRepository: OrderRepository = {
   async findAll() {
@@ -97,6 +29,13 @@ const mockOrderRepository: OrderRepository = {
   },
   async findById(id) {
     const o = store.find((x) => x.id === id);
+    return o ? { ...o } : null;
+  },
+  async findByCustomer(customerId) {
+    return store.filter((o) => o.customerId === customerId).map((o) => ({ ...o }));
+  },
+  async findByRazorpayOrderId(razorpayOrderId) {
+    const o = store.find((x) => x.payment?.razorpayOrderId === razorpayOrderId);
     return o ? { ...o } : null;
   },
   async create(order) {
@@ -117,10 +56,175 @@ const mockOrderRepository: OrderRepository = {
   },
 };
 
+/* ------------------------------------------------------------------ *
+ * Mongo (Mongoose model, soft-delete aware)
+ * ------------------------------------------------------------------ */
+async function model() {
+  const { connectMongoose } = await import("@/core/db/mongoose");
+  const { OrderModel } = await import("./order.model");
+  await connectMongoose();
+  return OrderModel;
+}
+
+const notDeleted = { isDeleted: { $ne: true } };
+
+function isObjectId(id: string): boolean {
+  return /^[a-f0-9]{24}$/i.test(id);
+}
+
+/** Map a Mongoose lean doc → the app's Order shape. */
+function fromDoc(doc: OrderDoc): Order {
+  const upd = (doc as unknown as { updatedAt?: Date }).updatedAt;
+  return {
+    id: String(doc._id),
+    orderNumber: doc.orderNumber,
+    customerId: doc.customerId ?? undefined,
+    customer: {
+      name: doc.customer?.name ?? "",
+      email: doc.customer?.email ?? "",
+      phone: doc.customer?.phone ?? undefined,
+    },
+    items: (doc.items ?? []).map((i) => ({
+      productId: i.productId,
+      variantId: i.variantId ?? undefined,
+      name: i.name,
+      image: i.image ?? undefined,
+      sku: i.sku ?? undefined,
+      variantLabel: i.variantLabel ?? undefined,
+      unitPrice: i.unitPrice,
+      qty: i.qty,
+      lineTotal: i.lineTotal,
+    })),
+    pricing: {
+      subtotal: doc.pricing?.subtotal ?? 0,
+      discount: doc.pricing?.discount ?? 0,
+      couponCode: doc.pricing?.couponCode ?? undefined,
+      shipping: doc.pricing?.shipping ?? 0,
+      tax: doc.pricing?.tax ?? 0,
+      grandTotal: doc.pricing?.grandTotal ?? 0,
+    },
+    shippingAddress: mapAddr(doc.shippingAddress),
+    billingAddress: doc.billingAddress ? mapAddr(doc.billingAddress) : undefined,
+    status: doc.status as Order["status"],
+    paymentStatus: doc.paymentStatus as Order["paymentStatus"],
+    paymentMethod: doc.paymentMethod as Order["paymentMethod"],
+    payment: doc.payment
+      ? {
+          provider: "razorpay",
+          razorpayOrderId: doc.payment.razorpayOrderId ?? undefined,
+          razorpayPaymentId: doc.payment.razorpayPaymentId ?? undefined,
+          razorpaySignature: doc.payment.razorpaySignature ?? undefined,
+          paidAt: doc.payment.paidAt ?? undefined,
+        }
+      : undefined,
+    fulfillment: {
+      courier: doc.fulfillment?.courier ?? undefined,
+      trackingNumber: doc.fulfillment?.trackingNumber ?? undefined,
+      shippedAt: doc.fulfillment?.shippedAt ?? undefined,
+      deliveredAt: doc.fulfillment?.deliveredAt ?? undefined,
+    },
+    notes: doc.notes ?? undefined,
+    activity: (doc.activity ?? []).map((a) => ({
+      id: a.id,
+      at: a.at,
+      type: a.type as Order["activity"][number]["type"],
+      message: a.message,
+      actor: a.actor ?? undefined,
+    })),
+    placedAt: doc.placedAt,
+    updatedAt: upd?.toISOString?.() ?? doc.placedAt,
+  };
+}
+
+function mapAddr(a: OrderDoc["shippingAddress"]): Order["shippingAddress"] {
+  return {
+    name: a?.name ?? "",
+    phone: a?.phone ?? undefined,
+    line1: a?.line1 ?? "",
+    line2: a?.line2 ?? undefined,
+    city: a?.city ?? "",
+    state: a?.state ?? undefined,
+    postalCode: a?.postalCode ?? undefined,
+    country: a?.country ?? "India",
+  };
+}
+
+/** Map an app Order (service output) → a Mongo document shape. */
+function toDoc(p: Partial<Order>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (p.orderNumber !== undefined) out.orderNumber = p.orderNumber;
+  if (p.customerId !== undefined) out.customerId = p.customerId ?? null;
+  if (p.customer !== undefined) out.customer = p.customer;
+  if (p.items !== undefined) out.items = p.items;
+  if (p.pricing !== undefined) out.pricing = p.pricing;
+  if (p.shippingAddress !== undefined) out.shippingAddress = p.shippingAddress;
+  if (p.billingAddress !== undefined) out.billingAddress = p.billingAddress;
+  if (p.status !== undefined) out.status = p.status;
+  if (p.paymentStatus !== undefined) out.paymentStatus = p.paymentStatus;
+  if (p.paymentMethod !== undefined) out.paymentMethod = p.paymentMethod;
+  if (p.payment !== undefined) out.payment = p.payment;
+  if (p.fulfillment !== undefined) out.fulfillment = p.fulfillment;
+  if (p.notes !== undefined) out.notes = p.notes ?? null;
+  if (p.activity !== undefined) out.activity = p.activity;
+  if (p.placedAt !== undefined) out.placedAt = p.placedAt;
+  return out;
+}
+
+const mongoOrderRepository: OrderRepository = {
+  async findAll() {
+    const M = await model();
+    const docs = await M.find(notDeleted).sort({ placedAt: -1 }).lean<OrderDoc[]>();
+    return docs.map(fromDoc);
+  },
+  async findById(id) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOne({ _id: id, ...notDeleted }).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async findByCustomer(customerId) {
+    const M = await model();
+    if (!isObjectId(customerId)) return [];
+    const docs = await M.find({ customerId, ...notDeleted })
+      .sort({ placedAt: -1 })
+      .lean<OrderDoc[]>();
+    return docs.map(fromDoc);
+  },
+  async findByRazorpayOrderId(razorpayOrderId) {
+    const M = await model();
+    const doc = await M.findOne({ "payment.razorpayOrderId": razorpayOrderId, ...notDeleted }).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async create(order) {
+    const M = await model();
+    const created = await M.create(toDoc(order));
+    return fromDoc(created.toObject() as OrderDoc);
+  },
+  async update(id, patch) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted },
+      { $set: toDoc(patch) },
+      { new: true, runValidators: true },
+    ).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async remove(id) {
+    const M = await model();
+    if (!isObjectId(id)) return false;
+    const res = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    ).lean<OrderDoc>();
+    return Boolean(res);
+  },
+};
+
 export function getOrderRepository(): OrderRepository {
-  switch (env.DATA_SOURCE) {
+  switch (dataSourceFor("orders")) {
     case "mongo":
-      throw new Error("Mongo order repository not implemented yet");
+      return mongoOrderRepository;
     case "mock":
     default:
       return mockOrderRepository;

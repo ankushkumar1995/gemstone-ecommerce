@@ -9,7 +9,7 @@
  * deleting. Selection mode is optional (for pickers).
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud,
@@ -22,6 +22,8 @@ import {
   Check,
   X,
   Maximize2,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { useMedia, formatBytes, type MediaItem } from "@/lib/media-store";
 import { AdminButton, AdminInput } from "../ui";
@@ -50,7 +52,14 @@ export function MediaLibrary({
   selected?: string[];
   onToggleSelect?: (item: MediaItem) => void;
 }) {
-  const { items, recentIds, addFiles, addFromUrl, remove, removeMany, touch, allTags } = useMedia();
+  const { items, recentIds, addFiles, addFromUrl, remove, removeMany, touch, allTags, uploading, syncFromS3, syncing } = useMedia();
+
+  // Pull the real bucket contents in on mount so the library/picker reflects
+  // everything actually uploaded to S3 (not just this browser's local items).
+  useEffect(() => {
+    syncFromS3();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [view, setView] = useState<View>("grid");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
@@ -182,6 +191,7 @@ export function MediaLibrary({
         <div className="ml-auto flex items-center gap-1.5">
           {!picker && (
             <AdminButton
+              type="button"
               variant={bulkMode ? "primary" : "outline"}
               onClick={() => {
                 setBulkMode((v) => !v);
@@ -191,11 +201,16 @@ export function MediaLibrary({
               <CheckSquare size={15} /> Select
             </AdminButton>
           )}
-          <AdminButton variant="outline" onClick={() => setShowUrl((v) => !v)}>
+          <AdminButton type="button" variant="outline" onClick={() => setShowUrl((v) => !v)}>
             <Link2 size={15} /> URL
           </AdminButton>
-          <AdminButton onClick={() => inputRef.current?.click()}>
-            <UploadCloud size={15} /> Upload
+          <AdminButton type="button" variant="outline" disabled={syncing} onClick={() => syncFromS3()} title="Refresh from storage">
+            <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Refresh"}
+          </AdminButton>
+          <AdminButton type="button" disabled={uploading} onClick={() => inputRef.current?.click()}>
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />}
+            {uploading ? "Uploading…" : "Upload"}
           </AdminButton>
           <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
 
@@ -207,6 +222,7 @@ export function MediaLibrary({
             ]).map((o) => (
               <button
                 key={o.v}
+                type="button"
                 onClick={() => setView(o.v)}
                 className="relative flex h-8 w-8 items-center justify-center rounded-md"
                 style={{ color: view === o.v ? "#fff" : "var(--a-muted)" }}
@@ -228,6 +244,7 @@ export function MediaLibrary({
             <div className="mt-3 flex gap-2">
               <AdminInput value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://…/image.jpg" />
               <AdminButton
+                type="button"
                 onClick={() => {
                   if (urlInput.trim()) {
                     addFromUrl(urlInput);
@@ -257,6 +274,7 @@ export function MediaLibrary({
               {bulk.size} selected
             </span>
             <AdminButton
+              type="button"
               variant="danger"
               onClick={() => {
                 removeMany([...bulk]);
@@ -265,7 +283,7 @@ export function MediaLibrary({
             >
               <Trash2 size={15} /> Delete
             </AdminButton>
-            <button onClick={() => setBulk(new Set())} className="text-sm font-medium text-[var(--a-muted)] hover:text-[var(--a-fg)]">
+            <button type="button" onClick={() => setBulk(new Set())} className="text-sm font-medium text-[var(--a-muted)] hover:text-[var(--a-fg)]">
               Clear
             </button>
           </motion.div>
@@ -282,6 +300,7 @@ export function MediaLibrary({
             {recentItems.map((m) => (
               <button
                 key={m.id}
+                type="button"
                 onClick={() => handleItemClick(m)}
                 className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105"
                 style={{ borderColor: "var(--a-border)" }}
@@ -298,13 +317,24 @@ export function MediaLibrary({
       <div className="mt-4">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-center">
-            <UploadCloud size={30} style={{ color: "var(--a-muted)" }} />
-            <p className="mt-3 font-medium" style={{ color: "var(--a-fg)" }}>
-              No media found
-            </p>
-            <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>
-              Drag &amp; drop, upload, or add from URL.
-            </p>
+            {syncing ? (
+              <>
+                <Loader2 size={30} className="animate-spin" style={{ color: "var(--a-gold)" }} />
+                <p className="mt-3 font-medium" style={{ color: "var(--a-fg)" }}>
+                  Loading media from storage…
+                </p>
+              </>
+            ) : (
+              <>
+                <UploadCloud size={30} style={{ color: "var(--a-muted)" }} />
+                <p className="mt-3 font-medium" style={{ color: "var(--a-fg)" }}>
+                  No media found
+                </p>
+                <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>
+                  Drag &amp; drop, upload, or add from URL.
+                </p>
+              </>
+            )}
           </div>
         ) : view === "grid" ? (
           <GridView
@@ -323,7 +353,7 @@ export function MediaLibrary({
         {/* load more */}
         {visible < filtered.length && (
           <div className="mt-5 flex justify-center">
-            <AdminButton variant="outline" onClick={() => setVisible((v) => v + PAGE)}>
+            <AdminButton type="button" variant="outline" onClick={() => setVisible((v) => v + PAGE)}>
               Load more ({filtered.length - visible} left)
             </AdminButton>
           </div>
@@ -380,6 +410,7 @@ function GridView({
           return (
             <motion.button
               key={m.id}
+              type="button"
               layout
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -436,6 +467,7 @@ function ListView({ items, onClick }: { items: MediaItem[]; onClick: (m: MediaIt
       {items.map((m) => (
         <button
           key={m.id}
+          type="button"
           onClick={() => onClick(m)}
           className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-black/[0.025]"
           style={{ borderColor: "var(--a-border)" }}

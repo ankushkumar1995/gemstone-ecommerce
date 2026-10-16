@@ -9,4 +9,4 @@ export {
   type UpdateCouponDto,
   type ApplyCouponDto,
 } from "./coupon.schema";
-export type { Coupon, CouponType, CouponValidation } from "./coupon.types";
+export type { Coupon, CouponType, CouponValidation, PublicCoupon } from "./coupon.types";

@@ -55,7 +55,7 @@ export function WhyBuy() {
     <section className="relative py-20">
       <Container>
         <SectionHeader
-          eyebrow="Why Nakshatra"
+          eyebrow="Why Astrounkle"
           title={
             <>
               Buy With <span className="text-gradient-royal">Confidence</span>

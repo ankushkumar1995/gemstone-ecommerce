@@ -21,6 +21,7 @@ import {
 import type { Product, Collection } from "@/types";
 import type { ApiResponse } from "@/core/http";
 import { formatPrice, discountPercent } from "@/lib/utils";
+import { adminApi } from "@/lib/admin-api";
 import {
   Card,
   AdminButton,
@@ -32,7 +33,14 @@ import {
   TableSkeleton,
   EmptyState,
   AdminBreadcrumb,
+  ActionMenu,
+  Modal,
+  Field,
+  AdminInput,
+  AdminDropdown,
+  useAdminToast,
 } from "@/app/admin/_components";
+import { CheckCircle2, Archive, Package } from "lucide-react";
 
 /** humanise an ISO timestamp for the activity timeline */
 function timeAgo(iso: string): string {
@@ -47,11 +55,75 @@ function timeAgo(iso: string): string {
 
 export function ProductDetailView({ id }: { id: string }) {
   const router = useRouter();
+  const { toast } = useAdminToast();
   const [product, setProduct] = useState<Product | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "missing">("loading");
   const [copied, setCopied] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+
+  // stock-adjust modal
+  const [stockOpen, setStockOpen] = useState(false);
+  const [stockMode, setStockMode] = useState<"delta" | "set">("delta");
+  const [stockInput, setStockInput] = useState("");
+  const [stockReason, setStockReason] = useState("");
+  const [stockSaving, setStockSaving] = useState(false);
+
+  /** Change lifecycle status via the dedicated endpoint. */
+  const changeStatus = async (next: "draft" | "active" | "archived") => {
+    const res = await adminApi.products.setStatus(id, next);
+    if (res.ok) {
+      setProduct(res.data);
+      toast(`Status set to "${next}"`, "success");
+    } else {
+      toast(res.message, "error");
+    }
+  };
+
+  /** Duplicate this product into a fresh draft, then open the copy. */
+  const duplicate = async () => {
+    const res = await adminApi.products.duplicate(id);
+    if (res.ok) {
+      toast("Duplicated as draft", "success");
+      // let the toast paint before navigating to the copy
+      const newId = res.data.id;
+      setTimeout(() => router.push(`/admin/products/${newId}`), 150);
+    } else {
+      toast(res.message, "error");
+    }
+  };
+
+  /** Submit a stock change from the modal (delta or absolute set). */
+  const submitStockAdjust = async () => {
+    const n = Math.round(Number(stockInput));
+    if (!Number.isFinite(n)) {
+      toast("Enter a valid whole number", "error");
+      return;
+    }
+    if (stockMode === "delta" && n === 0) {
+      toast("Enter a non-zero amount", "error");
+      return;
+    }
+    if (stockMode === "set" && n < 0) {
+      toast("Stock cannot be negative", "error");
+      return;
+    }
+    setStockSaving(true);
+    const res = await adminApi.products.adjustStock(id, {
+      ...(stockMode === "delta" ? { delta: n } : { set: n }),
+      reason: stockReason.trim() || "Manual adjust from detail view",
+    });
+    setStockSaving(false);
+    if (res.ok) {
+      setProduct(res.data);
+      toast("Stock updated", "success");
+      setStockOpen(false);
+      setStockInput("");
+      setStockReason("");
+    } else {
+      toast(res.message, "error");
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -121,13 +193,28 @@ export function ProductDetailView({ id }: { id: string }) {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <AdminButton variant="outline" onClick={() => window.open(`/product/${p.slug}`, "_blank")}>
             <Eye size={16} /> View on store
           </AdminButton>
           <AdminButton onClick={() => router.push(`/admin/products/${p.id}/edit`)}>
             <Pencil size={16} /> Edit
           </AdminButton>
+          <ActionMenu
+            actions={[
+              { label: "Adjust stock", icon: Package, onClick: () => setStockOpen(true) },
+              { label: "Duplicate", icon: Copy, onClick: duplicate },
+              ...((p.status ?? "active") !== "active"
+                ? [{ label: "Set active", icon: CheckCircle2, separated: true, onClick: () => changeStatus("active") }]
+                : []),
+              ...((p.status ?? "active") !== "draft"
+                ? [{ label: "Move to draft", icon: Pencil, separated: (p.status ?? "active") === "active", onClick: () => changeStatus("draft") }]
+                : []),
+              ...((p.status ?? "active") !== "archived"
+                ? [{ label: "Archive", icon: Archive, onClick: () => changeStatus("archived") }]
+                : []),
+            ]}
+          />
         </div>
       </div>
 
@@ -145,11 +232,11 @@ export function ProductDetailView({ id }: { id: string }) {
         </div>
       )}
 
-      {/* mini stats (mock analytics) */}
+      {/* mini stats — real rollup counters from the product */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Eye} value="1,284" label="Views" change="+8%" tone="blue" />
-        <StatCard icon={TrendingUp} value="42" label="Sold" change="+12%" tone="green" />
-        <StatCard icon={Star} value={p.rating.toFixed(1)} label={`${p.reviews} reviews`} tone="gold" />
+        <StatCard icon={Eye} value={(p.viewCount ?? 0).toLocaleString()} label="Views" tone="blue" />
+        <StatCard icon={TrendingUp} value={(p.soldCount ?? 0).toLocaleString()} label="Sold" tone="green" />
+        <StatCard icon={Star} value={(p.ratingAvg ?? p.rating).toFixed(1)} label={`${p.ratingCount ?? p.reviews} reviews`} tone="gold" />
         <StatCard icon={Boxes} value={p.stockQty ?? 0} label="In stock" tone={(p.stockQty ?? 0) <= 3 ? "rose" : "royal"} />
       </div>
 
@@ -170,7 +257,7 @@ export function ProductDetailView({ id }: { id: string }) {
                   style={{ borderColor: i === 0 ? "var(--a-gold)" : "var(--a-border)" }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={p.name} className="h-full w-full object-cover" />
+                  <img src={url} alt={p.imageAlts?.[url] || p.name} className="h-full w-full object-cover" />
                   {i === 0 && (
                     <span className="absolute left-1.5 top-1.5 rounded bg-[var(--a-gold)] px-1.5 py-0.5 text-[9px] font-bold text-white">
                       Cover
@@ -200,8 +287,62 @@ export function ProductDetailView({ id }: { id: string }) {
             )}
           </Card>
 
-          {/* variants */}
-          {p.variants && p.variants.length > 0 && (
+          {/* variants — prefer the rich fullVariants matrix, fall back to legacy */}
+          {p.fullVariants && p.fullVariants.length > 0 ? (
+            <Card>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-semibold" style={{ color: "var(--a-fg)" }}>
+                  Variants
+                </h2>
+                <button
+                  onClick={() => router.push(`/admin/products/${p.id}/edit`)}
+                  className="text-xs font-medium text-[var(--a-gold)] hover:underline"
+                >
+                  Manage →
+                </button>
+              </div>
+              <div className="space-y-2">
+                {p.fullVariants.map((v, i) => {
+                  const opts = Object.entries(v.optionValues ?? {})
+                    .filter(([, val]) => val)
+                    .map(([k, val]) => `${k}: ${val}`)
+                    .join(", ");
+                  return (
+                    <div
+                      key={v.sku || `fv-${i}`}
+                      className="flex items-center justify-between rounded-lg border px-4 py-3"
+                      style={{ borderColor: "var(--a-border)" }}
+                    >
+                      <div className="min-w-0">
+                        <span className="block truncate font-medium" style={{ color: "var(--a-fg)" }}>
+                          {v.sku || "(no SKU)"}
+                          {v.isDefault && (
+                            <span
+                              className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              style={{ background: "var(--a-gold-soft)", color: "var(--a-gold)" }}
+                            >
+                              Default
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-xs" style={{ color: "var(--a-faint)" }}>
+                          {opts || "No options"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span style={{ color: "var(--a-muted)" }}>Stock: {v.stockQty ?? 0}</span>
+                        {v.price !== undefined && (
+                          <span className="font-semibold" style={{ color: "var(--a-fg)" }}>
+                            {formatPrice(v.price)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : p.variants && p.variants.length > 0 ? (
             <Card>
               <h2 className="mb-4 font-semibold" style={{ color: "var(--a-fg)" }}>
                 Variants
@@ -226,7 +367,7 @@ export function ProductDetailView({ id }: { id: string }) {
                 ))}
               </div>
             </Card>
-          )}
+          ) : null}
 
           {/* rich content sections */}
           {p.content && p.content.length > 0 && (
@@ -463,7 +604,7 @@ export function ProductDetailView({ id }: { id: string }) {
               </h2>
               <div className="rounded-lg border p-3" style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)" }}>
                 <p className="truncate text-xs" style={{ color: "var(--a-muted)" }}>
-                  nakshatra.com › product › {p.slug}
+                  astrounkle.com › product › {p.slug}
                 </p>
                 <p className="mt-1 truncate text-sm font-medium text-[#1a0dab]">
                   {p.seo.metaTitle || p.name}
@@ -479,6 +620,54 @@ export function ProductDetailView({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {/* stock adjust modal */}
+      <Modal
+        open={stockOpen}
+        onClose={() => setStockOpen(false)}
+        title="Adjust stock"
+        subtitle={`Current stock: ${p.stockQty ?? 0} units`}
+      >
+        <div className="space-y-4">
+          <Field label="Mode">
+            <AdminDropdown
+              value={stockMode}
+              options={[
+                { value: "delta", label: "Add / remove (±)" },
+                { value: "set", label: "Set exact quantity" },
+              ]}
+              onChange={(v) => setStockMode(v as "delta" | "set")}
+              className="w-full"
+            />
+          </Field>
+          <Field
+            label={stockMode === "delta" ? "Change by" : "New quantity"}
+            hint={stockMode === "delta" ? "e.g. 10 to add, -5 to remove" : "Absolute stock value"}
+          >
+            <AdminInput
+              type="number"
+              value={stockInput}
+              onChange={(e) => setStockInput(e.target.value)}
+              placeholder={stockMode === "delta" ? "10" : "50"}
+            />
+          </Field>
+          <Field label="Reason (optional)">
+            <AdminInput
+              value={stockReason}
+              onChange={(e) => setStockReason(e.target.value)}
+              placeholder="e.g. New shipment received"
+            />
+          </Field>
+          <div className="flex justify-end gap-3 pt-1">
+            <AdminButton type="button" variant="outline" onClick={() => setStockOpen(false)}>
+              Cancel
+            </AdminButton>
+            <AdminButton type="button" onClick={submitStockAdjust} disabled={stockSaving}>
+              <Boxes size={15} /> {stockSaving ? "Saving…" : "Apply"}
+            </AdminButton>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -56,7 +56,9 @@ export interface Category {
   image: string; // real photo URL
   tint: string; // brand gradient overlay for mood + readability
   order?: number; // display order (lower = first)
+  status?: "active" | "inactive"; // storefront visibility
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface GemstoneAttributes {
@@ -161,6 +163,8 @@ export interface Product {
   sku?: string;
   tags?: string[];
   images?: string[]; // full gallery; `image` remains the cover
+  /** Per-image alt text for SEO/accessibility, keyed by the image URL. */
+  imageAlts?: Record<string, string>;
   variants?: ProductVariant[];
 
   /* --- workflow --- */
@@ -179,6 +183,77 @@ export interface Product {
   collections?: string[]; // Collection ids this product belongs to
   related?: string[]; // related / "frequently bought with" product ids
   featured?: boolean; // pin to homepage
+
+  /* ---------------------------------------------------------------- *
+   * Production catalogue surface (optional — populated by the Mongo
+   * repository). Legacy fields above remain the storefront contract;
+   * these carry the richer admin/production data.
+   * ---------------------------------------------------------------- */
+  subtitle?: string;
+  brand?: string;
+  categoryId?: string | null; // ObjectId ref (string form); `category` keeps the slug
+  collectionIds?: string[];
+  relatedIds?: string[];
+
+  currency?: string; // default "INR"
+  costPrice?: number; // never exposed on the storefront
+  taxClass?: "none" | "gst_3" | "gst_5" | "gst_12" | "gst_18";
+  hsnCode?: string;
+
+  hasVariants?: boolean;
+  options?: Array<{ name: string; values: string[] }>;
+  fullVariants?: Array<{
+    sku?: string;
+    optionValues: Record<string, string>;
+    price?: number;
+    mrp?: number;
+    stockQty: number;
+    weightGram?: number;
+    barcode?: string;
+    image?: string;
+    isDefault?: boolean;
+    active?: boolean;
+  }>;
+
+  trackInventory?: boolean;
+  lowStockThreshold?: number;
+  allowBackorder?: boolean;
+  warehouseLocation?: string;
+  stockStatus?: "in_stock" | "low_stock" | "out_of_stock" | "backorder";
+
+  coverImage?: string; // mirrors `image`
+  description?: string; // long-form; `shortDescription` stays the teaser
+  specifications?: Array<{ label: string; value?: string }>;
+  faqs?: Array<{ q: string; a?: string }>;
+
+  weightGram?: number;
+  dimensions?: { length?: number; width?: number; height?: number };
+  shippingClass?: "standard" | "fragile" | "insured" | "free";
+  makingCharges?: number;
+
+  gemstone?: {
+    stone?: string;
+    planet?: string;
+    benefits?: string[];
+    origin?: string;
+    weightCarat?: number;
+    certification?: string;
+    color?: string;
+    clarity?: string;
+    cut?: string;
+    treatment?: string;
+    labName?: string;
+    certificateNumber?: string;
+  };
+
+  badgeIsNull?: boolean; // internal — allow explicit "no badge"
+  bestseller?: boolean;
+  displayOrder?: number;
+
+  ratingAvg?: number;
+  ratingCount?: number;
+  soldCount?: number;
+  viewCount?: number;
 }
 
 export interface Testimonial {

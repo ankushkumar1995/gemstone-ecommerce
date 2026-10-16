@@ -18,8 +18,8 @@ export interface StorePublicSettings {
 }
 
 export const DEFAULT_STORE_SETTINGS: StorePublicSettings = {
-  storeName: "Nakshatra",
-  supportEmail: "care@nakshatra.com",
+  storeName: "Astrounkle",
+  supportEmail: "care@astrounkle.com",
   supportPhone: "+91 90000 00000",
   whatsappNumber: "+91 90000 00000",
   address: "Jaipur, Rajasthan, India",

@@ -1,6 +1,7 @@
 /** Orders module — public API. */
 export { orderController } from "./order.controller";
 export { orderService } from "./order.service";
+export { getOrderRepository } from "./order.repository";
 export {
   createOrderSchema,
   updateStatusSchema,

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-const COLLAPSE_KEY = "nakshatra-admin-sidebar-collapsed";
+const COLLAPSE_KEY = "astrounkle-admin-sidebar-collapsed";
 
 /**
  * Admin shell — persistent (collapsible) sidebar on desktop + slide-over

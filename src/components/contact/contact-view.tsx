@@ -329,7 +329,7 @@ export function ContactView() {
             {/* Map */}
             <div className="overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_20px_50px_-30px_rgba(36,26,59,0.4)]">
               <iframe
-                title="Nakshatra store location"
+                title="Astrounkle store location"
                 src="https://www.google.com/maps?q=Jaipur,Rajasthan&output=embed"
                 className="h-56 w-full border-0"
                 loading="lazy"

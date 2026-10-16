@@ -87,7 +87,7 @@ export function Navbar() {
             <Gem size={18} />
           </motion.span>
           <span className="font-display text-2xl font-semibold tracking-wide text-gradient-gold">
-            Nakshatra
+            Astrounkle
           </span>
         </Link>
 

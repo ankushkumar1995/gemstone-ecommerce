@@ -62,7 +62,7 @@ export function LoginBrandPanel() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#e6b43a] to-[#f3d891] text-[#2a1d5e] shadow-lg">
             <Gem size={22} />
           </span>
-          <span className="text-xl font-semibold tracking-wide">Nakshatra</span>
+          <span className="text-xl font-semibold tracking-wide">Astrounkle</span>
         </motion.div>
 
         {/* headline + features */}

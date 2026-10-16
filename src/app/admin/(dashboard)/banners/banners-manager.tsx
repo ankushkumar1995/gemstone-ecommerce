@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Plus, GalleryHorizontalEnd, CheckCircle2, Pencil, Trash2, ExternalLink } from "lucide-react";
 import type { Banner } from "@/modules/banners";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import {
   PageHeader,
   AdminButton,
@@ -18,14 +20,12 @@ import {
   useAdminToast,
   type Column,
 } from "../../_components";
-import { BannerFormModal } from "./banner-form-modal";
 
 export function BannersManager() {
   const { toast } = useAdminToast();
+  const router = useRouter();
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<Banner | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Banner | null>(null);
 
   const load = async () => {
@@ -35,9 +35,7 @@ export function BannersManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = banners.length;
@@ -45,11 +43,6 @@ export function BannersManager() {
     const placements = new Set(banners.map((b) => b.placement)).size;
     return { total, active, placements };
   }, [banners]);
-
-  const openEditor = (b: Banner | null) => {
-    setEditing(b);
-    setFormOpen(true);
-  };
 
   const toggleActive = async (b: Banner) => {
     const res = await adminApi.banners.update(b.id, { active: !b.active });
@@ -120,7 +113,7 @@ export function BannersManager() {
         title="Banners"
         subtitle="Manage homepage hero & promo banners shown on the storefront."
         action={
-          <AdminButton onClick={() => openEditor(null)}>
+          <AdminButton onClick={() => router.push("/admin/banners/new")}>
             <Plus size={16} /> New Banner
           </AdminButton>
         }
@@ -146,11 +139,11 @@ export function BannersManager() {
           emptyTitle="No banners yet"
           emptyMessage="Create your first homepage banner."
           onRefresh={load}
-          onRowClick={(b) => openEditor(b)}
+          onRowClick={(b) => router.push(`/admin/banners/${b.id}/edit`)}
           rowActions={(b) => (
             <ActionMenu
               actions={[
-                { label: "Edit", icon: Pencil, onClick: () => openEditor(b) },
+                { label: "Edit", icon: Pencil, onClick: () => router.push(`/admin/banners/${b.id}/edit`) },
                 { label: b.active ? "Pause" : "Activate", icon: CheckCircle2, onClick: () => toggleActive(b) },
                 ...(b.ctaHref ? [{ label: "Open link", icon: ExternalLink, onClick: () => window.open(b.ctaHref, "_blank") }] : []),
                 { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(b) },
@@ -159,16 +152,6 @@ export function BannersManager() {
           )}
         />
       </div>
-
-      <BannerFormModal
-        open={formOpen}
-        editing={editing}
-        onClose={() => setFormOpen(false)}
-        onSaved={(b, isNew) => {
-          setBanners((prev) => (isNew ? [b, ...prev] : prev.map((x) => (x.id === b.id ? b : x))));
-          setFormOpen(false);
-        }}
-      />
 
       <ConfirmDialog
         open={!!toDelete}

@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import { adminApi } from "@/lib/admin-api";
 import {
   LayoutDashboard,
   BarChart3,
@@ -24,9 +26,11 @@ import {
   ScrollText,
   Wallet,
   Sparkles,
+  Activity,
   Image as ImageIcon,
   PanelLeftClose,
   PanelLeft,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -83,11 +87,14 @@ const groups: NavGroup[] = [
       { label: "Coupons", href: "/admin/coupons", icon: TicketPercent },
       { label: "Banners", href: "/admin/banners", icon: GalleryHorizontalEnd },
       { label: "Services", href: "/admin/services", icon: Sparkles },
+      { label: "Bookings", href: "/admin/bookings", icon: CalendarClock },
     ],
   },
   {
     title: "System",
     items: [
+      { label: "Users & Roles", href: "/admin/users", icon: Users },
+      { label: "System Health", href: "/admin/health", icon: Activity },
       { label: "Activity Log", href: "/admin/activity", icon: ScrollText },
       { label: "Settings", href: "/admin/settings", icon: Settings },
     ],
@@ -104,6 +111,18 @@ export function Sidebar({
   onToggleCollapse?: () => void;
 }) {
   const pathname = usePathname();
+  // Live "active bookings" count for the Bookings nav badge.
+  const [bookingBadge, setBookingBadge] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const res = await adminApi.bookings.counts();
+      if (active && res.ok) setBookingBadge(res.data.active || undefined);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
 
   return (
     <div className="flex h-full flex-col p-3">
@@ -115,7 +134,7 @@ export function Sidebar({
           </span>
           {!collapsed && (
             <span className="text-lg font-semibold" style={{ color: "var(--a-fg)" }}>
-              Nakshatra
+              Astrounkle
             </span>
           )}
         </Link>
@@ -156,19 +175,24 @@ export function Sidebar({
               </p>
             )}
             <div className="space-y-0.5">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.href}
-                  item={item}
-                  active={
-                    item.href === "/admin"
-                      ? pathname === "/admin"
-                      : pathname.startsWith(item.href)
-                  }
-                  collapsed={collapsed}
-                  onNavigate={onNavigate}
-                />
-              ))}
+              {group.items.map((item) => {
+                // Override the Bookings badge with the live active count.
+                const navItem =
+                  item.href === "/admin/bookings" ? { ...item, badge: bookingBadge } : item;
+                return (
+                  <NavLink
+                    key={item.href}
+                    item={navItem}
+                    active={
+                      item.href === "/admin"
+                        ? pathname === "/admin"
+                        : pathname.startsWith(item.href)
+                    }
+                    collapsed={collapsed}
+                    onNavigate={onNavigate}
+                  />
+                );
+              })}
             </div>
           </div>
         ))}

@@ -9,9 +9,10 @@ import {
   createCouponSchema,
   updateCouponSchema,
   applyCouponSchema,
+  toggleCouponSchema,
 } from "./coupon.schema";
 import { couponService } from "./coupon.service";
-import type { Coupon, CouponValidation } from "./coupon.types";
+import type { Coupon, CouponValidation, PublicCoupon } from "./coupon.types";
 
 export const couponController = {
   async list(): Promise<NextResponse<ApiResponse<Coupon[]>>> {
@@ -38,9 +39,22 @@ export const couponController = {
     return toResponse(await couponService.remove(id));
   },
 
+  async toggle(id: string, body: unknown): Promise<NextResponse<ApiResponse<Coupon>>> {
+    const parsed = parse(toggleCouponSchema, body);
+    if (!parsed.ok) return toResponse(parsed);
+    return toResponse(await couponService.toggleActive(id, parsed.value.active));
+  },
+
   async apply(body: unknown): Promise<NextResponse<ApiResponse<CouponValidation>>> {
     const parsed = parse(applyCouponSchema, body);
     if (!parsed.ok) return toResponse(parsed);
-    return toResponse(await couponService.validate(parsed.value.code, parsed.value.cartSubtotal));
+    return toResponse(
+      await couponService.validate(parsed.value.code, parsed.value.cartSubtotal, parsed.value.customerId),
+    );
+  },
+
+  /** Storefront "Available offers" — public coupons with eligibility. */
+  async available(subtotal: number, customerId?: string): Promise<NextResponse<ApiResponse<PublicCoupon[]>>> {
+    return toResponse(await couponService.listPublic(subtotal, customerId));
   },
 };

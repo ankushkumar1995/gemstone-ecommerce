@@ -105,7 +105,7 @@ export function WhatsAppFloat() {
                   </div>
 
                   <a
-                    href={waLink("Hi! I have a question about Nakshatra gemstones.")}
+                    href={waLink("Hi! I have a question about Astrounkle gemstones.")}
                     target="_blank"
                     rel="noreferrer"
                     className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#20bd5a]"

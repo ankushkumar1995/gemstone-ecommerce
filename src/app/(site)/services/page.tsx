@@ -3,7 +3,7 @@ import { serviceService } from "@/modules/services";
 import { ServicesView } from "@/components/services/services-view";
 
 export const metadata: Metadata = {
-  title: "Astrology Services — Nakshatra",
+  title: "Astrology Services — Astrounkle",
   description:
     "Book expert Vedic astrology services — kundli analysis, gemstone consultation, kundli matching, career guidance, vastu, muhurat, numerology and live astrologer calls.",
 };

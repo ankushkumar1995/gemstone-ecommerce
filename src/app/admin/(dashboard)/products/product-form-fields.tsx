@@ -8,11 +8,12 @@
  * Kept together because each is tiny and only used by the product form.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Film, Rotate3d, Trash2, Video } from "lucide-react";
+import { X, Plus, Film, Rotate3d, Trash2, Video, UploadCloud, Loader2 } from "lucide-react";
 import type { ProductContentSection, ProductVideo } from "@/types";
 import { AdminInput, AdminTextarea, AdminDropdown } from "@/app/admin/_components";
+import { useMedia } from "@/lib/media-store";
 
 /* ---------------- TagInput (with autocomplete) ---------------- */
 export function TagInput({
@@ -206,11 +207,27 @@ export function VideosEditor({
   videos: ProductVideo[];
   onChange: (next: ProductVideo[]) => void;
 }) {
+  const { addFiles } = useMedia();
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const fileInputs = useRef<Record<number, HTMLInputElement | null>>({});
+
   const update = (i: number, patch: Partial<ProductVideo>) =>
     onChange(videos.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
   const remove = (i: number) => onChange(videos.filter((_, idx) => idx !== i));
   const add = (kind: ProductVideo["kind"]) =>
     onChange([...videos, { id: `tmp_${Date.now()}`, url: "", kind, label: "" }]);
+
+  /** Upload a video file to S3 and set its real url on this row. */
+  const uploadFor = async (i: number, files: FileList | null) => {
+    if (!files?.length) return;
+    setUploadingIdx(i);
+    try {
+      const [added] = await addFiles(files, "products");
+      if (added) update(i, { url: added.url });
+    } finally {
+      setUploadingIdx(null);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -244,6 +261,28 @@ export function VideosEditor({
                   className="w-full"
                 />
               </div>
+
+              {/* upload file → S3 */}
+              <button
+                type="button"
+                onClick={() => fileInputs.current[i]?.click()}
+                disabled={uploadingIdx === i}
+                className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors hover:bg-black/[0.04] disabled:opacity-50"
+                style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }}
+              >
+                {uploadingIdx === i ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />}
+                {uploadingIdx === i ? "Uploading…" : "Upload"}
+              </button>
+              <input
+                ref={(el) => {
+                  fileInputs.current[i] = el;
+                }}
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={(e) => uploadFor(i, e.target.files)}
+              />
+
               <button
                 type="button"
                 onClick={() => remove(i)}
@@ -256,7 +295,7 @@ export function VideosEditor({
             <AdminInput
               value={v.url}
               onChange={(e) => update(i, { url: e.target.value })}
-              placeholder="https://… (YouTube, MP4 or 360° viewer URL)"
+              placeholder="https://… (YouTube, MP4 or 360° viewer URL) — or upload a file above"
               className="mt-2"
             />
             <AdminInput

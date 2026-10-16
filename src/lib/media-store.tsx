@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Media library store (mock) — a central, WordPress-style image library.
+ * Media library store — a central, WordPress-style image library.
  *
- * Images are kept in a React context and persisted to localStorage, so they
- * survive reloads and can be reused across products. In the mock phase images
- * are stored as URLs (pasted) or object URLs (uploaded previews). Swap the
- * `add` implementation for a real upload (Cloudinary/S3) later — the UI and
- * the rest of the app don't change.
+ * Uploaded files go to S3 via the admin storage endpoint and the library keeps
+ * their REAL, persistent S3 urls (not blob previews). The library metadata is
+ * persisted to localStorage so it survives reloads and can be reused across
+ * products. (Pasted external urls via `addFromUrl` are also supported.)
  */
 
 import {
@@ -19,6 +18,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { adminApi } from "@/lib/admin-api";
 
 export interface MediaItem {
   id: string;
@@ -41,18 +41,33 @@ export type MediaPatch = Partial<
   Pick<MediaItem, "alt" | "title" | "caption" | "description" | "tags">
 >;
 
-const STORAGE_KEY = "nakshatra-media-library";
+const STORAGE_KEY = "astrounkle-media-library";
 
 interface MediaContextValue {
   items: MediaItem[];
   recentIds: string[];
   addFromUrl: (url: string, name?: string) => MediaItem;
-  addFiles: (files: FileList | File[]) => MediaItem[];
+  /**
+   * Upload files to S3 and add them to the library. Returns the created items
+   * with their FINAL S3 urls (not blob previews). `folder` controls the S3
+   * prefix, e.g. "products".
+   */
+  addFiles: (files: FileList | File[], folder?: string) => Promise<MediaItem[]>;
+  /** true while one or more uploads are in flight */
+  uploading: boolean;
+  /**
+   * Pull the REAL objects currently in the S3 bucket into the library, merged
+   * with any local metadata (by url). This is what makes "Select from library"
+   * show everything that was actually uploaded — from any device/session.
+   */
+  syncFromS3: () => Promise<void>;
+  /** true while an S3 sync is in flight */
+  syncing: boolean;
   remove: (id: string) => void;
   removeMany: (ids: string[]) => void;
   update: (id: string, patch: MediaPatch) => void;
-  /** replace an item's image (keeps the same id/metadata) */
-  replace: (id: string, file: File) => void;
+  /** replace an item's image (uploads to S3, keeps the same id/metadata) */
+  replace: (id: string, file: File) => Promise<void>;
   replaceFromUrl: (id: string, url: string) => void;
   /** mark an item as recently used */
   touch: (id: string) => void;
@@ -102,6 +117,23 @@ function newId() {
   return `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/**
+ * Derive the S3 object key from a public URL, or null if it isn't one of our
+ * bucket URLs (e.g. a pasted external image / Unsplash seed — we never delete
+ * those from S3). Key = the path after the host, decoded, e.g. "products/x.jpg".
+ */
+function s3KeyFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // our bucket URLs look like <bucket>.s3.<region>.amazonaws.com/<key>
+    if (!/\.s3[.-][^/]*\.amazonaws\.com$/i.test(u.hostname)) return null;
+    const key = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+    return key || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Load an image just to read its natural dimensions (best-effort). */
 function detectDimensions(url: string): Promise<{ width: number; height: number } | null> {
   return new Promise((resolve) => {
@@ -125,6 +157,8 @@ export function MediaProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<MediaItem[]>(SEED);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     try {
@@ -167,38 +201,143 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     return item;
   }, []);
 
-  const addFiles = useCallback((files: FileList | File[]) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    const created = arr.map<MediaItem>((f) => ({
-      id: newId(),
-      url: URL.createObjectURL(f),
-      name: f.name,
-      alt: "",
-      title: f.name.replace(/\.[^.]+$/, ""),
-      caption: "",
-      description: "",
-      size: f.size,
-      mime: f.type,
-      tags: [],
-      createdAt: new Date().toISOString(),
-    }));
-    setItems((prev) => [...created, ...prev]);
-    // detect dimensions for each
-    created.forEach((item) => {
-      detectDimensions(item.url).then((dim) => {
-        if (dim) setItems((prev) => prev.map((m) => (m.id === item.id ? { ...m, ...dim } : m)));
-      });
-    });
-    return created;
+  const addFiles = useCallback(async (files: FileList | File[], folder = "media") => {
+    // Accept images AND videos (gallery = images, product media = both).
+    const arr = Array.from(files).filter(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("video/"),
+    );
+    if (arr.length === 0) return [];
+
+    setUploading(true);
+    try {
+      // Upload each file to S3 and build a library item with its REAL url.
+      // Videos can be large → upload DIRECTLY to S3 (presigned PUT, bytes skip
+      // our server). Images are small → the simple server-proxied upload.
+      const results = await Promise.all(
+        arr.map(async (f) => {
+          const isVideo = f.type.startsWith("video/");
+          const res = isVideo
+            ? await adminApi.storage.uploadDirect(f, folder)
+            : await adminApi.storage.upload(f, folder);
+          if (!res.ok) return null;
+          const item: MediaItem = {
+            id: newId(),
+            url: res.data.url, // persistent S3 url — survives reload + is shareable
+            name: f.name,
+            alt: "",
+            title: f.name.replace(/\.[^.]+$/, ""),
+            caption: "",
+            description: "",
+            size: res.data.size || f.size,
+            mime: res.data.contentType || f.type,
+            tags: [],
+            createdAt: new Date().toISOString(),
+          };
+          return item;
+        }),
+      );
+
+      const created = results.filter((x): x is MediaItem => x !== null);
+      if (created.length) {
+        setItems((prev) => [...created, ...prev]);
+        // detect dimensions for images (best-effort)
+        created
+          .filter((m) => (m.mime ?? "").startsWith("image/"))
+          .forEach((item) => {
+            detectDimensions(item.url).then((dim) => {
+              if (dim) setItems((prev) => prev.map((m) => (m.id === item.id ? { ...m, ...dim } : m)));
+            });
+          });
+      }
+      return created;
+    } finally {
+      setUploading(false);
+    }
   }, []);
 
-  const remove = useCallback((id: string) => {
-    setItems((prev) => prev.filter((m) => m.id !== id));
+  const syncFromS3 = useCallback(async () => {
+    setSyncing(true);
+    try {
+      // List every known media folder in the bucket in parallel.
+      const folders = [
+        "products",
+        "categories",
+        "collections",
+        "blog",
+        "banners",
+        "services",
+        "pages",
+        "media",
+        "misc",
+      ];
+      const listings = await Promise.all(folders.map((f) => adminApi.storage.list(f)));
+
+      // Flatten S3 objects into a url→object map.
+      const s3Objects: Array<{ url: string; name: string; size: number }> = [];
+      for (const res of listings) {
+        if (res.ok) {
+          for (const o of res.data.objects) s3Objects.push({ url: o.url, name: o.name, size: o.size });
+        }
+      }
+      if (s3Objects.length === 0) return;
+
+      setItems((prev) => {
+        const byUrl = new Map(prev.map((m) => [m.url, m]));
+        for (const o of s3Objects) {
+          const existing = byUrl.get(o.url);
+          if (existing) {
+            // keep local metadata (alt/title/tags), just refresh size/name
+            byUrl.set(o.url, { ...existing, name: existing.name || o.name, size: o.size });
+          } else {
+            const isVideo = /\.(mp4|webm|mov|m4v)$/i.test(o.name);
+            byUrl.set(o.url, {
+              id: newId(),
+              url: o.url,
+              name: o.name,
+              alt: "",
+              title: o.name.replace(/\.[^.]+$/, ""),
+              caption: "",
+              description: "",
+              size: o.size,
+              mime: isVideo ? "video/mp4" : "image/*",
+              tags: [],
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+        // newest-ish ordering: keep insertion but put S3-known first is overkill;
+        // return the merged list.
+        return Array.from(byUrl.values());
+      });
+    } finally {
+      setSyncing(false);
+    }
   }, []);
+
+  const remove = useCallback(
+    (id: string) => {
+      // Look up the item BEFORE removing from state so we can delete it on S3.
+      setItems((prev) => {
+        const target = prev.find((m) => m.id === id);
+        const key = target ? s3KeyFromUrl(target.url) : null;
+        if (key) void adminApi.storage.remove(key); // best-effort S3 delete
+        return prev.filter((m) => m.id !== id);
+      });
+    },
+    [],
+  );
 
   const removeMany = useCallback((ids: string[]) => {
     const set = new Set(ids);
-    setItems((prev) => prev.filter((m) => !set.has(m.id)));
+    setItems((prev) => {
+      for (const m of prev) {
+        if (set.has(m.id)) {
+          const key = s3KeyFromUrl(m.url);
+          if (key) void adminApi.storage.remove(key);
+        }
+      }
+      return prev.filter((m) => !set.has(m.id));
+    });
   }, []);
 
   const update = useCallback((id: string, patch: MediaPatch) => {
@@ -212,16 +351,25 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const replace = useCallback((id: string, file: File) => {
-    const url = URL.createObjectURL(file);
-    setItems((prev) =>
-      prev.map((m) =>
-        m.id === id ? { ...m, url, name: file.name, size: file.size, mime: file.type } : m
-      )
-    );
-    detectDimensions(url).then((dim) => {
-      if (dim) setItems((prev) => prev.map((m) => (m.id === id ? { ...m, ...dim } : m)));
-    });
+  const replace = useCallback(async (id: string, file: File) => {
+    setUploading(true);
+    try {
+      const res = await adminApi.storage.upload(file, "media");
+      if (!res.ok) return;
+      const url = res.data.url; // real S3 url
+      setItems((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? { ...m, url, name: file.name, size: res.data.size || file.size, mime: res.data.contentType || file.type }
+            : m,
+        ),
+      );
+      detectDimensions(url).then((dim) => {
+        if (dim) setItems((prev) => prev.map((m) => (m.id === id ? { ...m, ...dim } : m)));
+      });
+    } finally {
+      setUploading(false);
+    }
   }, []);
 
   const touch = useCallback((id: string) => {
@@ -234,6 +382,9 @@ export function MediaProvider({ children }: { children: ReactNode }) {
       recentIds,
       addFromUrl,
       addFiles,
+      uploading,
+      syncFromS3,
+      syncing,
       remove,
       removeMany,
       update,
@@ -243,7 +394,7 @@ export function MediaProvider({ children }: { children: ReactNode }) {
       getByUrl: (url) => items.find((m) => m.url === url),
       allTags: Array.from(new Set(items.flatMap((m) => m.tags))).sort(),
     }),
-    [items, recentIds, addFromUrl, addFiles, remove, removeMany, update, replace, replaceFromUrl, touch]
+    [items, recentIds, addFromUrl, addFiles, uploading, syncFromS3, syncing, remove, removeMany, update, replace, replaceFromUrl, touch]
   );
 
   return <MediaContext.Provider value={value}>{children}</MediaContext.Provider>;

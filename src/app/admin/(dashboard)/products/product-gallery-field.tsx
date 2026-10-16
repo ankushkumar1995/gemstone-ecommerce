@@ -11,23 +11,43 @@
 
 import { useRef, useState } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
-import { ImagePlus, UploadCloud, Star, X } from "lucide-react";
+import { ImagePlus, UploadCloud, Star, X, Loader2, Type } from "lucide-react";
 import { useMedia } from "@/lib/media-store";
-import { AdminButton, MediaPickerModal } from "../../_components";
+import { AdminButton, AdminInput, MediaPickerModal } from "../../_components";
 
 export function ProductGalleryField({
   images,
   onChange,
+  alts = {},
+  onAltsChange,
 }: {
   images: string[];
   onChange: (urls: string[]) => void;
+  /** Per-image alt text keyed by URL (SEO / accessibility). */
+  alts?: Record<string, string>;
+  onAltsChange?: (next: Record<string, string>) => void;
 }) {
-  const { addFiles } = useMedia();
+  const { addFiles, uploading } = useMedia();
   const [pickerOpen, setPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const remove = (url: string) => onChange(images.filter((u) => u !== url));
+  const remove = (url: string) => {
+    onChange(images.filter((u) => u !== url));
+    if (onAltsChange && alts[url] !== undefined) {
+      const next = { ...alts };
+      delete next[url];
+      onAltsChange(next);
+    }
+  };
   const setCover = (url: string) => onChange([url, ...images.filter((u) => u !== url)]);
+  const setAlt = (url: string, text: string) => onAltsChange?.({ ...alts, [url]: text });
+
+  /** Upload picked files to S3, then append their real urls to the gallery. */
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const added = await addFiles(files, "products");
+    if (added.length) onChange([...images, ...added.map((m) => m.url)]);
+  };
 
   return (
     <div>
@@ -36,8 +56,9 @@ export function ProductGalleryField({
         <AdminButton type="button" onClick={() => setPickerOpen(true)}>
           <ImagePlus size={15} /> Select from library
         </AdminButton>
-        <AdminButton type="button" variant="outline" onClick={() => inputRef.current?.click()}>
-          <UploadCloud size={15} /> Upload new
+        <AdminButton type="button" variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
+          {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />}
+          {uploading ? "Uploading…" : "Upload new"}
         </AdminButton>
         <input
           ref={inputRef}
@@ -45,12 +66,7 @@ export function ProductGalleryField({
           accept="image/*"
           multiple
           hidden
-          onChange={(e) => {
-            if (e.target.files?.length) {
-              const added = addFiles(e.target.files);
-              onChange([...images, ...added.map((m) => m.url)]);
-            }
-          }}
+          onChange={(e) => handleUpload(e.target.files)}
         />
       </div>
 
@@ -130,6 +146,43 @@ export function ProductGalleryField({
         <p className="mt-2 text-xs" style={{ color: "var(--a-faint)" }}>
           Drag to reorder · first image is the cover
         </p>
+      )}
+
+      {/* alt text (SEO / accessibility) */}
+      {onAltsChange && images.length > 0 && (
+        <div className="mt-4 rounded-lg border p-3" style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)" }}>
+          <div className="mb-2 flex items-center gap-2">
+            <Type size={14} style={{ color: "var(--a-gold)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>
+              Alt text
+            </p>
+            <span className="text-xs" style={{ color: "var(--a-faint)" }}>
+              Describe each image for SEO & screen readers
+            </span>
+          </div>
+          <div className="space-y-2">
+            {images.map((url, i) => (
+              <div key={url} className="flex items-center gap-2">
+                <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md border" style={{ borderColor: "var(--a-border)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  {i === 0 && (
+                    <span className="absolute inset-x-0 bottom-0 bg-[var(--a-gold)] text-center text-[7px] font-bold text-white">
+                      Cover
+                    </span>
+                  )}
+                </div>
+                <AdminInput
+                  value={alts[url] ?? ""}
+                  onChange={(e) => setAlt(url, e.target.value)}
+                  maxLength={160}
+                  placeholder={i === 0 ? "e.g. Natural ruby ring on white background (cover)" : "Describe this image…"}
+                  className="flex-1"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* library picker */}

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Customer } from "@/modules/customers";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -61,9 +62,7 @@ export function CustomersManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = customers.length;

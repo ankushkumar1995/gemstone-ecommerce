@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import { ShopView } from "@/components/shop/shop-view";
+import { productService } from "@/modules/products";
+import { categoryService } from "@/modules/categories";
 import type { ProductCategory, ZodiacSign } from "@/types";
 
 export const metadata: Metadata = {
-  title: "Shop Gemstones — Nakshatra",
+  title: "Shop Gemstones — Astrounkle",
   description:
     "Browse certified natural gemstones, rings, pendants and loose stones. Filter by category or zodiac sign.",
 };
+
+// Shop pulls the live catalogue + categories from the admin.
+export const dynamic = "force-dynamic";
 
 const validCategories: ProductCategory[] = [
   "rings",
@@ -38,9 +43,21 @@ export default async function ShopPage({
 
   const initialSale = sale === "true";
 
+  // Live catalogue + categories (active only) from the admin.
+  const [productsRes, categoriesRes] = await Promise.all([
+    productService.listActive(),
+    categoryService.list(),
+  ]);
+  const products = productsRes.ok ? productsRes.value : [];
+  const categories = (categoriesRes.ok ? categoriesRes.value : [])
+    .filter((c) => (c.status ?? "active") === "active")
+    .map((c) => ({ slug: c.slug, title: c.title }));
+
   return (
     <ShopView
       key={`${initialCategory ?? "all"}-${initialZodiac ?? "all"}-${initialSale}`}
+      products={products}
+      categories={categories}
       initialCategory={initialCategory}
       initialZodiac={initialZodiac}
       initialSale={initialSale}

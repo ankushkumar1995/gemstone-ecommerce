@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, FileText, CheckCircle2, PencilRuler, Star, Eye, Pencil, Trash2, Send, Archive } from "lucide-react";
 import type { Article } from "@/types";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import {
   PageHeader,
   AdminButton,
@@ -38,9 +39,7 @@ export function BlogManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = articles.length;

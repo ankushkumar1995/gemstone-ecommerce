@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { FaqView } from "@/components/support/faq-view";
 
 export const metadata: Metadata = {
-  title: "FAQs — Nakshatra",
+  title: "FAQs — Astrounkle",
   description: "Answers to common questions about certified gemstones, authenticity, shipping, returns and astrology.",
 };
 

@@ -244,7 +244,7 @@ export function ServicesView({ services }: { services: AstroService[] }) {
               Meet Your Guide
             </div>
             <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-              Pandit Nakshatra Sharma
+              Pandit Astrounkle Sharma
             </h2>
             <p className="mt-1 text-sm font-medium text-gold-600">
               Vedic Astrologer · 15+ years experience

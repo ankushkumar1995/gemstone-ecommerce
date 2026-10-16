@@ -21,7 +21,16 @@ export type OrderStatus =
 
 export type PaymentStatus = "unpaid" | "paid" | "refunded";
 
-export type PaymentMethod = "cod" | "card" | "upi" | "netbanking" | "manual";
+export type PaymentMethod = "cod" | "card" | "upi" | "netbanking" | "manual" | "razorpay";
+
+/** Gateway payment reference (online payments). */
+export interface OrderPayment {
+  provider: "razorpay";
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  paidAt?: string; // ISO
+}
 
 /** Ordered pipeline for the status stepper (terminal states excluded). */
 export const ORDER_PIPELINE: OrderStatus[] = [
@@ -99,6 +108,7 @@ export interface Order {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
+  payment?: OrderPayment;
 
   fulfillment: OrderFulfillment;
 

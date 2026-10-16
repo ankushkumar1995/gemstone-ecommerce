@@ -23,10 +23,10 @@ const store: CmsPage[] = [
     slug: "about-us",
     title: "About Us",
     content:
-      "<h2>Our Story</h2><p>Nakshatra began with a simple belief — that every gemstone carries a story and an energy. For over a decade we have sourced certified, natural stones and energised them with authentic Vedic rituals.</p><p>Today we serve thousands of customers across India and beyond, pairing gemmological rigour with astrological wisdom.</p>",
+      "<h2>Our Story</h2><p>Astrounkle began with a simple belief — that every gemstone carries a story and an energy. For over a decade we have sourced certified, natural stones and energised them with authentic Vedic rituals.</p><p>Today we serve thousands of customers across India and beyond, pairing gemmological rigour with astrological wisdom.</p>",
     status: "published",
-    seoTitle: "About Nakshatra — Certified Gemstone Experts",
-    seoDescription: "Learn about Nakshatra's decade-long journey sourcing and energising certified natural gemstones.",
+    seoTitle: "About Astrounkle — Certified Gemstone Experts",
+    seoDescription: "Learn about Astrounkle's decade-long journey sourcing and energising certified natural gemstones.",
     showInFooter: true,
     createdAt: now,
     updatedAt: now,

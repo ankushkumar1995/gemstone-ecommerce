@@ -44,6 +44,78 @@ import {
 type TabKey = "content" | "media" | "seo";
 const fade = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
+/** Preset blog categories (distinct from product categories). */
+const BLOG_CATEGORIES = [
+  "Guide",
+  "Astrology",
+  "Education",
+  "Gemstones",
+  "Remedies",
+  "Lifestyle",
+  "Vastu",
+];
+
+/** Preset author roles. */
+const AUTHOR_ROLES = [
+  "Vedic Astrologer",
+  "Gemologist",
+  "Editorial Team",
+  "Guest Writer",
+  "Founder",
+];
+
+const CUSTOM = "__custom__";
+
+/**
+ * A dropdown of presets with a "Custom…" option that reveals a free-text input.
+ * Keeps values consistent (no typos) while still allowing a one-off value.
+ */
+function SelectOrCustom({
+  value,
+  onChange,
+  presets,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  presets: string[];
+  placeholder: string;
+}) {
+  // "custom" mode when the current value isn't blank and isn't a preset.
+  const [custom, setCustom] = useState(Boolean(value) && !presets.includes(value));
+  const options = [
+    { value: "", label: `Select…` },
+    ...presets.map((p) => ({ value: p, label: p })),
+    { value: CUSTOM, label: "Custom…" },
+  ];
+  return (
+    <div className="space-y-2">
+      <AdminDropdown
+        value={custom ? CUSTOM : value}
+        options={options}
+        onChange={(v) => {
+          if (v === CUSTOM) {
+            setCustom(true);
+            onChange("");
+          } else {
+            setCustom(false);
+            onChange(v);
+          }
+        }}
+        className="w-full"
+      />
+      {custom && (
+        <AdminInput
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoFocus
+        />
+      )}
+    </div>
+  );
+}
+
 export function ArticleFormPage({ editing }: { editing?: Article | null }) {
   const router = useRouter();
   const { toast } = useAdminToast();
@@ -102,8 +174,8 @@ export function ArticleFormPage({ editing }: { editing?: Article | null }) {
 
     if (res.ok) {
       toast(isEdit ? "Article updated" : "Article created", "success");
-      router.push("/admin/blog");
-      router.refresh();
+      // let the toast paint before navigating (provider survives the nav)
+      setTimeout(() => router.push("/admin/blog"), 150);
     } else toast(res.message, "error");
   };
 
@@ -203,13 +275,23 @@ export function ArticleFormPage({ editing }: { editing?: Article | null }) {
                 <SectionTitle icon={Settings2} title="Meta" />
                 <div className="mt-4 space-y-4">
                   <Field label="Category" required>
-                    <AdminInput value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Guide / Astrology / Education…" />
+                    <SelectOrCustom
+                      value={category}
+                      onChange={setCategory}
+                      presets={BLOG_CATEGORIES}
+                      placeholder="Type a custom category…"
+                    />
                   </Field>
                   <Field label="Author">
-                    <AdminInput value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Pandit Nakshatra Sharma" />
+                    <AdminInput value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Pandit Astrounkle Sharma" />
                   </Field>
                   <Field label="Author role">
-                    <AdminInput value={authorRole} onChange={(e) => setAuthorRole(e.target.value)} placeholder="Vedic Astrologer" />
+                    <SelectOrCustom
+                      value={authorRole}
+                      onChange={setAuthorRole}
+                      presets={AUTHOR_ROLES}
+                      placeholder="Type a custom role…"
+                    />
                   </Field>
                   <Field label="Tags">
                     <div className="flex flex-wrap gap-1.5">
@@ -272,7 +354,7 @@ export function ArticleFormPage({ editing }: { editing?: Article | null }) {
               <SectionTitle icon={SearchIcon} title="Search preview" />
               <div className="mt-4 rounded-lg border p-4" style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)" }}>
                 <p className="truncate text-xs" style={{ color: "var(--a-muted)" }}>
-                  nakshatra.com › blog › {editing?.slug ?? "new-article"}
+                  astrounkle.com › blog › {editing?.slug ?? "new-article"}
                 </p>
                 <p className="mt-1 truncate text-base font-medium text-[#1a0dab]">
                   {seoTitle || title || "Article title"}

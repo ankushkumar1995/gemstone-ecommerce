@@ -23,6 +23,8 @@ function withAddressIds(addresses: CreateCustomerDto["addresses"]): CustomerAddr
   return (addresses ?? []).map((a) => ({
     id: newId("adr"),
     label: a.label,
+    name: a.name || undefined,
+    phone: a.phone || undefined,
     line1: a.line1,
     line2: a.line2 || undefined,
     city: a.city,

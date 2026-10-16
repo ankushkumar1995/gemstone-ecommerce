@@ -19,26 +19,21 @@ import {
   EmptyState,
   ImagePickerField,
   useAdminToast,
+  useLoadOnce,
 } from "../../_components";
 
 export function CategoriesManager() {
   const { toast } = useAdminToast();
   const [items, setItems] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Category | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Category | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  // Single fetch on mount, Strict-Mode safe (no duplicate request).
+  const { loading } = useLoadOnce(async () => {
     const res = await adminApi.categories.list();
     if (res.ok) setItems(res.data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
+  });
 
   const openEditor = (c: Category | null) => {
     setEditing(c);
@@ -252,7 +247,7 @@ function CategoryEditor({
           <AdminTextarea value={tagline} onChange={(e) => setTagline(e.target.value)} rows={2} placeholder="Astrologically energised, hand-set in gold & silver" />
         </Field>
         <Field label="Cover image">
-          <ImagePickerField value={image} onChange={setImage} />
+          <ImagePickerField value={image} onChange={setImage} folder="categories" />
         </Field>
         <Field label="Overlay tint (CSS gradient)" hint="Readability overlay on the storefront card">
           <AdminInput value={tint} onChange={(e) => setTint(e.target.value)} placeholder="linear-gradient(135deg, rgba(122,69,245,0.35), rgba(21,15,50,0.1))" />

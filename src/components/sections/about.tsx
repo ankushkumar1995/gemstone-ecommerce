@@ -94,7 +94,7 @@ export function About() {
           >
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-gold-500">
               <span className="h-px w-6 bg-gradient-to-r from-transparent to-gold-400" />
-              About Nakshatra
+              About Astrounkle
             </div>
 
             <h2 className="text-3xl font-semibold leading-tight text-foreground sm:text-4xl md:text-[2.75rem] md:leading-[1.1]">
@@ -104,7 +104,7 @@ export function About() {
 
             <div className="mt-6 space-y-4 text-base leading-relaxed text-muted">
               <p>
-                At Nakshatra, we believe a gemstone is far more than an
+                At Astrounkle, we believe a gemstone is far more than an
                 ornament — it is a bridge between you and the cosmos. For over a
                 decade, we have brought together the ancient wisdom of Vedic
                 astrology and the modern assurance of certified, lab-tested

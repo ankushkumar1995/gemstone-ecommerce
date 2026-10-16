@@ -16,19 +16,28 @@ import {
   PackageCheck,
   PackageX,
   Archive,
+  Star,
+  RotateCcw,
+  IndianRupee,
 } from "lucide-react";
 import type { Product } from "@/types";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
   AdminButton,
+  AdminInput,
+  AdminDropdown,
+  Field,
+  Toggle,
   StatCard,
   StatsSkeleton,
   DataTable,
   StatusPill,
   ActionMenu,
   ConfirmDialog,
+  Modal,
   Badge,
   InlineEdit,
   useAdminToast,
@@ -45,6 +54,18 @@ export function ProductsManager() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState<Product | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+  const [deleted, setDeleted] = useState<Product[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+
+  // bulk price update modal
+  const [priceIds, setPriceIds] = useState<string[] | null>(null);
+  const [priceClear, setPriceClear] = useState<(() => void) | null>(null);
+  const [priceMode, setPriceMode] = useState<"percent" | "amount" | "set">("percent");
+  const [priceValue, setPriceValue] = useState("");
+  const [priceApplyMrp, setPriceApplyMrp] = useState(false);
+  const [priceRound, setPriceRound] = useState("");
+  const [priceSaving, setPriceSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -53,9 +74,33 @@ export function ProductsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
+
+  /** Load the soft-deleted products for the trash view. */
+  const loadTrash = async () => {
+    setTrashLoading(true);
+    const res = await adminApi.products.listDeleted();
+    if (res.ok) setDeleted(res.data);
+    else toast(res.message, "error");
+    setTrashLoading(false);
+  };
+
+  const openTrash = () => {
+    setShowTrash(true);
+    loadTrash();
+  };
+
+  /** Restore a soft-deleted product via the dedicated endpoint. */
+  const restore = async (p: Product) => {
+    const res = await adminApi.products.restore(p.id);
+    if (res.ok) {
+      toast(`"${p.name}" restored as draft`, "success");
+      setDeleted((prev) => prev.filter((x) => x.id !== p.id));
+      load();
+    } else {
+      toast(res.message, "error");
+    }
+  };
 
   const stats = useMemo(() => {
     const total = products.length;
@@ -87,35 +132,23 @@ export function ProductsManager() {
     }
   };
 
+  /** Duplicate via the dedicated endpoint (clones all fields, zeroes rollups). */
   const duplicate = async (p: Product) => {
-    const res = await adminApi.products.create({
-      name: `${p.name} (Copy)`,
-      category: p.category,
-      price: p.price,
-      mrp: p.mrp,
-      image: p.image,
-      images: p.images,
-      shortDescription: p.shortDescription,
-      badge: p.badge,
-      status: "draft",
-      stockQty: p.stockQty,
-      sku: p.sku ? `${p.sku}-copy` : undefined,
-      tags: p.tags,
-      zodiac: p.zodiac,
-      variants: p.variants,
-      attributes: {
-        stone: p.attributes.stone,
-        planet: p.attributes.planet,
-        origin: p.attributes.origin,
-        weightCarat: p.attributes.weightCarat,
-        certification: p.attributes.certification,
-        color: p.attributes.color,
-        benefits: p.attributes.benefits,
-      },
-    });
+    const res = await adminApi.products.duplicate(p.id);
     if (res.ok) {
       toast("Product duplicated as draft", "success");
       setProducts((prev) => [res.data, ...prev]);
+    } else {
+      toast(res.message, "error");
+    }
+  };
+
+  /** Change lifecycle status via the dedicated endpoint (logs + audits). */
+  const changeStatus = async (p: Product, status: "draft" | "active" | "archived") => {
+    const res = await adminApi.products.setStatus(p.id, status);
+    if (res.ok) {
+      applyUpdate(res.data);
+      toast(`Status set to "${status}"`, "success");
     } else {
       toast(res.message, "error");
     }
@@ -132,8 +165,8 @@ export function ProductsManager() {
     }
   };
 
-  /** run an update across many ids, then refresh */
-  const bulkUpdate = async (
+  /** Stock toggles aren't covered by the bulk endpoint — loop generic update. */
+  const bulkStock = async (
     ids: string[],
     dto: Parameters<typeof adminApi.products.update>[1],
     clear: () => void,
@@ -143,6 +176,66 @@ export function ProductsManager() {
     toast(`${ids.length} ${msg}`, "success");
     clear();
     load();
+  };
+
+  /** Status / feature / delete via the single dedicated bulk endpoint. */
+  const bulkAction = async (
+    ids: string[],
+    action: "status" | "delete" | "feature",
+    value: string | boolean | undefined,
+    clear: () => void,
+    msg: string
+  ) => {
+    const res = await adminApi.products.bulk(ids, action, value);
+    if (res.ok) {
+      toast(`${res.data.count} ${msg}`, "success");
+      clear();
+      load();
+    } else {
+      toast(res.message, "error");
+    }
+  };
+
+  /** Open the bulk price modal for the selected ids. */
+  const openPriceModal = (ids: string[], clear: () => void) => {
+    setPriceIds(ids);
+    setPriceClear(() => clear);
+    setPriceMode("percent");
+    setPriceValue("");
+    setPriceApplyMrp(false);
+    setPriceRound("");
+  };
+
+  const closePriceModal = () => {
+    setPriceIds(null);
+    setPriceClear(null);
+  };
+
+  /** Submit the bulk price change via the dedicated endpoint. */
+  const applyBulkPrice = async () => {
+    if (!priceIds) return;
+    const value = Number(priceValue);
+    if (!Number.isFinite(value)) {
+      toast("Enter a valid number", "error");
+      return;
+    }
+    setPriceSaving(true);
+    const res = await adminApi.products.bulkPrice({
+      ids: priceIds,
+      mode: priceMode,
+      value,
+      applyToMrp: priceApplyMrp,
+      roundTo: priceRound ? Number(priceRound) : undefined,
+    });
+    setPriceSaving(false);
+    if (res.ok) {
+      toast(`Price updated on ${res.data.count} product(s)`, "success");
+      priceClear?.();
+      closePriceModal();
+      load();
+    } else {
+      toast(res.message, "error");
+    }
   };
 
   /* ---- table columns ---- */
@@ -227,10 +320,17 @@ export function ProductsManager() {
             <span className={low ? "font-semibold text-amber-600" : qty === 0 ? "text-rose-600" : ""}>
               <InlineEdit
                 value={String(qty)}
-                onSave={(v) => {
+                onSave={async (v) => {
                   const n = Math.max(0, Math.round(Number(v.replace(/[^0-9]/g, ""))));
                   if (!Number.isFinite(n)) return toast("Enter a valid quantity", "error");
-                  patchField(p.id, { stockQty: n }, "Stock updated");
+                  // Dedicated stock endpoint: keeps stockStatus in sync + audits.
+                  const res = await adminApi.products.adjustStock(p.id, { set: n, reason: "Manual edit" });
+                  if (res.ok) {
+                    applyUpdate(res.data);
+                    toast("Stock updated", "success");
+                  } else {
+                    toast(res.message, "error");
+                  }
                 }}
               />
             </span>
@@ -260,9 +360,14 @@ export function ProductsManager() {
         title="Products"
         subtitle="Manage your gemstone catalogue."
         action={
-          <AdminButton onClick={() => router.push("/admin/products/new")}>
-            <Plus size={16} /> Add Product
-          </AdminButton>
+          <div className="flex items-center gap-2">
+            <AdminButton variant="outline" onClick={openTrash}>
+              <Trash2 size={16} /> Trash
+            </AdminButton>
+            <AdminButton onClick={() => router.push("/admin/products/new")}>
+              <Plus size={16} /> Add Product
+            </AdminButton>
+          </div>
         }
       />
 
@@ -303,30 +408,40 @@ export function ProductsManager() {
             <div className="flex flex-wrap items-center gap-2">
               <AdminButton
                 variant="outline"
-                onClick={() => bulkUpdate(ids, { inStock: true }, clear, "marked in stock")}
+                onClick={() => bulkAction(ids, "status", "active", clear, "activated")}
+              >
+                <CheckCircle2 size={15} /> Activate
+              </AdminButton>
+              <AdminButton
+                variant="outline"
+                onClick={() => bulkAction(ids, "feature", true, clear, "featured")}
+              >
+                <Star size={15} /> Feature
+              </AdminButton>
+              <AdminButton variant="outline" onClick={() => openPriceModal(ids, clear)}>
+                <IndianRupee size={15} /> Price
+              </AdminButton>
+              <AdminButton
+                variant="outline"
+                onClick={() => bulkStock(ids, { inStock: true }, clear, "marked in stock")}
               >
                 <PackageCheck size={15} /> In stock
               </AdminButton>
               <AdminButton
                 variant="outline"
-                onClick={() => bulkUpdate(ids, { inStock: false, stockQty: 0 }, clear, "marked out of stock")}
+                onClick={() => bulkStock(ids, { inStock: false, stockQty: 0 }, clear, "marked out of stock")}
               >
                 <PackageX size={15} /> Out of stock
               </AdminButton>
               <AdminButton
                 variant="outline"
-                onClick={() => bulkUpdate(ids, { status: "archived" }, clear, "archived")}
+                onClick={() => bulkAction(ids, "status", "archived", clear, "archived")}
               >
                 <Archive size={15} /> Archive
               </AdminButton>
               <AdminButton
                 variant="danger"
-                onClick={async () => {
-                  await Promise.all(ids.map((id) => adminApi.products.remove(id)));
-                  toast(`${ids.length} products deleted`, "success");
-                  clear();
-                  load();
-                }}
+                onClick={() => bulkAction(ids, "delete", undefined, clear, "products deleted")}
               >
                 <Trash2 size={15} /> Delete
               </AdminButton>
@@ -350,7 +465,17 @@ export function ProductsManager() {
                   icon: Copy,
                   onClick: () => duplicate(p),
                 },
-                { label: "Delete", icon: Trash2, danger: true, onClick: () => setToDelete(p) },
+                // lifecycle actions, context-aware for the current status
+                ...((p.status ?? "active") !== "active"
+                  ? [{ label: "Set active", icon: CheckCircle2, separated: true, onClick: () => changeStatus(p, "active") }]
+                  : []),
+                ...((p.status ?? "active") !== "draft"
+                  ? [{ label: "Move to draft", icon: Pencil, separated: (p.status ?? "active") === "active", onClick: () => changeStatus(p, "draft") }]
+                  : []),
+                ...((p.status ?? "active") !== "archived"
+                  ? [{ label: "Archive", icon: Archive, onClick: () => changeStatus(p, "archived") }]
+                  : []),
+                { label: "Delete", icon: Trash2, danger: true, separated: true, onClick: () => setToDelete(p) },
               ]}
             />
           )}
@@ -367,6 +492,130 @@ export function ProductsManager() {
         confirmLabel="Delete"
         danger
       />
+
+      {/* trash / restore */}
+      <Modal
+        open={showTrash}
+        onClose={() => setShowTrash(false)}
+        title="Deleted products"
+        subtitle="Soft-deleted products. Restore brings them back as a draft."
+        size="lg"
+      >
+        {trashLoading ? (
+          <p className="py-8 text-center text-sm" style={{ color: "var(--a-muted)" }}>
+            Loading…
+          </p>
+        ) : deleted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <Trash2 size={26} style={{ color: "var(--a-faint)" }} />
+            <p className="mt-2 text-sm font-medium" style={{ color: "var(--a-fg)" }}>
+              Trash is empty
+            </p>
+            <p className="text-xs" style={{ color: "var(--a-faint)" }}>
+              Deleted products will appear here for recovery.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {deleted.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 rounded-lg border p-3"
+                style={{ borderColor: "var(--a-border)" }}
+              >
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: "var(--a-border)" }}>
+                  <Image src={p.image} alt={p.name} fill sizes="40px" className="object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium" style={{ color: "var(--a-fg)" }}>
+                    {p.name}
+                  </p>
+                  <p className="truncate text-xs" style={{ color: "var(--a-faint)" }}>
+                    {p.sku || p.category}
+                  </p>
+                </div>
+                <AdminButton variant="outline" onClick={() => restore(p)} className="!px-3 !py-2 text-xs">
+                  <RotateCcw size={14} /> Restore
+                </AdminButton>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* bulk price update */}
+      <Modal
+        open={priceIds !== null}
+        onClose={closePriceModal}
+        title="Bulk price update"
+        subtitle={`Change price on ${priceIds?.length ?? 0} selected product(s)`}
+      >
+        <div className="space-y-4">
+          <Field label="Adjustment">
+            <AdminDropdown
+              value={priceMode}
+              options={[
+                { value: "percent", label: "Percent change (e.g. -10% off)" },
+                { value: "amount", label: "Flat amount (e.g. +500 / -200)" },
+                { value: "set", label: "Set exact price for all" },
+              ]}
+              onChange={(v) => setPriceMode(v as "percent" | "amount" | "set")}
+              className="w-full"
+            />
+          </Field>
+
+          <Field
+            label={
+              priceMode === "percent"
+                ? "Percent (negative = discount)"
+                : priceMode === "amount"
+                ? "Amount in ₹ (negative = reduce)"
+                : "New price (₹)"
+            }
+            hint={
+              priceMode === "percent"
+                ? "e.g. -10 for 10% off, 15 for +15%"
+                : priceMode === "amount"
+                ? "e.g. 500 to add ₹500, -200 to cut ₹200"
+                : "Every selected product gets this price"
+            }
+          >
+            <AdminInput
+              type="number"
+              value={priceValue}
+              onChange={(e) => setPriceValue(e.target.value)}
+              placeholder={priceMode === "percent" ? "-10" : priceMode === "set" ? "4999" : "500"}
+            />
+          </Field>
+
+          <Field label="Round to nearest ₹ (optional)" hint="e.g. 10 → nearest ₹10. Blank = nearest ₹1">
+            <AdminInput
+              type="number"
+              min={0}
+              value={priceRound}
+              onChange={(e) => setPriceRound(e.target.value)}
+              placeholder="10"
+            />
+          </Field>
+
+          <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>Also adjust MRP</p>
+              <p className="text-xs" style={{ color: "var(--a-faint)" }}>Keep the strike-through MRP in step with price</p>
+            </div>
+            <Toggle checked={priceApplyMrp} onChange={setPriceApplyMrp} />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <AdminButton type="button" variant="outline" onClick={closePriceModal}>
+              Cancel
+            </AdminButton>
+            <AdminButton type="button" onClick={applyBulkPrice} disabled={priceSaving}>
+              <IndianRupee size={15} /> {priceSaving ? "Applying…" : "Apply price change"}
+            </AdminButton>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

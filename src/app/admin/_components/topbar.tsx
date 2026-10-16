@@ -15,13 +15,37 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { adminApi } from "@/lib/admin-api";
+import type { AdminUser } from "@/modules/admin-auth";
 import { GlobalSearch } from "./global-search";
+
+/** Initials from a name, e.g. "Ankush Kumar" → "AK". */
+function initials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [me, setMe] = useState<AdminUser | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Load the signed-in admin for the header (real name / email / role).
+  useEffect(() => {
+    let active = true;
+    adminApi.me().then((res) => {
+      if (active && res.ok) setMe(res.data.user);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -122,14 +146,14 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
             className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-black/[0.04]"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#9169ff] to-[#6a2ee0] text-xs font-bold text-white">
-              A
+              {me ? initials(me.name) : "…"}
             </span>
             <span className="hidden text-left sm:block">
               <span className="block text-sm font-semibold leading-none" style={{ color: "var(--a-fg)" }}>
-                Admin
+                {me?.name ?? "Loading…"}
               </span>
               <span className="block text-[11px] leading-none" style={{ color: "var(--a-faint)" }}>
-                Store Owner
+                {me?.roleName ?? ""}
               </span>
             </span>
             <ChevronDown
@@ -151,11 +175,19 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
               >
                 <div className="border-b px-4 py-3" style={{ borderColor: "var(--a-border)" }}>
                   <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>
-                    Store Admin
+                    {me?.name ?? "—"}
                   </p>
                   <p className="text-xs" style={{ color: "var(--a-muted)" }}>
-                    admin@nakshatra.com
+                    {me?.email ?? ""}
                   </p>
+                  {me?.roleName && (
+                    <span
+                      className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                      style={{ background: "var(--a-gold-soft)", color: "var(--a-gold)" }}
+                    >
+                      {me.roleName}
+                    </span>
+                  )}
                 </div>
                 <div className="p-1.5">
                   <MenuItem href="/admin/settings" icon={User} label="Profile" onClick={() => setMenuOpen(false)} />

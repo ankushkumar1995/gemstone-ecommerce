@@ -56,7 +56,7 @@ export function InvoiceView({ id }: { id: string }) {
         {/* header */}
         <div className="flex items-start justify-between border-b pb-6" style={{ borderColor: "#eee" }}>
           <div>
-            <h1 className="text-2xl font-bold">{store?.storeName ?? "Nakshatra"}</h1>
+            <h1 className="text-2xl font-bold">{store?.storeName ?? "Astrounkle"}</h1>
             {store?.tagline && <p className="mt-1 text-sm text-gray-500">{store.tagline}</p>}
             {store?.address && <p className="mt-2 max-w-xs text-xs text-gray-500">{store.address}</p>}
             {store?.supportEmail && <p className="text-xs text-gray-500">{store.supportEmail}</p>}
@@ -136,7 +136,7 @@ export function InvoiceView({ id }: { id: string }) {
 
         {/* footer */}
         <div className="mt-10 border-t pt-6 text-center text-xs text-gray-400" style={{ borderColor: "#eee" }}>
-          Thank you for shopping with {store?.storeName ?? "Nakshatra"}. Every gemstone is certified & energised before dispatch.
+          Thank you for shopping with {store?.storeName ?? "Astrounkle"}. Every gemstone is certified & energised before dispatch.
         </div>
       </div>
     </div>

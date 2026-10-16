@@ -58,6 +58,29 @@ export function ProductDetail({ product }: { product: Product }) {
     viewProduct(product);
   }, [product, viewProduct]);
 
+  // Increment the server-side view counter (fire-and-forget). The static page
+  // is built from mock data, so resolve the real DB id by slug first, then POST
+  // the view. Guarded with sessionStorage so a single visit counts once even
+  // through React re-renders / Strict Mode double-invokes.
+  useEffect(() => {
+    const key = `viewed:${product.slug}`;
+    if (typeof window === "undefined" || sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/products/slug/${product.slug}`);
+        const body = (await res.json()) as { success?: boolean; data?: { id?: string } };
+        const id = body?.data?.id;
+        if (id) {
+          // Best effort — ignore failures (rate-limit, offline, etc.).
+          void fetch(`/api/v1/products/${id}/view`, { method: "POST" });
+        }
+      } catch {
+        /* non-critical analytics ping */
+      }
+    })();
+  }, [product.slug]);
+
   const handleAdd = () => {
     if (!product.inStock) return;
     addToCart(product, qty);

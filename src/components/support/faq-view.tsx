@@ -55,7 +55,7 @@ export function FaqView() {
             Frequently Asked Questions
           </h1>
           <p className="mt-2 text-muted">
-            Everything you need to know about buying gemstones from Nakshatra.
+            Everything you need to know about buying gemstones from Astrounkle.
           </p>
         </div>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RotateCcw, Clock, CheckCircle2, IndianRupee, Eye } from "lucide-react";
 import type { ReturnRequest } from "@/modules/returns";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -33,9 +34,7 @@ export function ReturnsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = returns.length;

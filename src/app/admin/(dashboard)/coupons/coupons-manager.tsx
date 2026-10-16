@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TicketPercent, CheckCircle2, Clock, Zap, Plus, Pencil, Trash2, Copy, Check } from "lucide-react";
 import type { Coupon } from "@/modules/coupons";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -45,9 +46,7 @@ export function CouponsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = coupons.length;
@@ -72,7 +71,7 @@ export function CouponsManager() {
   };
 
   const toggleActive = async (c: Coupon) => {
-    const res = await adminApi.coupons.update(c.id, { active: !c.active });
+    const res = await adminApi.coupons.toggle(c.id, !c.active);
     if (res.ok) {
       setCoupons((prev) => prev.map((x) => (x.id === c.id ? res.data : x)));
       toast(res.data.active ? "Coupon activated" : "Coupon paused", "success");

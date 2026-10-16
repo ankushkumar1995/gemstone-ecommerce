@@ -43,7 +43,7 @@ export const CURRENCIES: Currency[] = [
   { code: "CAD", symbol: "C$", label: "Canadian Dollar", flag: "🇨🇦", rate: 0.016, decimals: 2 },
 ];
 
-const STORAGE_KEY = "nakshatra-currency";
+const STORAGE_KEY = "astrounkle-currency";
 
 interface CurrencyContextValue {
   currency: Currency;

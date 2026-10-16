@@ -17,6 +17,8 @@ import {
   Layers,
   Settings,
   Boxes,
+  Sparkles,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { AuditEntry, AuditEntity, AuditAction } from "@/modules/audit";
@@ -45,6 +47,8 @@ const ENTITY_ICON: Record<AuditEntity, LucideIcon> = {
   collection: Layers,
   settings: Settings,
   inventory: Boxes,
+  service: Sparkles,
+  user: ShieldCheck,
 };
 
 function actionTone(a: AuditAction): "muted" | "gold" | "green" | "blue" | "rose" | "royal" {

@@ -87,7 +87,7 @@ export function MediaDetailPanel({
               <h3 className="text-lg font-semibold" style={{ color: "var(--a-fg)" }}>
                 Attachment details
               </h3>
-              <button onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/[0.04]" style={{ color: "var(--a-muted)" }}>
+              <button type="button" onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-black/[0.04]" style={{ color: "var(--a-muted)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -171,7 +171,7 @@ export function MediaDetailPanel({
                         style={{ background: "var(--a-gold-soft)", color: "var(--a-gold)" }}
                       >
                         {t}
-                        <button onClick={() => commitTags(tags.filter((x) => x !== t))} aria-label={`Remove ${t}`}>
+                        <button type="button" onClick={() => commitTags(tags.filter((x) => x !== t))} aria-label={`Remove ${t}`}>
                           <X size={11} />
                         </button>
                       </span>

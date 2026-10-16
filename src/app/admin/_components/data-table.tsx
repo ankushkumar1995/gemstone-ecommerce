@@ -229,7 +229,9 @@ export function DataTable<T>({
     URL.revokeObjectURL(url);
   };
 
-  const cellPad = dense ? "px-4 py-2" : "px-4 py-3.5";
+  // Standard, consistent row height (comfortable vs compact).
+  const cellPad = dense ? "px-4 py-2" : "px-4 py-3";
+  const rowHeight = dense ? "h-12" : "h-16";
 
   return (
     <div
@@ -491,6 +493,7 @@ export function DataTable<T>({
                       onClick={() => onRowClick?.(row)}
                       className={cn(
                         "border-b transition-colors last:border-0",
+                        rowHeight,
                         onRowClick && "cursor-pointer",
                         isSel ? "bg-[var(--a-gold-soft)]" : "hover:bg-black/[0.025]"
                       )}

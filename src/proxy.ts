@@ -1,25 +1,32 @@
 /**
  * Edge proxy (Next.js 16 renamed `middleware` → `proxy`) — protects the admin
- * area.
+ * area at the edge.
  *
- * Any /admin/* route (except the login page) requires a valid admin session
- * cookie, otherwise the user is redirected to /admin/login. The cookie's
- * presence + expiry is checked here; full validation happens server-side.
+ * Verifies the session JWT's signature + expiry for every /admin/* route
+ * (except the login page). A tampered or expired token is rejected and the
+ * user is redirected to login. Full permission checks + live user status
+ * happen server-side in `requireAdmin`; this is the fast first gate.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_NAME } from "@/modules/admin-auth/admin-auth.service";
+import { verifyToken } from "@/core/jwt";
 
-export function proxy(request: NextRequest) {
+const ACCESS_COOKIE = "astrounkle_admin_session";
+const REFRESH_COOKIE = "astrounkle_admin_refresh";
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
   const isLogin = pathname === "/admin/login";
-  const cookie = request.cookies.get(COOKIE_NAME)?.value;
 
-  // lightweight presence + expiry check (edge-safe, no Buffer needed)
-  const hasValidSession = isSessionCookieValid(cookie);
+  // Valid if the access token verifies, OR a refresh token exists (the client
+  // can mint a new access token). The edge only checks signature/expiry; full
+  // checks (tokenVersion, fingerprint, user status) happen in requireAdmin.
+  const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  const hasRefresh = Boolean(request.cookies.get(REFRESH_COOKIE)?.value);
+  const claims = await verifyToken(accessToken, "access");
+  const hasValidSession = Boolean(claims) || hasRefresh;
 
-  // not logged in → force to login
+  // Not logged in → force to login.
   if (!isLogin && !hasValidSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/admin/login";
@@ -27,7 +34,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // already logged in but visiting login → send to dashboard
+  // Already logged in but visiting login → send to dashboard.
   if (isLogin && hasValidSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/admin";
@@ -36,20 +43,6 @@ export function proxy(request: NextRequest) {
   }
 
   return NextResponse.next();
-}
-
-/** Decode the base64url payload and check expiry (no secret check at edge). */
-function isSessionCookieValid(value: string | undefined): boolean {
-  if (!value) return false;
-  const [b64] = value.split(".");
-  if (!b64) return false;
-  try {
-    const json = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
-    const session = JSON.parse(json) as { expiresAt?: number };
-    return Boolean(session.expiresAt && session.expiresAt > Date.now());
-  } catch {
-    return false;
-  }
 }
 
 export const config = {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mail,
@@ -15,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCommerce } from "@/lib/store";
+import { customerApi } from "@/lib/customer-api";
 import { useToast } from "@/lib/toast";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
@@ -30,41 +32,96 @@ const perks = [
   { icon: ShieldCheck, text: "Faster, secure checkout" },
 ];
 
+/** Only allow in-app (relative) redirects — never an external URL. */
+function safeRedirect(raw: string | null): string | null {
+  if (!raw) return null;
+  // Must be a path on our own site: starts with a single "/" (not "//").
+  if (/^\/(?!\/)/.test(raw)) return raw;
+  return null;
+}
+
 export function AccountAuth() {
-  const [tab, setTab] = useState<Tab>("login");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get("redirect"));
+
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get("tab") === "signup" ? "signup" : "login",
+  );
   const [showPass, setShowPass] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const { login } = useCommerce();
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
     const data = Object.fromEntries(
-      new FormData(e.currentTarget).entries()
+      new FormData(e.currentTarget).entries(),
     ) as Record<string, string>;
-    login({
-      name: data.name || data.email?.split("@")[0] || "Guest",
-      email: data.email,
-    });
-    toast(tab === "login" ? "Welcome back!" : "Account created!", "success");
+
+    setSubmitting(true);
+    const res =
+      tab === "login"
+        ? await customerApi.login(data.email, data.password)
+        : await customerApi.register({
+            name: data.name,
+            email: data.email,
+            password: data.password,
+          });
+    setSubmitting(false);
+
+    if (res.ok) {
+      const c = res.data.customer;
+      // Set the client user from the authoritative server response.
+      login({ id: c.id, name: c.name, email: c.email, phone: c.phone });
+      toast(tab === "login" ? "Welcome back!" : "Account created!", "success");
+      // If we came here to continue a flow (e.g. checkout), go back to it.
+      if (redirectTo) router.push(redirectTo);
+    } else {
+      toast(res.message, "error");
+    }
   };
 
-  // Demo Google sign-in. In production this is replaced by a real OAuth flow
-  // (NextAuth / Auth.js with GOOGLE_CLIENT_ID). For now it logs in a mock user.
+  // Google sign-in comes next (real OAuth). Flagged clearly for now.
   const handleGoogle = () => {
-    login({ name: "Google User", email: "user@gmail.com" });
-    toast("Signed in with Google", "success");
+    toast("Google sign-in is coming soon — use email for now.", "info");
+  };
+
+  // Forgot password — reads the email field and triggers a reset. Always a
+  // generic success (no email enumeration). Actual email delivery lands once
+  // SMTP is configured.
+  const handleForgot = async () => {
+    const el = document.querySelector<HTMLInputElement>('input[name="email"]');
+    const email = el?.value.trim();
+    if (!email) {
+      toast("Enter your email first, then tap Forgot password", "info");
+      return;
+    }
+    const res = await customerApi.forgotPassword(email);
+    if (res.ok) {
+      toast("If that email is registered, a reset link is on its way.", "success");
+    } else {
+      toast(res.message, "error");
+    }
   };
 
   return (
     <Container className="py-10 sm:py-14">
       <Breadcrumb items={[{ label: "Account" }]} className="mb-8" />
+      {redirectTo === "/checkout" && (
+        <div className="mx-auto mb-5 flex max-w-5xl items-center gap-2 rounded-2xl border border-gold-400/40 bg-gold-400/5 px-4 py-3 text-sm text-foreground">
+          <ShieldCheck size={16} className="shrink-0 text-gold-600" />
+          Sign in or create an account to complete your checkout securely.
+        </div>
+      )}
       <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_30px_80px_-40px_rgba(36,26,59,0.45)] lg:grid-cols-2">
         {/* ---- Brand side ---- */}
         <div className="relative hidden flex-col justify-between bg-gradient-to-br from-royal-500 to-royal-700 p-10 text-white lg:flex">
           <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-gold-400/25 blur-3xl" />
           <div className="relative">
             <h2 className="text-3xl font-semibold leading-tight">
-              Welcome to <span className="text-gold-200">Nakshatra</span>
+              Welcome to <span className="text-gold-200">Astrounkle</span>
             </h2>
             <p className="mt-3 max-w-xs text-sm text-white/80">
               Your gateway to certified, astrologically-aligned gemstones.
@@ -179,6 +236,7 @@ export function AccountAuth() {
                 <div className="flex justify-end">
                   <button
                     type="button"
+                    onClick={handleForgot}
                     className="text-sm font-medium text-gold-600 hover:text-gold-500"
                   >
                     Forgot password?
@@ -186,8 +244,14 @@ export function AccountAuth() {
                 </div>
               )}
 
-              <Button variant="gold" size="lg" type="submit" className="w-full">
-                {tab === "login" ? "Sign In" : "Create Account"}
+              <Button variant="gold" size="lg" type="submit" className="w-full" disabled={submitting}>
+                {submitting
+                  ? tab === "login"
+                    ? "Signing in…"
+                    : "Creating account…"
+                  : tab === "login"
+                    ? "Sign In"
+                    : "Create Account"}
               </Button>
 
               <p className="text-center text-xs text-muted">

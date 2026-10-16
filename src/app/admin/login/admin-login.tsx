@@ -46,7 +46,7 @@ export function AdminLogin() {
           <Gem size={20} />
         </span>
         <span className="text-lg font-semibold" style={{ color: "var(--a-fg)" }}>
-          Nakshatra
+          Astrounkle
         </span>
       </div>
 
@@ -63,8 +63,8 @@ export function AdminLogin() {
             name="email"
             type="email"
             required
-            placeholder="admin@nakshatra.com"
-            defaultValue="admin@nakshatra.com"
+            placeholder="admin@astrounkle.com"
+            defaultValue="admin@astrounkle.com"
             className={inputClass}
           />
         </Field>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { Product } from "@/types";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -54,9 +55,7 @@ export function InventoryManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const units = products.reduce((s, p) => s + (p.stockQty ?? 0), 0);
@@ -66,11 +65,33 @@ export function InventoryManager() {
     return { units, low, out, value };
   }, [products, LOW]);
 
+  // Server-backed low-stock report. When the filter is "low"/"out" we fetch
+  // just those products from the dedicated endpoint (scales to big catalogues
+  // instead of pulling the whole list and filtering in the browser).
+  const [report, setReport] = useState<Product[] | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  useEffect(() => {
+    if (filter === "all") {
+      setReport(null);
+      return;
+    }
+    let active = true;
+    setReportLoading(true);
+    adminApi.products.lowStock(filter === "out").then((res) => {
+      if (!active) return;
+      if (res.ok) setReport(res.data);
+      setReportLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [filter]);
+
   const filtered = useMemo(() => {
-    if (filter === "low") return products.filter((p) => (p.stockQty ?? 0) > 0 && (p.stockQty ?? 0) <= LOW);
-    if (filter === "out") return products.filter((p) => (p.stockQty ?? 0) === 0);
-    return products;
-  }, [products, filter, LOW]);
+    if (filter === "all") return products;
+    // Use the server report; keep edits reflecting the latest known products.
+    return report ?? [];
+  }, [products, filter, report]);
 
   const dirty = Object.keys(edits).filter((id) => {
     const p = products.find((x) => x.id === id);
@@ -80,13 +101,25 @@ export function InventoryManager() {
   const saveAll = async () => {
     if (dirty.length === 0) return;
     setSaving(true);
+    // Use the dedicated stock endpoint so stockStatus stays in sync and the
+    // change is recorded as a proper stock event in the audit trail.
     await Promise.all(
-      dirty.map((id) => adminApi.products.update(id, { stockQty: Math.max(0, Math.round(Number(edits[id]))) }))
+      dirty.map((id) =>
+        adminApi.products.adjustStock(id, {
+          set: Math.max(0, Math.round(Number(edits[id]))),
+          reason: "Inventory bulk restock",
+        }),
+      ),
     );
     setSaving(false);
     toast(`${dirty.length} products restocked`, "success");
     setEdits({});
     load();
+    // Refresh the low/out report so restocked items drop off the list.
+    if (filter !== "all") {
+      const res = await adminApi.products.lowStock(filter === "out");
+      if (res.ok) setReport(res.data);
+    }
   };
 
   const columns: Column<Product>[] = [
@@ -195,7 +228,7 @@ export function InventoryManager() {
         data={filtered}
         columns={columns}
         getRowId={(p) => p.id}
-        loading={loading}
+        loading={loading || reportLoading}
         searchPlaceholder="Search inventory…"
         emptyTitle="Nothing here"
         emptyMessage="No products match this filter."

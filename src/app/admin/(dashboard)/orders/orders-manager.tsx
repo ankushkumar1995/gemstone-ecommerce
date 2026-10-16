@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { Order } from "@/modules/orders";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -45,9 +46,7 @@ export function OrdersManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const open = orders.filter((o) => ["pending", "confirmed", "packed", "shipped"].includes(o.status));

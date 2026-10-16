@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, Phone, Inbox, RefreshCw } from "lucide-react";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import type { Lead, LeadStatus } from "@/modules/leads";
 import { Card, PageHeader, StatusPill, AdminButton } from "../../_components/ui";
 import { cn } from "@/lib/utils";
@@ -28,9 +29,7 @@ export function LeadsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const changeStatus = async (id: string, status: LeadStatus) => {
     // optimistic update

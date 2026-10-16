@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { PaymentsReport, PaymentTransaction } from "@/modules/payments";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -55,9 +56,7 @@ export function PaymentsView() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const donut = useMemo(
     () =>

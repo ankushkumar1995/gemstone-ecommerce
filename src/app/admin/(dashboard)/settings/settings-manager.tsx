@@ -12,15 +12,12 @@ import {
   ShoppingCart,
   Bell,
   Search,
-  Users,
   Palette,
-  Plus,
-  Trash2,
   Boxes,
   ClipboardList,
   Mail,
 } from "lucide-react";
-import type { StoreSettings, TeamMember, UpdateSettingsDto } from "@/modules/settings";
+import type { StoreSettings, UpdateSettingsDto } from "@/modules/settings";
 import { adminApi } from "@/lib/admin-api";
 import {
   PageHeader,
@@ -32,7 +29,6 @@ import {
   AdminDropdown,
   Toggle,
   Tabs,
-  Badge,
   StatsSkeleton,
   ImagePickerField,
   useAdminToast,
@@ -50,7 +46,6 @@ type TabKey =
   | "email"
   | "notifications"
   | "seo"
-  | "team"
   | "appearance";
 
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "SGD", "AUD", "CAD"];
@@ -112,7 +107,6 @@ export function SettingsManager() {
     { value: "email", label: "Email" },
     { value: "notifications", label: "Notifications" },
     { value: "seo", label: "SEO & Social" },
-    { value: "team", label: "Team" },
     { value: "appearance", label: "Appearance" },
   ];
 
@@ -136,7 +130,6 @@ export function SettingsManager() {
         {tab === "email" && <EmailTab settings={settings} saving={saving} onSave={save} />}
         {tab === "notifications" && <NotificationsTab settings={settings} saving={saving} onSave={save} />}
         {tab === "seo" && <SeoTab settings={settings} saving={saving} onSave={save} />}
-        {tab === "team" && <TeamTab settings={settings} saving={saving} onSave={save} />}
         {tab === "appearance" && <AppearanceTab settings={settings} saving={saving} onSave={save} />}
       </motion.div>
     </div>
@@ -514,83 +507,7 @@ function SeoTab({ settings, saving, onSave }: TabProps) {
   );
 }
 
-/* ---------------- Team / Users ---------------- */
-function TeamTab({ settings, saving, onSave }: TabProps) {
-  const [members, setMembers] = useState<TeamMember[]>(settings.team.members);
-
-  const update = (i: number, patch: Partial<TeamMember>) =>
-    setMembers((prev) => prev.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
-  const remove = (i: number) => setMembers((prev) => prev.filter((_, idx) => idx !== i));
-  const add = () =>
-    setMembers((prev) => [...prev, { id: `tmp_${Date.now()}`, name: "", email: "", role: "staff" }]);
-
-  const roleTone = (r: TeamMember["role"]) => (r === "admin" ? "gold" : r === "manager" ? "royal" : "muted");
-
-  return (
-    <Card className="max-w-3xl">
-      <div className="flex items-center justify-between">
-        <SectionTitle icon={Users} title="Team & roles" />
-        <button
-          type="button"
-          onClick={add}
-          className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-black/[0.04]"
-          style={{ borderColor: "var(--a-border)", color: "var(--a-gold)" }}
-        >
-          <Plus size={12} /> Add member
-        </button>
-      </div>
-      <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>
-        Demo only — becomes live once real authentication is in place.
-      </p>
-      <div className="mt-4 space-y-3">
-        {members.map((m, i) => (
-          <div key={m.id} className="rounded-lg border p-3" style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)" }}>
-            <div className="flex items-center justify-between">
-              <Badge tone={roleTone(m.role)}>{m.role}</Badge>
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition-colors hover:bg-rose-500/10"
-                aria-label="Remove member"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-3">
-              <AdminInput value={m.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="Name" />
-              <AdminInput type="email" value={m.email} onChange={(e) => update(i, { email: e.target.value })} placeholder="Email" />
-              <AdminDropdown
-                value={m.role}
-                options={[
-                  { value: "admin", label: "Admin" },
-                  { value: "manager", label: "Manager" },
-                  { value: "staff", label: "Staff" },
-                ]}
-                onChange={(v) => update(i, { role: v as TeamMember["role"] })}
-                className="w-full"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-      <SaveBar
-        saving={saving}
-        onSave={() =>
-          onSave({
-            team: {
-              members: members.map((m) => ({
-                name: m.name,
-                email: m.email,
-                role: m.role,
-                ...(m.id.startsWith("tmp_") ? {} : { id: m.id }),
-              })),
-            },
-          })
-        }
-      />
-    </Card>
-  );
-}
+/* Team tab removed — team/users are managed in the dedicated Users & Roles module. */
 
 /* ---------------- Appearance ---------------- */
 function AppearanceTab({ settings, saving, onSave }: TabProps) {
@@ -752,13 +669,13 @@ function EmailTab({ settings, saving, onSave }: TabProps) {
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="From name">
-          <AdminInput value={em.fromName} onChange={set("fromName")} placeholder="Nakshatra" />
+          <AdminInput value={em.fromName} onChange={set("fromName")} placeholder="Astrounkle" />
         </Field>
         <Field label="From email" required>
-          <AdminInput type="email" value={em.fromEmail} onChange={set("fromEmail")} placeholder="orders@nakshatra.com" />
+          <AdminInput type="email" value={em.fromEmail} onChange={set("fromEmail")} placeholder="orders@astrounkle.com" />
         </Field>
         <Field label="Reply-to">
-          <AdminInput type="email" value={em.replyTo ?? ""} onChange={set("replyTo")} placeholder="support@nakshatra.com" />
+          <AdminInput type="email" value={em.replyTo ?? ""} onChange={set("replyTo")} placeholder="support@astrounkle.com" />
         </Field>
         <Field label="SMTP host">
           <AdminInput value={em.smtpHost ?? ""} onChange={set("smtpHost")} placeholder="smtp.provider.com" />

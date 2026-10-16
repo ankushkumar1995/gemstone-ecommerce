@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./admin.css";
 
 export const metadata: Metadata = {
-  title: "Admin — Nakshatra",
+  title: "Admin — Astrounkle",
   robots: { index: false, follow: false },
 };
 

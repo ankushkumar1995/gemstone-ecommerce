@@ -12,7 +12,7 @@ import { CookieConsent } from "@/components/layout/cookie-consent";
 import { settingsService } from "@/modules/settings";
 
 export const metadata: Metadata = {
-  title: "Nakshatra — Luxury Gemstones & Astrology",
+  title: "Astrounkle — Luxury Gemstones & Astrology",
   description:
     "Discover certified natural gemstones curated by your zodiac. Premium stones with lab certification and expert astrological guidance.",
   keywords: [

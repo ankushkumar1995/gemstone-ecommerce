@@ -5,7 +5,7 @@
  * Tooltip, ProgressBar, SegmentedControl. Each is tiny and reusable.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -211,6 +211,9 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (v: T) => void;
 }) {
+  // Unique per instance — a shared layoutId made the active pill jump between
+  // different SegmentedControls on the same page (one showed, another didn't).
+  const uid = useId();
   return (
     <div
       className="inline-flex items-center gap-1 rounded-lg border p-1"
@@ -219,15 +222,16 @@ export function SegmentedControl<T extends string>({
       {options.map((o) => (
         <button
           key={o.value}
+          type="button"
           onClick={() => onChange(o.value)}
           className="relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
           style={{ color: value === o.value ? "#fff" : "var(--a-muted)" }}
         >
           {value === o.value && (
             <motion.span
-              layoutId="segmented-active"
+              layoutId={`segmented-active-${uid}`}
               transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              className="absolute inset-0 -z-10 rounded-md bg-gradient-to-r from-[#e6b43a] to-[#c9942a]"
+              className="absolute inset-0 rounded-md bg-gradient-to-r from-[#e6b43a] to-[#c9942a]"
             />
           )}
           <span className="relative z-10">{o.label}</span>

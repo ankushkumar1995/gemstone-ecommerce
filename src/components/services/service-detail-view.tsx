@@ -30,6 +30,7 @@ import { api } from "@/lib/api-client";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { ServiceBookingForm } from "@/components/services/service-booking-form";
 import { cn } from "@/lib/utils";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -199,8 +200,13 @@ export function ServiceDetailView({
             </div>
           </div>
 
-          {/* lead form */}
-          <LeadForm service={service} />
+          {/* Paid services → book & pay online. Free/"price on request"
+              services → the callback lead form. */}
+          {service.priceFrom > 0 ? (
+            <ServiceBookingForm service={service} />
+          ) : (
+            <LeadForm service={service} />
+          )}
         </div>
       </div>
     </Container>

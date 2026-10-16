@@ -6,6 +6,8 @@ import { z } from "zod";
 
 const addressSchema = z.object({
   label: z.string().trim().min(1).max(40),
+  name: z.string().trim().max(120).optional().or(z.literal("")),
+  phone: z.string().trim().max(30).optional().or(z.literal("")),
   line1: z.string().trim().min(1, "Address is required").max(160),
   line2: z.string().trim().max(160).optional().or(z.literal("")),
   city: z.string().trim().min(1, "City is required").max(80),

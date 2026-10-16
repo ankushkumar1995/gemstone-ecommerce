@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Layers, Star, Pencil, Trash2 } from "lucide-react";
 import type { Collection } from "@/types";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import {
   PageHeader,
   AdminButton,
@@ -37,9 +38,7 @@ export function CollectionsManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const openEditor = (c: Collection | null) => {
     setEditing(c);

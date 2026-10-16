@@ -4,7 +4,7 @@ import { AdminLogin } from "./admin-login";
 import { LoginBrandPanel } from "./login-brand-panel";
 
 export const metadata: Metadata = {
-  title: "Admin Login — Nakshatra",
+  title: "Admin Login — Astrounkle",
   robots: { index: false, follow: false },
 };
 

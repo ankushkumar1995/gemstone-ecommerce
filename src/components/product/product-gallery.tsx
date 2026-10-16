@@ -22,7 +22,13 @@ function buildImages(src: string): string[] {
 }
 
 export function ProductGallery({ product }: { product: Product }) {
-  const images = buildImages(product.image);
+  // Use the real uploaded gallery when present; otherwise synthesize angles
+  // from the cover image (keeps older/mock products looking rich).
+  const hasReal = (product.images?.length ?? 0) > 0;
+  const images = hasReal ? (product.images as string[]) : buildImages(product.image);
+  // Alt text per image: prefer the admin-provided alt, fall back to the name.
+  const altFor = (url: string, i: number) =>
+    product.imageAlts?.[url] || `${product.name}${i > 0 ? ` — view ${i + 1}` : ""}`;
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState({ x: 50, y: 50, on: false });
 
@@ -49,7 +55,7 @@ export function ProductGallery({ product }: { product: Product }) {
                 : "border-foreground/10 hover:border-foreground/30"
             }`}
           >
-            <Image src={img} alt="" fill sizes="80px" className="object-cover" />
+            <Image src={img} alt={altFor(img, i)} fill sizes="80px" className="object-cover" />
           </button>
         ))}
       </div>
@@ -74,7 +80,7 @@ export function ProductGallery({ product }: { product: Product }) {
           >
             <Image
               src={images[active]}
-              alt={product.name}
+              alt={altFor(images[active], active)}
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 50vw"

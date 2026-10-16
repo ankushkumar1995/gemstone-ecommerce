@@ -1,19 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import {
-  getProductBySlug,
-  getRelatedProducts,
-  products,
-} from "@/data/products";
+import { productService } from "@/modules/products";
 import { ProductDetail } from "@/components/product/product-detail";
 import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { ProductCard } from "@/components/ui/product-card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StaggerContainer } from "@/components/ui/reveal";
 
-export function generateStaticParams() {
-  return products.map((p) => ({ slug: p.slug }));
-}
+// PDP pulls the live product (and related items) from the admin catalogue.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -21,11 +16,15 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
-  if (!product) return { title: "Not Found — Nakshatra" };
+  const res = await productService.getActiveBySlug(slug);
+  if (!res.ok) return { title: "Not Found — Astrounkle" };
+  const product = res.value;
   return {
-    title: `${product.name} — Nakshatra`,
-    description: product.shortDescription,
+    title: product.seo?.metaTitle || `${product.name} — Astrounkle`,
+    description: product.seo?.metaDescription || product.shortDescription,
+    openGraph: product.seo?.ogImage
+      ? { images: [{ url: product.seo.ogImage }] }
+      : undefined,
   };
 }
 
@@ -35,10 +34,12 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
-  if (!product) notFound();
+  const res = await productService.getActiveBySlug(slug);
+  if (!res.ok) notFound();
+  const product = res.value;
 
-  const related = getRelatedProducts(slug, 4);
+  const relatedRes = await productService.relatedActive(slug, 4);
+  const related = relatedRes.ok ? relatedRes.value : [];
 
   return (
     <>

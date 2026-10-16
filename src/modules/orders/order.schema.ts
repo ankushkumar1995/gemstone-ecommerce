@@ -33,7 +33,7 @@ export const createOrderSchema = z.object({
   items: z.array(itemSchema).min(1, "Add at least one item"),
   shippingAddress: addressSchema,
   billingAddress: addressSchema.optional(),
-  paymentMethod: z.enum(["cod", "card", "upi", "netbanking", "manual"]).optional(),
+  paymentMethod: z.enum(["cod", "card", "upi", "netbanking", "manual", "razorpay"]).optional(),
   paymentStatus: z.enum(["unpaid", "paid", "refunded"]).optional(),
   couponCode: z.string().trim().max(40).optional().or(z.literal("")),
   discount: z.coerce.number().min(0).optional(),

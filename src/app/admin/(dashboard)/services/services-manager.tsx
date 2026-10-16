@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Sparkles, CheckCircle2, Star, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import type { AstroService } from "@/types";
 import { adminApi } from "@/lib/admin-api";
+import { useOnMount } from "../../_components";
 import { formatPrice } from "@/lib/utils";
 import {
   PageHeader,
@@ -34,9 +35,7 @@ export function ServicesManager() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useOnMount(load);
 
   const stats = useMemo(() => {
     const total = services.length;

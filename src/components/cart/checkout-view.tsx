@@ -3,26 +3,43 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
-import { ShieldCheck, Lock, CheckCircle2, ArrowRight, Loader2, Tag } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ShieldCheck, Lock, CheckCircle2, ArrowRight, Loader2, Tag, CreditCard, Banknote, Check } from "lucide-react";
 import { useCommerce, type Order } from "@/lib/store";
 import { useCurrency } from "@/lib/currency";
 import { shopApi } from "@/lib/shop-api";
+import { openRazorpayCheckout } from "@/lib/razorpay-client";
+import { OrderCelebration, SuccessBadge } from "@/components/cart/order-celebration";
+import { CheckoutAddressStep, AddressSummary } from "@/components/cart/checkout-address-step";
+import { CheckoutOffers } from "@/components/cart/checkout-offers";
 import type { CreateOrderDto } from "@/modules/orders";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { cn } from "@/lib/utils";
+
+type PayMethod = "cod" | "online";
+type Step = "address" | "payment";
 
 export function CheckoutView() {
-  const { cart, cartSubtotal, clearCart, placeOrder, user } = useCommerce();
+  const { cart, cartSubtotal, clearCart, placeOrder, user, authReady, addresses } = useCommerce();
   const { format } = useCurrency();
 
   const [placed, setPlaced] = useState(false);
   const [orderId, setOrderId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [payMethod, setPayMethod] = useState<PayMethod>("cod");
+
+  // Two-step flow: pick/confirm the delivery address, then pay.
+  const [step, setStep] = useState<Step>("address");
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+
+  // Whether online payment is available (gateway configured on the server).
+  const [onlineEnabled, setOnlineEnabled] = useState(false);
 
   // shipping config comes from store settings (falls back to sensible defaults)
   const [shippingCfg, setShippingCfg] = useState({ freeShippingThreshold: 5000, flatRate: 199 });
+
   useEffect(() => {
     (async () => {
       const res = await shopApi.settings.get();
@@ -32,22 +49,22 @@ export function CheckoutView() {
           flatRate: res.data.shipping.flatRate,
         });
       }
+      // Probe whether the online gateway is configured on the server.
+      const cfg = await shopApi.payments.status();
+      setOnlineEnabled(cfg.ok ? cfg.data.online : false);
     })();
   }, []);
 
-  // controlled form fields (prefilled from the logged-in user if present)
-  const [form, setForm] = useState({
-    name: user?.name ?? "",
-    phone: user?.phone ?? "",
-    email: user?.email ?? "",
-    line1: "",
-    city: "",
-    state: "",
-    pincode: "",
-    landmark: "",
-  });
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  // Default the selected address to the saved default (or the first one) once
+  // addresses load. Never override an explicit user choice.
+  useEffect(() => {
+    if (selectedAddressId) return;
+    if (addresses.length === 0) return;
+    const def = addresses.find((a) => a.isDefault) ?? addresses[0];
+    setSelectedAddressId(def.id);
+  }, [addresses, selectedAddressId]);
+
+  const selectedAddress = addresses.find((a) => a.id === selectedAddressId) ?? null;
 
   // coupon
   const [couponInput, setCouponInput] = useState("");
@@ -55,11 +72,14 @@ export function CheckoutView() {
   const [couponError, setCouponError] = useState("");
   const [applying, setApplying] = useState(false);
 
-  const applyCoupon = async () => {
-    if (!couponInput.trim()) return;
+  // Apply a coupon by code. Called by the manual input AND the one-tap
+  // "Available offers" list (which passes the code directly).
+  const applyCoupon = async (codeArg?: string) => {
+    const code = (codeArg ?? couponInput).trim();
+    if (!code) return;
     setApplying(true);
     setCouponError("");
-    const res = await shopApi.coupons.apply(couponInput.trim(), cartSubtotal);
+    const res = await shopApi.coupons.apply(code, cartSubtotal);
     setApplying(false);
     if (res.ok) {
       setCoupon({ code: res.data.code, discount: res.data.discount });
@@ -82,46 +102,48 @@ export function CheckoutView() {
       : shippingCfg.flatRate;
   const total = Math.max(0, cartSubtotal - discount) + shipping;
 
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setSubmitting(true);
-
-    // Build the order payload for the real backend. Status "confirmed" so the
-    // order commits stock and is immediately actionable in the admin.
-    const dto: CreateOrderDto = {
-      customer: { name: form.name, email: form.email, phone: form.phone },
+  // Build the common order payload. `customerId` is client intent only — the
+  // server ALWAYS derives the real customer from the session cookie.
+  const buildDto = (
+    method: CreateOrderDto["paymentMethod"],
+    status: CreateOrderDto["status"],
+  ): CreateOrderDto => {
+    const a = selectedAddress;
+    const name = a?.name || user?.name || "";
+    const phone = a?.phone || user?.phone || "";
+    return {
+      ...(user?.id && { customerId: user.id }),
+      customer: { name, email: user?.email ?? "", phone },
       items: cart.map((l) => ({ productId: l.product.id, qty: l.qty })),
       shippingAddress: {
-        name: form.name,
-        phone: form.phone,
-        line1: form.line1,
-        line2: form.landmark,
-        city: form.city,
-        state: form.state,
-        postalCode: form.pincode,
+        name,
+        phone,
+        line1: a?.line ?? "",
+        city: a?.city ?? "",
+        state: a?.state ?? "",
+        postalCode: a?.pincode ?? "",
         country: "India",
       },
-      paymentMethod: "cod",
+      paymentMethod: method,
       paymentStatus: "unpaid",
       shipping,
       ...(coupon && { couponCode: coupon.code, discount: coupon.discount }),
-      status: "confirmed",
+      status,
     };
+  };
 
-    const res = await shopApi.orders.create(dto);
-    setSubmitting(false);
-
-    if (!res.ok) {
-      setError(res.message);
-      return;
-    }
-
-    // keep a local copy so /account and /track-order keep working
+  // Finalise a successful order: mirror it into the local store (so /account +
+  // /track-order keep working) and show the confirmation screen.
+  const finalizeSuccess = (data: {
+    orderNumber: string;
+    placedAt: string;
+    items: { productId: string; name: string; image?: string; unitPrice: number; qty: number }[];
+    pricing: { subtotal: number; shipping: number; grandTotal: number };
+  }) => {
     const localOrder: Order = {
-      id: res.data.orderNumber,
-      date: res.data.placedAt,
-      items: res.data.items.map((it) => ({
+      id: data.orderNumber,
+      date: data.placedAt,
+      items: data.items.map((it) => ({
         id: it.productId,
         slug: "",
         name: it.name,
@@ -129,39 +151,145 @@ export function CheckoutView() {
         price: it.unitPrice,
         qty: it.qty,
       })),
-      subtotal: res.data.pricing.subtotal,
-      shipping: res.data.pricing.shipping,
-      total: res.data.pricing.grandTotal,
+      subtotal: data.pricing.subtotal,
+      shipping: data.pricing.shipping,
+      total: data.pricing.grandTotal,
       status: "Confirmed",
     };
     placeOrder(localOrder);
     clearCart();
-    setOrderId(res.data.orderNumber);
+    setOrderId(data.orderNumber);
     setPlaced(true);
+  };
+
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    // Safety: never place an order without a delivery address.
+    if (!selectedAddress) {
+      setStep("address");
+      setError("Please choose a delivery address first.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    if (payMethod === "online") {
+      await handleOnlinePayment();
+      return;
+    }
+
+    // ── Cash on Delivery ── create a confirmed order directly.
+    const res = await shopApi.orders.create(buildDto("cod", "confirmed"));
+    setSubmitting(false);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    finalizeSuccess(res.data);
+  };
+
+  // ── Online (Razorpay) ──────────────────────────────────────────────────
+  // 1) ask the server to create a PENDING order + a Razorpay order,
+  // 2) open Razorpay Checkout,
+  // 3) on success, verify the signature server-side → the order is settled.
+  const handleOnlinePayment = async () => {
+    const init = await shopApi.payments.createRazorpayOrder(buildDto("razorpay", "pending"));
+    if (!init.ok) {
+      setSubmitting(false);
+      setError(init.message);
+      return;
+    }
+    const d = init.data;
+    try {
+      await openRazorpayCheckout(
+        {
+          key: d.keyId,
+          amount: d.amount,
+          currency: d.currency,
+          name: "Astrounkle",
+          description: `Order ${d.orderNumber}`,
+          order_id: d.razorpayOrderId,
+          prefill: {
+            name: selectedAddress?.name || user?.name || "",
+            email: user?.email || "",
+            contact: selectedAddress?.phone || user?.phone || "",
+          },
+          notes: { orderNumber: d.orderNumber },
+          theme: { color: "#c9942a" },
+        },
+        {
+          onSuccess: async (r) => {
+            const verify = await shopApi.payments.verifyRazorpay({
+              razorpayOrderId: r.razorpay_order_id,
+              razorpayPaymentId: r.razorpay_payment_id,
+              razorpaySignature: r.razorpay_signature,
+            });
+            setSubmitting(false);
+            if (!verify.ok) {
+              setError(
+                "We received your payment but couldn't confirm it instantly. " +
+                  "Don't worry — it'll be reconciled shortly. Ref: " + d.orderNumber,
+              );
+              return;
+            }
+            finalizeSuccess(verify.data);
+          },
+          onDismiss: () => {
+            // User closed the modal without paying — the order stays pending.
+            setSubmitting(false);
+            setError("Payment was cancelled. Your order is saved as pending — you can retry.");
+          },
+        },
+      );
+    } catch (err) {
+      setSubmitting(false);
+      setError(err instanceof Error ? err.message : "Could not start the payment.");
+    }
   };
 
   if (placed) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
-        <motion.span
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 260, damping: 18 }}
-          className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-500 text-white"
-        >
+      <div className="relative mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+        {/* celebratory confetti burst (one-shot, respects reduced-motion) */}
+        <OrderCelebration />
+
+        <SuccessBadge>
           <CheckCircle2 size={38} />
-        </motion.span>
-        <h1 className="mt-6 text-3xl font-semibold text-foreground">
-          Order Placed!
-        </h1>
-        <p className="mt-1 text-sm text-muted">
+        </SuccessBadge>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.4 }}
+          className="mt-6 text-3xl font-semibold text-foreground"
+        >
+          Order Placed! 🎉
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.42, duration: 0.4 }}
+          className="mt-1 text-sm text-muted"
+        >
           Order ID: <span className="font-semibold text-gold-600">{orderId}</span>
-        </p>
-        <p className="mt-3 max-w-md text-muted">
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.52, duration: 0.4 }}
+          className="mt-3 max-w-md text-muted"
+        >
           Thank you for your order. You&apos;ll receive a confirmation shortly.
           Your gemstone will be certified, energised and shipped with care.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
+        </motion.p>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.62, duration: 0.4 }}
+          className="mt-8 flex flex-wrap justify-center gap-3"
+        >
           <Link href="/account">
             <Button variant="gold" size="lg">
               View My Orders <ArrowRight size={16} />
@@ -177,7 +305,51 @@ export function CheckoutView() {
               Continue Shopping
             </Button>
           </Link>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // While the real session is resolving, show a neutral placeholder so the
+  // sign-in gate never flashes for an already-logged-in customer on refresh.
+  if (!authReady) {
+    return (
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+        <div className="mx-auto h-72 max-w-md animate-pulse rounded-3xl border border-foreground/10 bg-nebula" />
+      </div>
+    );
+  }
+
+  // LOGIN REQUIRED — checkout is for signed-in customers only. Send them to the
+  // account page and bring them straight back to checkout afterwards.
+  if (!user) {
+    return (
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-gold-400/12 text-gold-600">
+          <Lock size={34} />
+        </span>
+        <h1 className="mt-6 text-3xl font-semibold text-foreground">
+          Please sign in to checkout
+        </h1>
+        <p className="mt-2 max-w-sm text-muted">
+          For a secure order and to track it later, sign in to your account. New
+          here? Creating one takes a few seconds.
+        </p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link href="/account?redirect=/checkout">
+            <Button variant="gold" size="lg">
+              Sign In <ArrowRight size={16} />
+            </Button>
+          </Link>
+          <Link href="/account?redirect=/checkout&tab=signup">
+            <Button variant="outline" size="lg">
+              Create Account
+            </Button>
+          </Link>
         </div>
+        <Link href="/cart" className="mt-6 text-sm font-medium text-muted hover:text-foreground">
+          ← Back to cart
+        </Link>
       </div>
     );
   }
@@ -212,50 +384,63 @@ export function CheckoutView() {
         onSubmit={handlePlaceOrder}
         className="mt-8 grid gap-8 lg:grid-cols-[1fr_22rem]"
       >
-        {/* Form */}
-        <div className="space-y-8">
-          <Section title="Contact">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input required placeholder="Full name" className={input} value={form.name} onChange={set("name")} />
-              <input required type="tel" placeholder="Phone" className={input} value={form.phone} onChange={set("phone")} />
-              <input
-                required
-                type="email"
-                placeholder="Email"
-                className={`${input} sm:col-span-2`}
-                value={form.email}
-                onChange={set("email")}
+        {/* Stepped flow: Address → Payment */}
+        <div className="space-y-6">
+          {/* ── Step 1: Delivery Address ── */}
+          <StepCard
+            index={1}
+            title="Delivery Address"
+            open={step === "address"}
+            done={step !== "address" && !!selectedAddress}
+            summary={
+              selectedAddress ? (
+                <AddressSummary
+                  address={selectedAddress}
+                  onChange={() => setStep("address")}
+                />
+              ) : null
+            }
+          >
+            <CheckoutAddressStep
+              selectedId={selectedAddressId}
+              onSelect={setSelectedAddressId}
+              onContinue={() => selectedAddress && setStep("payment")}
+            />
+          </StepCard>
+
+          {/* ── Step 2: Payment ── */}
+          <StepCard
+            index={2}
+            title="Payment Method"
+            open={step === "payment"}
+            done={false}
+            locked={!selectedAddress}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              {onlineEnabled && (
+                <PayOption
+                  active={payMethod === "online"}
+                  onClick={() => setPayMethod("online")}
+                  icon={CreditCard}
+                  title="Pay Online"
+                  desc="UPI / Card / Netbanking — secured by Razorpay"
+                />
+              )}
+              <PayOption
+                active={payMethod === "cod"}
+                onClick={() => setPayMethod("cod")}
+                icon={Banknote}
+                title="Cash on Delivery"
+                desc="Pay in cash when your order arrives"
               />
             </div>
-          </Section>
-
-          <Section title="Shipping Address">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input
-                required
-                placeholder="Address line"
-                className={`${input} sm:col-span-2`}
-                value={form.line1}
-                onChange={set("line1")}
-              />
-              <input required placeholder="City" className={input} value={form.city} onChange={set("city")} />
-              <input required placeholder="State" className={input} value={form.state} onChange={set("state")} />
-              <input required placeholder="PIN code" className={input} value={form.pincode} onChange={set("pincode")} />
-              <input placeholder="Landmark (optional)" className={input} value={form.landmark} onChange={set("landmark")} />
-            </div>
-          </Section>
-
-          <Section title="Payment">
-            <div className="rounded-xl border border-foreground/12 bg-void p-4 text-sm text-muted">
-              <p className="flex items-center gap-2 text-foreground">
-                <Lock size={15} className="text-gold-500" /> Secure payment
-              </p>
-              <p className="mt-1.5">
-                This is a demo checkout — payment is Cash on Delivery. In
-                production, a gateway (Razorpay / Stripe) would appear here.
-              </p>
-            </div>
-          </Section>
+            <p className="mt-3 flex items-center gap-2 text-xs text-muted">
+              <Lock size={13} className="text-gold-500" />
+              {payMethod === "online"
+                ? "You'll complete payment in a secure Razorpay window."
+                : "No advance payment needed."}
+            </p>
+          </StepCard>
         </div>
 
         {/* Summary */}
@@ -323,7 +508,7 @@ export function CheckoutView() {
                   />
                   <button
                     type="button"
-                    onClick={applyCoupon}
+                    onClick={() => applyCoupon()}
                     disabled={applying || !couponInput.trim()}
                     className="shrink-0 rounded-xl border border-foreground/15 bg-void px-4 text-sm font-semibold text-foreground transition-colors hover:border-gold-400/60 hover:text-gold-600 disabled:opacity-50"
                   >
@@ -333,6 +518,16 @@ export function CheckoutView() {
               )}
               {couponError && (
                 <p className="mt-2 text-xs text-rose-600">{couponError}</p>
+              )}
+
+              {/* One-tap "Available offers" (public coupons). Hidden once one
+                  is applied — the applied chip above covers that state. */}
+              {!coupon && (
+                <CheckoutOffers
+                  cartSubtotal={cartSubtotal}
+                  appliedCode={coupon ? (coupon as { code: string }).code : null}
+                  onApply={(code) => applyCoupon(code)}
+                />
               )}
             </div>
 
@@ -370,15 +565,29 @@ export function CheckoutView() {
               </p>
             )}
 
-            <Button variant="gold" size="lg" type="submit" className="mt-5 w-full" disabled={submitting}>
+            <Button
+              variant="gold"
+              size="lg"
+              type="submit"
+              className="mt-5 w-full"
+              disabled={submitting || step !== "payment" || !selectedAddress}
+            >
               {submitting ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" /> Placing…
+                  <Loader2 size={16} className="animate-spin" />
+                  {payMethod === "online" ? "Processing…" : "Placing…"}
                 </>
+              ) : payMethod === "online" ? (
+                `Pay ${format(total)}`
               ) : (
                 "Place Order"
               )}
             </Button>
+            {step !== "payment" && (
+              <p className="mt-2 text-center text-xs text-muted">
+                Confirm your delivery address to continue
+              </p>
+            )}
 
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted">
               <ShieldCheck size={13} className="text-gold-500" /> 100% secure &
@@ -394,17 +603,115 @@ export function CheckoutView() {
 const input =
   "w-full rounded-xl border border-foreground/15 bg-void px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted/70 focus:border-gold-400/70 focus:ring-2 focus:ring-gold-400/20";
 
-function Section({
+/**
+ * A single step in the checkout accordion. Shows a numbered badge (or a tick
+ * once completed), the title, and either the open body or a compact summary.
+ */
+function StepCard({
+  index,
   title,
+  open,
+  done,
+  locked,
+  summary,
   children,
 }: {
+  index: number;
   title: string;
+  open: boolean;
+  done: boolean;
+  locked?: boolean;
+  summary?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-foreground/10 bg-nebula p-6">
-      <h2 className="mb-4 text-lg font-semibold text-foreground">{title}</h2>
-      {children}
+    <section
+      className={cn(
+        "rounded-3xl border bg-nebula transition-colors",
+        open ? "border-gold-400/40" : "border-foreground/10",
+        locked && "opacity-60",
+      )}
+    >
+      <div className="flex items-center gap-3 p-5 sm:p-6">
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+            done
+              ? "bg-emerald-500/15 text-emerald-600"
+              : open
+                ? "bg-gradient-to-br from-gold-400 to-gold-500 text-white"
+                : "bg-foreground/8 text-muted",
+          )}
+        >
+          {done ? <Check size={16} /> : index}
+        </span>
+        <h2 className="text-base font-semibold text-foreground sm:text-lg">{title}</h2>
+      </div>
+
+      <AnimatePresence initial={false} mode="wait">
+        {open ? (
+          <motion.div
+            key="body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-6 sm:px-6">{children}</div>
+          </motion.div>
+        ) : summary ? (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="px-5 pb-5 sm:px-6"
+          >
+            <div className="rounded-2xl border border-foreground/10 bg-void p-4">{summary}</div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
+  );
+}
+
+function PayOption({
+  active,
+  onClick,
+  icon: Icon,
+  title,
+  desc,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors",
+        active
+          ? "border-gold-400/70 bg-gold-400/5 ring-2 ring-gold-400/20"
+          : "border-foreground/12 bg-void hover:border-gold-400/40",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+          active ? "bg-gold-400/15 text-gold-600" : "bg-foreground/5 text-muted",
+        )}
+      >
+        <Icon size={17} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted">{desc}</span>
+      </span>
+    </button>
   );
 }

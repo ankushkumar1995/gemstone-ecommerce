@@ -12,6 +12,8 @@ export type CustomerStatus = "active" | "vip" | "blocked";
 export interface CustomerAddress {
   id: string;
   label: string; // e.g. "Home", "Office"
+  name?: string; // recipient name
+  phone?: string; // recipient phone
   line1: string;
   line2?: string;
   city: string;
@@ -39,6 +41,8 @@ export interface Customer {
   tags: string[];
   notes?: string;
   addresses: CustomerAddress[];
+  /** Product ids the customer has wishlisted (storefront self-service). */
+  wishlist?: string[];
 
   /* lifetime stats (mock for now, derived from orders later) */
   totalOrders: number;

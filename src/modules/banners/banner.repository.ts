@@ -1,10 +1,15 @@
 /**
- * Banners domain — repository. Mock in-memory store seeded with the current
- * homepage promo banner. Swap for Mongo later via getBannerRepository().
+ * Banners domain — repository.
+ *
+ * Two implementations behind one interface:
+ *  • mock  — in-memory, seeded from `data/banners.ts`.
+ *  • mongo — Mongoose model (production), soft-delete aware.
  */
 
-import { env } from "@/core/config/env";
+import { dataSourceFor } from "@/core/config/env";
+import { banners as seed } from "@/data/banners";
 import type { Banner } from "./banner.types";
+import type { BannerDoc } from "./banner.model";
 
 export interface BannerRepository {
   findAll(): Promise<Banner[]>;
@@ -14,36 +19,7 @@ export interface BannerRepository {
   remove(id: string): Promise<boolean>;
 }
 
-const store: Banner[] = [
-  {
-    id: "ban_promo_1",
-    placement: "promo",
-    eyebrow: "Stone of the Month",
-    title: "Blue Sapphire — Neelam Festival",
-    subtitle: "The fastest-acting gem of Saturn — up to 30% off certified, unheated Ceylon sapphires. Limited stock this season.",
-    image:
-      "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=2000&q=85",
-    ctaLabel: "Shop the Offer",
-    ctaHref: "/shop?category=loose-stones",
-    order: 1,
-    active: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "ban_hero_1",
-    placement: "hero",
-    eyebrow: "New Arrivals",
-    title: "Certified Ruby Collection",
-    subtitle: "Hand-picked, lab-certified rubies for vitality and leadership.",
-    image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=2000&q=85",
-    ctaLabel: "Explore Rubies",
-    ctaHref: "/shop?category=rings",
-    order: 1,
-    active: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+const store: Banner[] = seed.map((b) => ({ ...b }));
 
 const mockBannerRepository: BannerRepository = {
   async findAll() {
@@ -71,10 +47,99 @@ const mockBannerRepository: BannerRepository = {
   },
 };
 
+/* ------------------------------------------------------------------ *
+ * Mongo (Mongoose model, soft-delete aware)
+ * ------------------------------------------------------------------ */
+async function model() {
+  const { connectMongoose } = await import("@/core/db/mongoose");
+  const { BannerModel } = await import("./banner.model");
+  await connectMongoose();
+  return BannerModel;
+}
+
+const notDeleted = { isDeleted: { $ne: true } };
+
+function isObjectId(id: string): boolean {
+  return /^[a-f0-9]{24}$/i.test(id);
+}
+
+function fromDoc(doc: BannerDoc): Banner {
+  const ts = doc as unknown as { createdAt?: Date };
+  return {
+    id: String(doc._id),
+    placement: doc.placement as Banner["placement"],
+    eyebrow: doc.eyebrow ?? undefined,
+    title: doc.title,
+    subtitle: doc.subtitle ?? undefined,
+    image: doc.image ?? undefined,
+    ctaLabel: doc.ctaLabel ?? undefined,
+    ctaHref: doc.ctaHref ?? undefined,
+    order: doc.order ?? 0,
+    active: Boolean(doc.active),
+    startsAt: doc.startsAt ?? undefined,
+    endsAt: doc.endsAt ?? undefined,
+    createdAt: ts.createdAt?.toISOString?.() ?? new Date().toISOString(),
+  };
+}
+
+function toDoc(p: Partial<Banner>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (p.placement !== undefined) out.placement = p.placement;
+  if (p.eyebrow !== undefined) out.eyebrow = p.eyebrow ?? null;
+  if (p.title !== undefined) out.title = p.title;
+  if (p.subtitle !== undefined) out.subtitle = p.subtitle ?? null;
+  if (p.image !== undefined) out.image = p.image ?? null;
+  if (p.ctaLabel !== undefined) out.ctaLabel = p.ctaLabel ?? null;
+  if (p.ctaHref !== undefined) out.ctaHref = p.ctaHref ?? null;
+  if (p.order !== undefined) out.order = p.order;
+  if (p.active !== undefined) out.active = p.active;
+  if (p.startsAt !== undefined) out.startsAt = p.startsAt ?? null;
+  if (p.endsAt !== undefined) out.endsAt = p.endsAt ?? null;
+  return out;
+}
+
+const mongoBannerRepository: BannerRepository = {
+  async findAll() {
+    const M = await model();
+    const docs = await M.find(notDeleted).sort({ placement: 1, order: 1, createdAt: -1 }).lean<BannerDoc[]>();
+    return docs.map(fromDoc);
+  },
+  async findById(id) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOne({ _id: id, ...notDeleted }).lean<BannerDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async create(banner) {
+    const M = await model();
+    const created = await M.create(toDoc(banner));
+    return fromDoc(created.toObject() as BannerDoc);
+  },
+  async update(id, patch) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted },
+      { $set: toDoc(patch) },
+      { new: true, runValidators: true },
+    ).lean<BannerDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async remove(id) {
+    const M = await model();
+    if (!isObjectId(id)) return false;
+    const res = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    ).lean<BannerDoc>();
+    return Boolean(res);
+  },
+};
+
 export function getBannerRepository(): BannerRepository {
-  switch (env.DATA_SOURCE) {
+  switch (dataSourceFor("banners")) {
     case "mongo":
-      throw new Error("Mongo banner repository not implemented yet");
+      return mongoBannerRepository;
     case "mock":
     default:
       return mockBannerRepository;

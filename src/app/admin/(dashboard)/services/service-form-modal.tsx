@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AstroService } from "@/types";
-import { SERVICE_ICONS } from "@/modules/services";
+import { SERVICE_ICONS } from "@/modules/services/service.schema";
 import { adminApi } from "@/lib/admin-api";
 import {
   Modal,

@@ -42,9 +42,11 @@ export function CouponFormModal({
   const [minCartValue, setMinCartValue] = useState("");
   const [maxDiscount, setMaxDiscount] = useState("");
   const [usageLimit, setUsageLimit] = useState("");
+  const [perCustomerLimit, setPerCustomerLimit] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [active, setActive] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -56,9 +58,11 @@ export function CouponFormModal({
     setMinCartValue(editing?.minCartValue ? String(editing.minCartValue) : "");
     setMaxDiscount(editing?.maxDiscount ? String(editing.maxDiscount) : "");
     setUsageLimit(editing?.usageLimit ? String(editing.usageLimit) : "");
+    setPerCustomerLimit(editing?.perCustomerLimit ? String(editing.perCustomerLimit) : "");
     setStartsAt(toLocalInput(editing?.startsAt));
     setExpiresAt(toLocalInput(editing?.expiresAt));
     setActive(editing?.active ?? true);
+    setIsPublic(editing?.isPublic ?? false);
   }, [open, editing]);
 
   const save = async () => {
@@ -75,9 +79,11 @@ export function CouponFormModal({
       minCartValue: Number(minCartValue || 0),
       maxDiscount: Number(maxDiscount || 0),
       usageLimit: Number(usageLimit || 0),
+      perCustomerLimit: Number(perCustomerLimit || 0),
       startsAt: startsAt ? new Date(startsAt).toISOString() : "",
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "",
       active,
+      isPublic,
     };
 
     setSaving(true);
@@ -132,8 +138,11 @@ export function CouponFormModal({
           <Field label="Minimum cart (₹)" hint="0 = no minimum">
             <AdminInput type="number" value={minCartValue} onChange={(e) => setMinCartValue(e.target.value)} placeholder="2000" />
           </Field>
-          <Field label="Usage limit" hint="0 = unlimited">
+          <Field label="Usage limit" hint="Total redemptions (0 = unlimited)">
             <AdminInput type="number" value={usageLimit} onChange={(e) => setUsageLimit(e.target.value)} placeholder="100" />
+          </Field>
+          <Field label="Per-customer limit" hint="Max uses per customer (0 = unlimited, 1 = first-order style)">
+            <AdminInput type="number" value={perCustomerLimit} onChange={(e) => setPerCustomerLimit(e.target.value)} placeholder="1" />
           </Field>
         </div>
 
@@ -164,6 +173,16 @@ export function CouponFormModal({
             <p className="text-xs" style={{ color: "var(--a-faint)" }}>Customers can apply this coupon</p>
           </div>
           <Toggle checked={active} onChange={setActive} />
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
+          <div>
+            <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>Show on checkout</p>
+            <p className="text-xs" style={{ color: "var(--a-faint)" }}>
+              List this coupon in the storefront &ldquo;Available offers&rdquo;. Off = secret code (works only if typed).
+            </p>
+          </div>
+          <Toggle checked={isPublic} onChange={setIsPublic} />
         </div>
 
         <div className="flex gap-3 pt-1">

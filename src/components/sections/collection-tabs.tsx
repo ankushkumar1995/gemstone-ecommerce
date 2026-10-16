@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { getAllProducts } from "@/data/products";
+import type { Product } from "@/types";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Container } from "@/components/ui/container";
 import { ProductCard } from "@/components/ui/product-card";
@@ -22,8 +22,8 @@ const tabs: { key: TabKey; label: string }[] = [
  * Tabbed product showcase — lets shoppers quickly browse curated slices
  * of the catalogue without leaving the homepage.
  */
-export function CollectionTabs() {
-  const all = useMemo(() => getAllProducts(), []);
+export function CollectionTabs({ products = [] }: { products?: Product[] }) {
+  const all = products;
   const [tab, setTab] = useState<TabKey>("bestsellers");
 
   const list = useMemo(() => {

@@ -24,7 +24,7 @@ export const articles: Article[] = [
     readMins: 6,
     image:
       "https://images.unsplash.com/photo-1611425143678-08fc480cafde?auto=format&fit=crop&w=1600&q=85",
-    author: "Pandit Nakshatra Sharma",
+    author: "Pandit Astrounkle Sharma",
     authorRole: "Vedic Astrologer",
     date: "2026-09-28",
     tags: ["Gemstones", "Astrology", "Guide"],
@@ -78,7 +78,7 @@ export const articles: Article[] = [
     readMins: 8,
     image:
       "https://images.unsplash.com/photo-1615655406736-b37c4fabf923?auto=format&fit=crop&w=1600&q=85",
-    author: "Pandit Nakshatra Sharma",
+    author: "Pandit Astrounkle Sharma",
     authorRole: "Vedic Astrologer",
     date: "2026-09-20",
     tags: ["Blue Sapphire", "Saturn", "Benefits"],
@@ -126,7 +126,7 @@ export const articles: Article[] = [
     readMins: 5,
     image:
       "https://images.unsplash.com/photo-1602173574767-37ac01994b2a?auto=format&fit=crop&w=1600&q=85",
-    author: "Nakshatra Gem Lab",
+    author: "Astrounkle Gem Lab",
     authorRole: "Gemology Team",
     date: "2026-09-12",
     tags: ["Certification", "Natural", "Education"],
@@ -155,7 +155,7 @@ export const articles: Article[] = [
       },
       {
         type: "p",
-        text: "At Nakshatra, every stone is natural, certified and energised before dispatch — so you never have to wonder.",
+        text: "At Astrounkle, every stone is natural, certified and energised before dispatch — so you never have to wonder.",
       },
     ],
   },
@@ -169,7 +169,7 @@ export const articles: Article[] = [
     readMins: 6,
     image:
       "https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?auto=format&fit=crop&w=1600&q=85",
-    author: "Pandit Nakshatra Sharma",
+    author: "Pandit Astrounkle Sharma",
     authorRole: "Vedic Astrologer",
     date: "2026-09-05",
     tags: ["Yellow Sapphire", "Jupiter", "Prosperity"],
@@ -207,7 +207,7 @@ export const articles: Article[] = [
     readMins: 4,
     image:
       "https://images.unsplash.com/photo-1535556116002-6281ff3e9f36?auto=format&fit=crop&w=1600&q=85",
-    author: "Nakshatra Gem Lab",
+    author: "Astrounkle Gem Lab",
     authorRole: "Gemology Team",
     date: "2026-08-29",
     tags: ["Care", "Guide", "Rituals"],
@@ -245,7 +245,7 @@ export const articles: Article[] = [
     readMins: 7,
     image:
       "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1600&q=85",
-    author: "Pandit Nakshatra Sharma",
+    author: "Pandit Astrounkle Sharma",
     authorRole: "Vedic Astrologer",
     date: "2026-08-18",
     tags: ["Rudraksha", "Spirituality", "Guide"],

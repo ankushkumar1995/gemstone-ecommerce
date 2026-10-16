@@ -17,7 +17,9 @@ export type AuditEntity =
   | "category"
   | "collection"
   | "settings"
-  | "inventory";
+  | "inventory"
+  | "service"
+  | "user";
 
 export type AuditAction =
   | "create"

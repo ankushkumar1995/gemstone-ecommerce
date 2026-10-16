@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import {
   IndianRupee,
@@ -10,8 +12,13 @@ import {
   ArrowUpRight,
   TrendingUp,
   ChevronRight,
+  CalendarClock,
 } from "lucide-react";
+import type { Booking } from "@/modules/bookings";
+import { adminApi } from "@/lib/admin-api";
+import { formatPrice } from "@/lib/utils";
 import { Card, PageHeader, StatusPill } from "../_components/ui";
+import { B_STATUS_META } from "./bookings/booking-status";
 
 const stats = [
   { label: "Total Revenue", value: "₹4,82,900", change: "+12.5%", icon: IndianRupee, tone: "gold" as const, glow: "rgba(201,148,42,0.14)" },
@@ -31,6 +38,7 @@ const quickActions = [
   { label: "Manage Leads", href: "/admin/leads", icon: Inbox },
   { label: "Add Product", href: "/admin/products", icon: Package },
   { label: "View Orders", href: "/admin/orders", icon: ShoppingCart },
+  { label: "Service Bookings", href: "/admin/bookings", icon: CalendarClock },
 ];
 
 const container: Variants = {
@@ -178,6 +186,95 @@ export function DashboardOverview() {
           </Card>
         </motion.div>
       </div>
+
+      {/* live service bookings needing attention */}
+      <div className="mt-6">
+        <PendingBookings />
+      </div>
     </div>
+  );
+}
+
+/* ---------------- Live: bookings needing attention ---------------- */
+function PendingBookings() {
+  const router = useRouter();
+  const [bookings, setBookings] = useState<Booking[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const res = await adminApi.bookings.list();
+      if (active) setBookings(res.ok ? res.data : []);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Surface the ones that need action: pending / confirmed / in_progress.
+  const actionable = (bookings ?? [])
+    .filter((b) => ["pending", "confirmed", "in_progress"].includes(b.status))
+    .slice(0, 6);
+
+  return (
+    <Card>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}>
+          <CalendarClock size={17} /> Service Bookings
+          {bookings && actionable.length > 0 && (
+            <span
+              className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
+              style={{ background: "var(--a-gold)", color: "#fff" }}
+            >
+              {actionable.length}
+            </span>
+          )}
+        </h2>
+        <Link
+          href="/admin/bookings"
+          className="group flex items-center gap-1 text-sm font-medium"
+          style={{ color: "var(--a-gold)" }}
+        >
+          View all
+          <ArrowUpRight size={14} className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </Link>
+      </div>
+
+      {bookings === null ? (
+        <p className="py-6 text-center text-sm" style={{ color: "var(--a-faint)" }}>Loading…</p>
+      ) : actionable.length === 0 ? (
+        <p className="py-6 text-center text-sm" style={{ color: "var(--a-faint)" }}>
+          No bookings need attention right now.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {actionable.map((b) => (
+            <motion.div
+              key={b.id}
+              whileHover={{ x: 4 }}
+              transition={{ type: "spring", stiffness: 400, damping: 26 }}
+              onClick={() => router.push(`/admin/bookings/${b.id}`)}
+              className="group flex cursor-pointer items-center justify-between rounded-lg px-3 py-3 transition-colors hover:bg-black/[0.03]"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--a-fg)" }}>
+                  {b.serviceTitle}
+                </p>
+                <p className="text-xs" style={{ color: "var(--a-faint)" }}>
+                  {b.customer.name} · {b.bookingNumber}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <StatusPill tone={B_STATUS_META[b.status].tone}>{B_STATUS_META[b.status].label}</StatusPill>
+                <span className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>
+                  {formatPrice(b.amount)}
+                </span>
+                <ChevronRight size={15} className="opacity-0 transition-opacity group-hover:opacity-100" style={{ color: "var(--a-muted)" }} />
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

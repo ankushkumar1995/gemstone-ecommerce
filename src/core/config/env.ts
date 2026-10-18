@@ -49,11 +49,20 @@ const parsed = schema.safeParse({
   DATA_SOURCE: process.env.DATA_SOURCE,
   MONGODB_URI: process.env.MONGODB_URI,
   NODE_ENV: process.env.NODE_ENV,
-  // Accept the project's env var names (and the AWS-standard ones as fallback).
-  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
-  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? process.env.AWS_ACCESS_KEY_SECRET,
-  AWS_REGION: process.env.AWS_REGION ?? process.env.REGION,
-  AWS_S3_BUCKET: process.env.AWS_S3_BUCKET ?? process.env.BUCKET_NAME,
+  // Accept several env var names. We prefer NON-"AWS_"-prefixed names first,
+  // because Vercel (and some AWS tooling) reserve/validate "AWS_"-prefixed
+  // vars and may strip or warn on them ("Missing AWS Region"). The S3_* names
+  // are the safe, recommended ones to set in production.
+  AWS_ACCESS_KEY_ID:
+    process.env.S3_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
+  AWS_SECRET_ACCESS_KEY:
+    process.env.S3_SECRET_ACCESS_KEY ??
+    process.env.AWS_SECRET_ACCESS_KEY ??
+    process.env.AWS_ACCESS_KEY_SECRET,
+  AWS_REGION:
+    process.env.S3_REGION ?? process.env.REGION ?? process.env.AWS_REGION,
+  AWS_S3_BUCKET:
+    process.env.S3_BUCKET ?? process.env.BUCKET_NAME ?? process.env.AWS_S3_BUCKET,
   ADMIN_SESSION_SECRET: process.env.ADMIN_SESSION_SECRET,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,

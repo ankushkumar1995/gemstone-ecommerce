@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { AnnouncementBar } from "@/components/layout/announcement-bar";
@@ -10,19 +9,11 @@ import { CartDrawer } from "@/components/cart/cart-drawer";
 import { WhatsAppFloat } from "@/components/layout/whatsapp-float";
 import { CookieConsent } from "@/components/layout/cookie-consent";
 import { settingsService } from "@/modules/settings";
+import { JsonLd } from "@/components/seo/json-ld";
+import { organizationSchema, websiteSchema, astrologyServiceSchema } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Astrounkle — Luxury Gemstones & Astrology",
-  description:
-    "Discover certified natural gemstones curated by your zodiac. Premium stones with lab certification and expert astrological guidance.",
-  keywords: [
-    "gemstones",
-    "astrology",
-    "ratna",
-    "certified gemstones",
-    "zodiac stones",
-  ],
-};
+// Title/description/keywords are inherited from the root layout (brand-driven),
+// so individual pages only override what they need.
 
 /**
  * STOREFRONT layout — all customer-facing chrome lives here (navbar, footer,
@@ -51,6 +42,13 @@ export default async function SiteLayout({
       <CurrencyProvider>
         <CommerceProvider>
           <StoreSettingsProvider value={storeSettings}>
+            <JsonLd
+              data={[
+                organizationSchema(),
+                websiteSchema(),
+                astrologyServiceSchema(),
+              ]}
+            />
             <AnnouncementBar />
             <Navbar />
             <main className="relative min-h-screen">{children}</main>

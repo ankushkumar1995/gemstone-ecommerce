@@ -3,9 +3,23 @@ import { serviceService } from "@/modules/services";
 import { ServicesView } from "@/components/services/services-view";
 
 export const metadata: Metadata = {
-  title: "Astrology Services — Astrounkle",
+  title: "Online Astrology Consultation & Vedic Services in India",
   description:
-    "Book expert Vedic astrology services — kundli analysis, gemstone consultation, kundli matching, career guidance, vastu, muhurat, numerology and live astrologer calls.",
+    "Book an online astrology consultation with the best Vedic astrologers in India — kundli analysis, kundli matching, gemstone consultation, career, marriage & medical astrology, vastu, muhurat and numerology over call or video.",
+  keywords: [
+    "online astrology consultation",
+    "vedic astrology consultation",
+    "consult astrologer online",
+    "best astrologer in India",
+    "kundli analysis",
+    "kundli matching",
+    "marriage astrology consultation",
+    "career astrology consultation",
+    "gemstone consultation",
+    "astrology phone consultation",
+    "astrology video consultation",
+  ],
+  alternates: { canonical: "/services" },
 };
 
 // Services are admin-managed — always render the latest active set.

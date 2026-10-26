@@ -6,6 +6,8 @@ import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { ProductCard } from "@/components/ui/product-card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StaggerContainer } from "@/components/ui/reveal";
+import { JsonLd } from "@/components/seo/json-ld";
+import { productSchema, breadcrumbSchema } from "@/lib/seo";
 
 // PDP pulls the live product (and related items) from the admin catalogue.
 export const dynamic = "force-dynamic";
@@ -17,14 +19,31 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const res = await productService.getActiveBySlug(slug);
-  if (!res.ok) return { title: "Not Found — Astrounkle" };
+  if (!res.ok) return { title: "Not Found" };
   const product = res.value;
+  const title =
+    product.seo?.metaTitle ||
+    `${product.name} — Certified Natural Gemstone | Buy Online`;
+  const description =
+    product.seo?.metaDescription ||
+    `Buy ${product.name} online — ${product.shortDescription} 100% certified natural, lab-tested and astrologically energised. Free shipping across India.`;
   return {
-    title: product.seo?.metaTitle || `${product.name} — Astrounkle`,
-    description: product.seo?.metaDescription || product.shortDescription,
-    openGraph: product.seo?.ogImage
-      ? { images: [{ url: product.seo.ogImage }] }
-      : undefined,
+    title,
+    description,
+    keywords: product.seo?.keywords ?? [
+      product.name,
+      `buy ${product.name} online`,
+      `certified ${product.name}`,
+      "natural gemstone",
+      "certified gemstone India",
+    ],
+    alternates: { canonical: `/product/${product.slug}` },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      images: [{ url: product.seo?.ogImage || product.image }],
+    },
   };
 }
 
@@ -43,6 +62,28 @@ export default async function ProductPage({
 
   return (
     <>
+      <JsonLd
+        data={[
+          productSchema({
+            name: product.name,
+            slug: product.slug,
+            description: product.shortDescription,
+            image: product.image,
+            price: product.price,
+            currency: product.currency,
+            rating: product.rating,
+            reviews: product.reviews,
+            inStock: product.inStock,
+            sku: product.sku,
+            brand: product.brand,
+          }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Shop", path: "/shop" },
+            { name: product.name, path: `/product/${product.slug}` },
+          ]),
+        ]}
+      />
       <ProductDetail product={product} />
 
       <RecentlyViewed excludeId={product.slug === slug ? product.id : undefined} />

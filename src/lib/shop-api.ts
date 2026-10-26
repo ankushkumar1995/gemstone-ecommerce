@@ -132,6 +132,30 @@ export const shopApi = {
         body: JSON.stringify(payload),
       }),
   },
+  astrology: {
+    cities: (q: string) =>
+      request<Array<{ label: string; value: string }>>(
+        `/api/v1/astrology/cities?q=${encodeURIComponent(q)}`,
+      ),
+    kundli: (payload: { name?: string; date: string; time: string; place: string }) =>
+      request<import("@/types/astrology").KundliResponse>(
+        "/api/v1/astrology/kundli",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    matching: (payload: {
+      boy: { name?: string; date: string; time: string; place: string };
+      girl: { name?: string; date: string; time: string; place: string };
+    }) =>
+      request<import("@/types/astrology").MatchingResponse>(
+        "/api/v1/astrology/matching",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    report: (payload: { name?: string; date: string; time: string; place: string }) =>
+      request<import("@/types/astrology").ReportResponse>(
+        "/api/v1/astrology/report",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+  },
   coupons: {
     apply: (code: string, cartSubtotal: number) =>
       request<CouponValidation>("/api/v1/coupons/apply", {

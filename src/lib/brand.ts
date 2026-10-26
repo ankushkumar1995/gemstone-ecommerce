@@ -29,10 +29,50 @@ export const BRAND = {
   /** Short marketing tagline. */
   tagline: "Certified gemstones, astrologically energised.",
   /** SEO meta title default. */
-  metaTitle: "Astrounkle — Luxury Gemstones & Astrology",
+  metaTitle:
+    "Astrounkle — Online Astrology Consultation & Certified Gemstones in India",
   /** SEO meta description default. */
   metaDescription:
-    "Certified natural gemstones curated by your zodiac, with expert astrological guidance.",
+    "Consult the best Vedic astrologers online in India for career, marriage, health & finance. Get your free kundli, birth chart analysis and 100% certified natural gemstones — energised and delivered to your door.",
+  /**
+   * Default SEO keywords. Curated from high-ranking astrology + gemstone
+   * search terms. Used across metadata; keep broad head terms first.
+   */
+  keywords: [
+    "online astrology consultation",
+    "best astrologer in India",
+    "consult astrologer online",
+    "vedic astrology consultation",
+    "talk to astrologer online",
+    "free astrology consultation",
+    "kundli online",
+    "free kundli",
+    "birth chart analysis",
+    "kundli matching",
+    "moon sign calculator",
+    "today horoscope",
+    "horoscope 2026",
+    "daily horoscope",
+    "marriage astrology consultation",
+    "career astrology consultation",
+    "medical astrology",
+    "astrology phone consultation",
+    "astrology video consultation",
+    "gemstone consultation",
+    "certified natural gemstones",
+    "buy gemstones online India",
+    "blue sapphire online",
+    "ruby gemstone",
+    "emerald stone",
+    "yellow sapphire",
+    "gemstone by zodiac sign",
+    "astrological gemstone recommendation",
+    "energised gemstones",
+    "Rahu Ketu remedies",
+    "Sade Sati remedies",
+    "online puja",
+    "vedic remedies",
+  ] as string[],
   socials: {
     instagram: "",
     facebook: "",

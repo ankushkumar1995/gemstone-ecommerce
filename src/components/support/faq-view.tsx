@@ -7,38 +7,8 @@ import { Plus, HelpCircle } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { gemstoneFaqs } from "@/data/faqs";
 import { cn } from "@/lib/utils";
-
-const faqs = [
-  {
-    q: "Are your gemstones natural and certified?",
-    a: "Yes. Every gemstone we sell is 100% natural and untreated unless explicitly stated. Each stone ships with a certificate from a recognised lab such as IGI, GIA or GII, which you can independently verify online.",
-  },
-  {
-    q: "How do I know which gemstone is right for me?",
-    a: "You can shop by your zodiac sign or ruling planet, or book a free consultation with our in-house Vedic astrologers. They assess your birth chart and recommend the most suitable stone and carat weight.",
-  },
-  {
-    q: "What is gemstone energisation (prana pratishtha)?",
-    a: "Before dispatch, learned pandits perform a traditional abhimantran ritual to activate the gemstone's astrological energy. This complimentary service is included with every order.",
-  },
-  {
-    q: "What is your return and buyback policy?",
-    a: "We offer a 7-day easy return on unused, certified stones in original condition. We also provide lifetime buyback on certified gemstones at prevailing market value.",
-  },
-  {
-    q: "How long does delivery take?",
-    a: "Orders are dispatched within 2–4 business days after certification and energisation. Delivery across India typically takes 3–7 business days with fully insured, tracked shipping.",
-  },
-  {
-    q: "Is shipping free?",
-    a: "Shipping is free and fully insured on all orders above ₹5,000. For orders below that, a nominal insured-shipping fee of ₹199 applies.",
-  },
-  {
-    q: "Can I wear any gemstone without consultation?",
-    a: "Certain powerful stones (like Blue Sapphire / Neelam) are best worn after astrological guidance. We strongly recommend a quick free consultation before purchasing high-impact stones.",
-  },
-];
 
 export function FaqView() {
   const [open, setOpen] = useState<number | null>(0);
@@ -60,7 +30,7 @@ export function FaqView() {
         </div>
 
         <div className="mt-10 space-y-3">
-          {faqs.map((f, i) => {
+          {gemstoneFaqs.map((f, i) => {
             const isOpen = open === i;
             return (
               <div

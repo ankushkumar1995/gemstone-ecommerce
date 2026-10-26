@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { serviceService } from "@/modules/services";
 import { ServiceDetailView } from "@/components/services/service-detail-view";
+import { JsonLd } from "@/components/seo/json-ld";
+import { serviceSchema, breadcrumbSchema } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +14,23 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const res = await serviceService.getActiveBySlug(slug);
-  if (!res.ok) return { title: "Service Not Found — Astrounkle" };
+  if (!res.ok) return { title: "Service Not Found" };
+  const s = res.value;
+  const title = `${s.title} Online — Book Vedic Astrology Consultation`;
+  const description = `${s.tagline} ${s.description}`.slice(0, 160);
   return {
-    title: `${res.value.title} — Astrology Services | Astrounkle`,
-    description: res.value.description,
+    title,
+    description,
+    keywords: [
+      s.title.toLowerCase(),
+      `${s.title.toLowerCase()} online`,
+      "online astrology consultation",
+      "vedic astrology consultation",
+      "best astrologer in India",
+      "consult astrologer online",
+    ],
+    alternates: { canonical: `/services/${s.slug}` },
+    openGraph: { type: "website", title, description },
   };
 }
 
@@ -30,8 +45,26 @@ export default async function ServiceDetailPage({
     serviceService.listActive(),
   ]);
   if (!res.ok) notFound();
+  const service = res.value;
 
   return (
-    <ServiceDetailView service={res.value} services={allRes.ok ? allRes.value : []} />
+    <>
+      <JsonLd
+        data={[
+          serviceSchema({
+            title: service.title,
+            slug: service.slug,
+            description: service.description,
+            priceFrom: service.priceFrom,
+          }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Services", path: "/services" },
+            { name: service.title, path: `/services/${service.slug}` },
+          ]),
+        ]}
+      />
+      <ServiceDetailView service={service} services={allRes.ok ? allRes.value : []} />
+    </>
   );
 }

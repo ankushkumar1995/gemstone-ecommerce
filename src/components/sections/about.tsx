@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Gem, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
 
 const stats = [
   { icon: Users, value: "25,000+", label: "Happy Customers" },
@@ -28,6 +29,18 @@ export function About() {
   return (
     <section id="about" className="scroll-mt-24 py-20">
       <Container>
+        <SectionHeader
+          eyebrow="About Astrounkle"
+          title={
+            <>
+              Gemstones Chosen by the Stars,{" "}
+              <span className="text-gradient-gold">Trusted by Thousands</span>
+            </>
+          }
+          description="Where the ancient wisdom of Vedic astrology meets the modern assurance of certified, lab-tested natural stones."
+          className="mb-14"
+        />
+
         <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
           {/* ---- Image collage ---- */}
           <motion.div
@@ -92,17 +105,7 @@ export function About() {
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-gold-500">
-              <span className="h-px w-6 bg-gradient-to-r from-transparent to-gold-400" />
-              About Astrounkle
-            </div>
-
-            <h2 className="text-3xl font-semibold leading-tight text-foreground sm:text-4xl md:text-[2.75rem] md:leading-[1.1]">
-              Gemstones Chosen by the Stars,{" "}
-              <span className="text-gradient-gold">Trusted by Thousands</span>
-            </h2>
-
-            <div className="mt-6 space-y-4 text-base leading-relaxed text-muted">
+            <div className="space-y-4 text-base leading-relaxed text-muted">
               <p>
                 At Astrounkle, we believe a gemstone is far more than an
                 ornament — it is a bridge between you and the cosmos. For over a

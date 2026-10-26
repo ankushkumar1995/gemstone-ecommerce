@@ -21,14 +21,39 @@ import { CurrencySelector } from "@/components/layout/currency-selector";
 import { categories } from "@/data/categories";
 import { useCommerce } from "@/lib/store";
 
-type NavLink = { label: string; href: string; mega?: boolean; accent?: boolean };
+type NavChild = { label: string; href: string; desc?: string };
+type NavLink = {
+  label: string;
+  href: string;
+  mega?: boolean;
+  accent?: boolean;
+  /** Simple hover dropdown of child links (e.g. Free Tools). */
+  children?: NavChild[];
+};
 
 const navLinks: NavLink[] = [
   { label: "Home", href: "/" },
   { label: "Shop All", href: "/shop", mega: true },
   { label: "Services", href: "/services" },
+  {
+    label: "Free Tools",
+    href: "/free-kundli",
+    children: [
+      { label: "Free Kundli", href: "/free-kundli", desc: "Janam kundali by date of birth" },
+      { label: "Kundli Matching", href: "/kundli-matching", desc: "Gun Milan for marriage" },
+      { label: "Moon Sign Calculator", href: "/moon-sign-calculator", desc: "Find your Rashi" },
+      { label: "Nakshatra Finder", href: "/nakshatra-finder", desc: "Your birth star" },
+      { label: "Gemstone Recommendation", href: "/gemstone-recommendation", desc: "Which stone to wear" },
+      { label: "Gemstone by Zodiac", href: "/gemstone-by-zodiac", desc: "Lucky stone per sign" },
+      { label: "Dosha Checker", href: "/dosha-checker", desc: "Manglik, Kaal Sarp, Sade Sati" },
+      { label: "Pitra Dosh Calculator", href: "/pitra-dosh-calculator", desc: "Ancestral dosha check" },
+      { label: "Rudraksha", href: "/rudraksha-recommendation", desc: "Your mukhi rudraksha" },
+      { label: "Lucky Dates", href: "/lucky-dates-calculator", desc: "Numerology & lucky number" },
+      { label: "Love Calculator", href: "/love-calculator", desc: "FLAMES & love match (fun)" },
+    ],
+  },
+  { label: "Free Consultation", href: "/#free-consultation" },
   { label: "Blog", href: "/blog" },
-  { label: "Sale", href: "/shop?sale=true", accent: true },
   { label: "Contact", href: "/contact" },
 ];
 
@@ -37,8 +62,11 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [megaOpen, setMegaOpen] = useState(false);
   const [mobileShopOpen, setMobileShopOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { cartCount, wishlistCount, openCart } = useCommerce();
 
   useEffect(() => {
@@ -59,9 +87,20 @@ export function Navbar() {
     closeTimer.current = setTimeout(() => setMegaOpen(false), 140);
   };
 
+  // Simple dropdown (Free Tools) — same open-instant / close-with-grace behaviour.
+  const openDrop = (key: string) => {
+    if (dropTimer.current) clearTimeout(dropTimer.current);
+    setOpenDropdown(key);
+  };
+  const scheduleCloseDrop = () => {
+    if (dropTimer.current) clearTimeout(dropTimer.current);
+    dropTimer.current = setTimeout(() => setOpenDropdown(null), 140);
+  };
+
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
+      if (dropTimer.current) clearTimeout(dropTimer.current);
     };
   }, []);
 
@@ -123,6 +162,65 @@ export function Navbar() {
                     )}
                   />
                 </Link>
+              </li>
+            ) : link.children ? (
+              <li
+                key={link.href}
+                className="relative"
+                onMouseEnter={() => openDrop(link.label)}
+                onMouseLeave={scheduleCloseDrop}
+              >
+                <Link
+                  href={link.href}
+                  className={cn(
+                    "group relative flex items-center gap-1 text-sm font-medium transition-colors hover:text-gold-500",
+                    openDropdown === link.label ? "text-gold-500" : "text-foreground/85"
+                  )}
+                >
+                  {link.label}
+                  <ChevronDown
+                    size={14}
+                    className={cn(
+                      "transition-transform duration-300",
+                      openDropdown === link.label && "rotate-180"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "absolute -bottom-1 left-0 h-px bg-gradient-to-r from-gold-300 to-royal-400 transition-all duration-300",
+                      openDropdown === link.label ? "w-full" : "w-0 group-hover:w-full"
+                    )}
+                  />
+                </Link>
+
+                <AnimatePresence>
+                  {openDropdown === link.label && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute left-0 top-full z-50 mt-3 max-h-[70vh] w-72 overflow-auto rounded-2xl border border-foreground/10 bg-nebula p-2 shadow-[0_24px_60px_-24px_rgba(36,26,59,0.5)]"
+                    >
+                      {link.children.map((c) => (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={() => setOpenDropdown(null)}
+                          className="group/item block rounded-xl px-4 py-3 transition-colors hover:bg-gold-400/10"
+                        >
+                          <span className="flex items-center justify-between text-sm font-semibold text-foreground transition-colors group-hover/item:text-gold-600">
+                            {c.label}
+                            <ChevronDown size={14} className="-rotate-90 text-muted transition-transform group-hover/item:translate-x-0.5 group-hover/item:text-gold-500" />
+                          </span>
+                          {c.desc && (
+                            <span className="mt-0.5 block text-xs text-muted">{c.desc}</span>
+                          )}
+                        </Link>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </li>
             ) : (
               <li key={link.href}>
@@ -258,6 +356,46 @@ export function Navbar() {
                                 className="block rounded-xl px-4 py-2.5 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-gold-600"
                               >
                                 {cat.title}
+                              </Link>
+                            </li>
+                          ))}
+                        </motion.ul>
+                      )}
+                    </AnimatePresence>
+                  </li>
+                ) : link.children ? (
+                  <li key={link.href}>
+                    <button
+                      aria-expanded={mobileToolsOpen}
+                      onClick={() => setMobileToolsOpen((v) => !v)}
+                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-foreground/5 hover:text-gold-600"
+                    >
+                      {link.label}
+                      <ChevronDown
+                        size={18}
+                        className={cn(
+                          "transition-transform duration-300",
+                          mobileToolsOpen && "rotate-180"
+                        )}
+                      />
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {mobileToolsOpen && (
+                        <motion.ul
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden pl-4"
+                        >
+                          {link.children.map((c) => (
+                            <li key={c.href}>
+                              <Link
+                                href={c.href}
+                                onClick={() => setMobileOpen(false)}
+                                className="block rounded-xl px-4 py-2.5 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-gold-600"
+                              >
+                                {c.label}
                               </Link>
                             </li>
                           ))}

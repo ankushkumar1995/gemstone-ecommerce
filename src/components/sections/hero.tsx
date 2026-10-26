@@ -31,10 +31,24 @@ interface Slide {
   primaryCta: { label: string; href: string };
   secondaryCta: { label: string; href: string };
   image: string;
+  /** Optional background video. When set, it plays instead of the image. */
+  video?: string;
   focus: string;
 }
 
 const slides: Slide[] = [
+  {
+    id: "astro",
+    eyebrow: "Guided by Vedic wisdom since ancient times",
+    titleTop: "Discover What the",
+    titleAccent: "Stars Hold for You",
+    description:
+      "Your birth chart holds the answers. Consult India's trusted Vedic astrologers and wear the one gemstone destined to transform your destiny.",
+    primaryCta: { label: "Talk to an Astrologer", href: "/#free-consultation" },
+    secondaryCta: { label: "Find My Stone", href: "/#zodiac" },
+    image: "/images/image1.png",
+    focus: "center",
+  },
   {
     id: "cosmic",
     eyebrow: "Guided by the stars, crafted for you",
@@ -138,18 +152,33 @@ export function Hero() {
           >
             <motion.div
               className="absolute inset-0"
-              animate={{ scale: [1.0, 1.14] }}
+              animate={slide.video ? undefined : { scale: [1.0, 1.14] }}
               transition={{ duration: AUTOPLAY_MS / 1000 + 2, ease: "linear" }}
             >
-              <Image
-                src={slide.image}
-                alt={`${slide.titleTop} ${slide.titleAccent}`}
-                fill
-                priority={index === 0}
-                sizes="100vw"
-                className="object-cover"
-                style={{ objectPosition: slide.focus }}
-              />
+              {slide.video ? (
+                <video
+                  key={slide.video}
+                  src={slide.video}
+                  poster={slide.image}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  className="h-full w-full object-cover"
+                  style={{ objectPosition: slide.focus }}
+                />
+              ) : (
+                <Image
+                  src={slide.image}
+                  alt={`${slide.titleTop} ${slide.titleAccent} — Astrounkle online Vedic astrology & certified gemstones`}
+                  fill
+                  priority={index === 0}
+                  sizes="100vw"
+                  className="object-cover"
+                  style={{ objectPosition: slide.focus }}
+                />
+              )}
             </motion.div>
             {/* readability scrims */}
             <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-black/15" />

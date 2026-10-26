@@ -28,18 +28,21 @@ export function ShopView({
   initialCategory,
   initialZodiac,
   initialSale = false,
+  initialSearch = "",
 }: {
   products: Product[];
   categories: ShopCategory[];
   initialCategory?: ProductCategory;
   initialZodiac?: ZodiacSign;
   initialSale?: boolean;
+  initialSearch?: string;
 }) {
   const [category, setCategory] = useState<string>(initialCategory ?? "all");
   const [zodiac, setZodiac] = useState<ZodiacSign | "all">(
     initialZodiac ?? "all"
   );
   const [saleOnly, setSaleOnly] = useState(initialSale);
+  const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState<SortKey>("featured");
   const [mobileFilters, setMobileFilters] = useState(false);
 
@@ -49,6 +52,20 @@ export function ShopView({
     if (zodiac !== "all") list = list.filter((p) => p.zodiac.includes(zodiac));
     if (saleOnly)
       list = list.filter((p) => discountPercent(p.mrp, p.price) > 0);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((p) => {
+        const hay = [
+          p.name,
+          p.shortDescription,
+          p.category,
+          ...(p.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
 
     switch (sort) {
       case "price-asc":
@@ -62,12 +79,13 @@ export function ShopView({
         break;
     }
     return list;
-  }, [products, category, zodiac, saleOnly, sort]);
+  }, [products, category, zodiac, saleOnly, search, sort]);
 
   const activeFilters =
     (category !== "all" ? 1 : 0) +
     (zodiac !== "all" ? 1 : 0) +
-    (saleOnly ? 1 : 0);
+    (saleOnly ? 1 : 0) +
+    (search.trim() ? 1 : 0);
 
   const filterPanel = (
     <div className="space-y-8">
@@ -117,6 +135,7 @@ export function ShopView({
             setCategory("all");
             setZodiac("all");
             setSaleOnly(false);
+            setSearch("");
           }}
           className="text-sm text-gold-600 hover:text-gold-500"
         >
@@ -137,6 +156,19 @@ export function ShopView({
         <h1 className="mt-2 font-display text-4xl font-semibold text-foreground sm:text-5xl">
           Explore Our <span className="text-gradient-gold">Gemstones</span>
         </h1>
+        {search.trim() && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-gold-400/10 px-4 py-1.5 text-sm text-foreground">
+            Showing results for
+            <span className="font-semibold text-gold-600">&ldquo;{search.trim()}&rdquo;</span>
+            <button
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="ml-1 rounded-full p-0.5 text-muted transition-colors hover:text-foreground"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* toolbar */}

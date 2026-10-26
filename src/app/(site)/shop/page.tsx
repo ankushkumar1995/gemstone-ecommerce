@@ -5,9 +5,21 @@ import { categoryService } from "@/modules/categories";
 import type { ProductCategory, ZodiacSign } from "@/types";
 
 export const metadata: Metadata = {
-  title: "Shop Gemstones — Astrounkle",
+  title: "Buy Certified Gemstones Online in India",
   description:
-    "Browse certified natural gemstones, rings, pendants and loose stones. Filter by category or zodiac sign.",
+    "Buy 100% certified natural gemstones online in India — blue sapphire (neelam), yellow sapphire (pukhraj), ruby (manik), emerald (panna) and more. Shop by zodiac sign with free astrological guidance and lab certification.",
+  keywords: [
+    "buy gemstones online India",
+    "certified natural gemstones",
+    "blue sapphire online",
+    "yellow sapphire pukhraj",
+    "ruby gemstone manik",
+    "emerald panna stone",
+    "gemstone by zodiac sign",
+    "loose gemstones online",
+    "rudraksha online",
+  ],
+  alternates: { canonical: "/shop" },
 };
 
 // Shop pulls the live catalogue + categories from the admin.
@@ -29,9 +41,9 @@ const validZodiac: ZodiacSign[] = [
 export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; zodiac?: string; sale?: string }>;
+  searchParams: Promise<{ category?: string; zodiac?: string; sale?: string; search?: string }>;
 }) {
-  const { category, zodiac, sale } = await searchParams;
+  const { category, zodiac, sale, search } = await searchParams;
 
   const initialCategory = validCategories.includes(category as ProductCategory)
     ? (category as ProductCategory)
@@ -53,14 +65,17 @@ export default async function ShopPage({
     .filter((c) => (c.status ?? "active") === "active")
     .map((c) => ({ slug: c.slug, title: c.title }));
 
+  const initialSearch = (search ?? "").trim();
+
   return (
     <ShopView
-      key={`${initialCategory ?? "all"}-${initialZodiac ?? "all"}-${initialSale}`}
+      key={`${initialCategory ?? "all"}-${initialZodiac ?? "all"}-${initialSale}-${initialSearch}`}
       products={products}
       categories={categories}
       initialCategory={initialCategory}
       initialZodiac={initialZodiac}
       initialSale={initialSale}
+      initialSearch={initialSearch}
     />
   );
 }

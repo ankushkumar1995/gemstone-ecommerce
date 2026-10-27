@@ -34,6 +34,8 @@ interface Slide {
   /** Optional background video. When set, it plays instead of the image. */
   video?: string;
   focus: string;
+  /** Extra left-side darkening for slides whose image is bright on the left. */
+  tint?: boolean;
 }
 
 const slides: Slide[] = [
@@ -50,43 +52,54 @@ const slides: Slide[] = [
     focus: "center",
   },
   {
-    id: "cosmic",
-    eyebrow: "Guided by the stars, crafted for you",
-    titleTop: "Wear Your",
-    titleAccent: "Cosmic Destiny",
+    id: "gemstone",
+    eyebrow: "Certified natural gemstones, chosen for you",
+    titleTop: "Energised",
+    titleAccent: "Vedic Gemstones",
     description:
-      "Certified natural gemstones, matched to your zodiac and crafted into timeless luxury jewellery. Authentic. Energised. Yours.",
-    primaryCta: { label: "Explore Collection", href: "/shop" },
+      "Authentic, lab-certified natural gemstones matched to your birth chart. Each stone is energised and ready to align your planets in your favour.",
+    primaryCta: { label: "Explore Gemstones", href: "/shop" },
     secondaryCta: { label: "Find My Stone", href: "/#zodiac" },
-    image:
-      "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=2400&q=85",
+    image: "/images/gemstones-vedic-astrolabe.png",
     focus: "center",
   },
   {
-    id: "ruby",
-    eyebrow: "The gem of the Sun",
-    titleTop: "Ignite Your",
-    titleAccent: "Inner Power",
-    description:
-      "Discover our signature ruby & gold collection — hand-set, IGI certified, and radiant with the energy of confidence and vitality.",
-    primaryCta: { label: "Shop Rings", href: "/shop?category=rings" },
-    secondaryCta: { label: "View Bestsellers", href: "/shop" },
-    image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=2400&q=85",
-    focus: "center",
-  },
-  {
-    id: "sapphire",
-    eyebrow: "Fortune favours the bold",
+    id: "astrology",
+    eyebrow: "Guided by Vedic astrology",
     titleTop: "Rare & Radiant",
     titleAccent: "Certified Stones",
     description:
-      "Unheated Ceylon sapphires, emeralds and loose gems — investment-grade, lab certified, and impossibly brilliant.",
+      "Unheated rubies, blue sapphires, emeralds and yellow sapphires — investment-grade, lab certified, and chosen as per your horoscope.",
     primaryCta: { label: "Shop Loose Stones", href: "/shop?category=loose-stones" },
-    secondaryCta: { label: "Talk to an Expert", href: "/#zodiac" },
-    image:
-      "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=2400&q=85",
+    secondaryCta: { label: "Talk to an Astrologer", href: "/#free-consultation" },
+    image: "/images/vedic-gemstone-astrology.png",
     focus: "center",
+  },
+  {
+    id: "zodiac",
+    eyebrow: "Your zodiac, your stone",
+    titleTop: "Find Your",
+    titleAccent: "Lucky Gemstone",
+    description:
+      "Every rashi has a gemstone written in the stars. Discover the stone aligned to your zodiac sign and wear the energy meant for you.",
+    primaryCta: { label: "Find My Stone", href: "/#zodiac" },
+    secondaryCta: { label: "Talk to an Astrologer", href: "/#free-consultation" },
+    image: "/images/sunlit-odiac-muse.png",
+    focus: "right",
+    tint: true,
+  },
+  {
+    id: "consultation",
+    eyebrow: "First consultation on us",
+    titleTop: "Talk to a",
+    titleAccent: "Vedic Astrologer",
+    description:
+      "Get a personalised reading of your birth chart and the right gemstone remedy from India's trusted Vedic astrologers. Your first consultation is free.",
+    primaryCta: { label: "Book Free Consultation", href: "/#free-consultation" },
+    secondaryCta: { label: "Explore Gemstones", href: "/shop" },
+    image: "/images/serene-vedic-astrology-consultation.png",
+    focus: "center",
+    tint: true,
   },
 ];
 
@@ -180,9 +193,15 @@ export function Hero() {
                 />
               )}
             </motion.div>
-            {/* readability scrims */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-black/15" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/25" />
+            {/* readability scrims — kept light so the image stays clear */}
+            <div
+              className={`absolute inset-0 bg-gradient-to-r ${
+                slide.tint
+                  ? "from-black/65 via-black/25 to-transparent"
+                  : "from-black/45 via-black/10 to-transparent"
+              }`}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
           </motion.div>
         </AnimatePresence>
 
@@ -225,7 +244,7 @@ export function Hero() {
 
                 <motion.p
                   variants={textItem}
-                  className="mt-6 max-w-lg text-base leading-relaxed text-white/85 sm:text-lg"
+                  className="mt-6 max-w-lg text-base leading-relaxed text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.75)] sm:text-lg"
                 >
                   {slide.description}
                 </motion.p>

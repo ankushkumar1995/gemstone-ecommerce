@@ -32,6 +32,7 @@ import { customerApi, type AddressPayload } from "@/lib/customer-api";
 import { shopApi } from "@/lib/shop-api";
 import type { CustomerAddress } from "@/modules/customers";
 import type { Order as DbOrder } from "@/modules/orders";
+import type { ConfigSelection, PricedConfig } from "@/modules/configurator";
 
 /* ------------------------------------------------------------------ *
  * Types
@@ -39,6 +40,64 @@ import type { Order as DbOrder } from "@/modules/orders";
 export interface CartLine {
   product: Product;
   qty: number;
+  /**
+   * Configurator selection for this line (pooja / jaap / wear). Optional — a
+   * plain product has none. The SAME product with different configs produces
+   * separate lines (see `lineKey`).
+   */
+  selection?: ConfigSelection;
+  /** Priced snapshot of the selection (preview; server re-validates at checkout). */
+  priced?: PricedConfig;
+  /** Per-unit price including add-ons (base + add-ons). Falls back to product.price. */
+  unitPrice?: number;
+  /**
+   * Stable identity for a cart line = product id + a hash of its config. Lets
+   * "Ruby as loose" and "Ruby as a ring" coexist as two lines. Legacy lines
+   * (no config) use the bare product id, so old carts keep working.
+   */
+  lineKey?: string;
+}
+
+/** Build the stable line identity from a product id + its selection. */
+export function makeLineKey(productId: string, selection?: ConfigSelection): string {
+  if (!selection || Object.keys(selection).length === 0) return productId;
+  const w = selection.wear;
+  const parts = [
+    productId,
+    selection.poojaId ?? "",
+    selection.jaapId ?? "",
+    w ? `${w.type}:${w.metalId ?? ""}:${w.designId ?? ""}:${w.sizeSystem ?? ""}:${w.size ?? ""}` : "",
+  ];
+  return parts.join("|");
+}
+
+/** The effective line key for an existing line (handles legacy lines). */
+function lineKeyOf(line: CartLine): string {
+  return line.lineKey ?? makeLineKey(line.product.id, line.selection);
+}
+
+/** Per-unit price of a line (add-ons included when present). */
+function lineUnitPrice(line: CartLine): number {
+  return line.unitPrice ?? line.product.price;
+}
+
+/** Human-readable one-line summary of a line's configurator selection. */
+export function describeConfig(priced?: PricedConfig): string[] {
+  if (!priced) return [];
+  const out: string[] = [];
+  if (priced.wear && priced.wear.type !== "loose") {
+    const w = priced.wear;
+    const bits = [
+      w.type === "ring" ? "Ring" : "Pendant",
+      w.metal?.label,
+      w.design?.label,
+      w.size ? `Size ${w.size}` : undefined,
+    ].filter(Boolean);
+    out.push(bits.join(" · "));
+  }
+  if (priced.pooja && priced.pooja.price > 0) out.push(priced.pooja.label);
+  if (priced.jaap) out.push(priced.jaap.label);
+  return out;
 }
 
 export interface User {
@@ -102,9 +161,9 @@ interface CommerceState {
 
 type Action =
   | { type: "HYDRATE"; payload: Partial<CommerceState> }
-  | { type: "ADD_TO_CART"; product: Product; qty: number }
-  | { type: "REMOVE_FROM_CART"; id: string }
-  | { type: "SET_QTY"; id: string; qty: number }
+  | { type: "ADD_TO_CART"; line: CartLine }
+  | { type: "REMOVE_FROM_CART"; key: string }
+  | { type: "SET_QTY"; key: string; qty: number }
   | { type: "CLEAR_CART" }
   | { type: "TOGGLE_WISHLIST"; product: Product }
   | { type: "REMOVE_FROM_WISHLIST"; id: string }
@@ -132,32 +191,32 @@ function reducer(state: CommerceState, action: Action): CommerceState {
       return { ...state, ...action.payload };
 
     case "ADD_TO_CART": {
-      const existing = state.cart.find((l) => l.product.id === action.product.id);
+      const key = lineKeyOf(action.line);
+      const existing = state.cart.find((l) => lineKeyOf(l) === key);
       if (existing) {
+        // Same product + same config → bump qty. Different config → new line.
         return {
           ...state,
           cart: state.cart.map((l) =>
-            l.product.id === action.product.id
-              ? { ...l, qty: l.qty + action.qty }
-              : l
+            lineKeyOf(l) === key ? { ...l, qty: l.qty + action.line.qty } : l,
           ),
         };
       }
       return {
         ...state,
-        cart: [...state.cart, { product: action.product, qty: action.qty }],
+        cart: [...state.cart, { ...action.line, lineKey: key }],
       };
     }
 
     case "REMOVE_FROM_CART":
-      return { ...state, cart: state.cart.filter((l) => l.product.id !== action.id) };
+      return { ...state, cart: state.cart.filter((l) => lineKeyOf(l) !== action.key) };
 
     case "SET_QTY":
       return {
         ...state,
         cart: state.cart
           .map((l) =>
-            l.product.id === action.id ? { ...l, qty: Math.max(0, action.qty) } : l
+            lineKeyOf(l) === action.key ? { ...l, qty: Math.max(0, action.qty) } : l,
           )
           .filter((l) => l.qty > 0),
       };
@@ -338,9 +397,20 @@ interface CommerceContextValue extends CommerceState {
   cartSubtotal: number;
   cartMrpTotal: number;
   wishlistCount: number;
-  addToCart: (product: Product, qty?: number) => void;
-  removeFromCart: (id: string) => void;
-  setQty: (id: string, qty: number) => void;
+  /**
+   * Add to cart. Optional `opts` carry the configurator selection + its priced
+   * snapshot + the per-unit price (base + add-ons). Without opts it behaves
+   * exactly as before (plain product).
+   */
+  addToCart: (
+    product: Product,
+    qty?: number,
+    opts?: { selection?: ConfigSelection; priced?: PricedConfig; unitPrice?: number },
+  ) => void;
+  /** Remove by line key (use the line's `lineKey`). */
+  removeFromCart: (key: string) => void;
+  /** Set qty by line key. */
+  setQty: (key: string, qty: number) => void;
   clearCart: () => void;
   toggleWishlist: (product: Product) => void;
   removeFromWishlist: (id: string) => void;
@@ -475,16 +545,32 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     }
   }, [state, hydrated]);
 
-  const addToCart = useCallback((product: Product, qty = 1) => {
-    dispatch({ type: "ADD_TO_CART", product, qty });
-    setCartOpen(true);
-  }, []);
+  const addToCart = useCallback(
+    (
+      product: Product,
+      qty = 1,
+      opts?: { selection?: ConfigSelection; priced?: PricedConfig; unitPrice?: number },
+    ) => {
+      const selection = opts?.selection;
+      const line: CartLine = {
+        product,
+        qty,
+        selection,
+        priced: opts?.priced,
+        unitPrice: opts?.unitPrice,
+        lineKey: makeLineKey(product.id, selection),
+      };
+      dispatch({ type: "ADD_TO_CART", line });
+      setCartOpen(true);
+    },
+    [],
+  );
   const removeFromCart = useCallback(
-    (id: string) => dispatch({ type: "REMOVE_FROM_CART", id }),
+    (key: string) => dispatch({ type: "REMOVE_FROM_CART", key }),
     []
   );
   const setQty = useCallback(
-    (id: string, qty: number) => dispatch({ type: "SET_QTY", id, qty }),
+    (key: string, qty: number) => dispatch({ type: "SET_QTY", key, qty }),
     []
   );
   const clearCart = useCallback(() => dispatch({ type: "CLEAR_CART" }), []);
@@ -590,12 +676,14 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CommerceContextValue>(() => {
     const cartCount = state.cart.reduce((n, l) => n + l.qty, 0);
+    // Subtotal uses the per-line unit price (add-ons included when present).
     const cartSubtotal = state.cart.reduce(
-      (sum, l) => sum + l.product.price * l.qty,
+      (sum, l) => sum + lineUnitPrice(l) * l.qty,
       0
     );
+    // MRP total: compare against MRP + the same add-ons (so "you save" stays sane).
     const cartMrpTotal = state.cart.reduce(
-      (sum, l) => sum + l.product.mrp * l.qty,
+      (sum, l) => sum + (l.product.mrp + (lineUnitPrice(l) - l.product.price)) * l.qty,
       0
     );
     return {

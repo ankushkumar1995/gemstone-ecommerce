@@ -24,6 +24,8 @@ function fromDoc(doc: CategoryDoc): Category {
     tint: doc.tint ?? "",
     order: doc.order,
     status: doc.status,
+    parentId: doc.parentId ? String(doc.parentId) : null,
+    ancestors: Array.isArray(doc.ancestors) ? doc.ancestors.map((a) => String(a)) : [],
     createdAt:
       doc.createdAt instanceof Date ? doc.createdAt.toISOString() : (doc.createdAt as string | undefined),
     updatedAt:
@@ -46,6 +48,10 @@ export interface CategoryRepository {
   findBySlug(slug: string): Promise<Category | null>;
   /** Is `slug` taken by a different (non-deleted) category? For uniqueness guard. */
   slugTakenBy(slug: string, exceptId?: string): Promise<boolean>;
+  /** Direct children of a category, in display order. */
+  findChildren(parentId: string): Promise<Category[]>;
+  /** How many (non-deleted) direct children a category has — delete/reparent guard. */
+  countChildren(parentId: string): Promise<number>;
   create(input: CreateCategoryInput): Promise<Category>;
   update(id: string, patch: Partial<Category>): Promise<Category | null>;
   /** Soft delete (flag). */
@@ -65,6 +71,8 @@ export interface CreateCategoryInput {
   tint?: string;
   order?: number;
   status?: "active" | "inactive";
+  parentId?: string | null;
+  ancestors?: string[];
 }
 
 /* ------------------------------------------------------------------ *
@@ -112,6 +120,12 @@ const mockCategoryRepository: CategoryRepository = {
   async slugTakenBy(slug, exceptId) {
     return store.some((x) => x.slug === slug && x.id !== exceptId);
   },
+  async findChildren(parentId) {
+    return sorted(store.filter((x) => x.parentId === parentId)).map((c) => ({ ...c }));
+  },
+  async countChildren(parentId) {
+    return store.filter((x) => x.parentId === parentId).length;
+  },
   async create(input) {
     const c: Category = {
       id: `cat_${Date.now().toString(36)}`,
@@ -122,6 +136,8 @@ const mockCategoryRepository: CategoryRepository = {
       slug: input.slug,
       title: input.title,
       image: input.image,
+      parentId: input.parentId ?? null,
+      ancestors: input.ancestors ?? [],
       createdAt: new Date().toISOString(),
     };
     store.push(c);
@@ -206,6 +222,19 @@ const mongoCategoryRepository: CategoryRepository = {
     const count = await M.countDocuments(q);
     return count > 0;
   },
+  async findChildren(parentId) {
+    const M = await model();
+    if (!isObjectId(parentId)) return [];
+    const docs = await M.find({ parentId, ...notDeleted })
+      .sort({ order: 1, createdAt: 1 })
+      .lean<CategoryDoc[]>();
+    return docs.map(fromDoc);
+  },
+  async countChildren(parentId) {
+    const M = await model();
+    if (!isObjectId(parentId)) return 0;
+    return M.countDocuments({ parentId, ...notDeleted });
+  },
   async create(input) {
     const M = await model();
     const created = await M.create({
@@ -216,6 +245,8 @@ const mongoCategoryRepository: CategoryRepository = {
       tint: input.tint ?? "",
       order: input.order ?? 0,
       status: input.status ?? "active",
+      parentId: input.parentId ?? null,
+      ancestors: input.ancestors ?? [],
     });
     return fromDoc(created.toObject() as CategoryDoc);
   },

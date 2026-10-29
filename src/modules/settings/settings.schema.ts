@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { globalConfiguratorSchema } from "@/modules/configurator/configurator.schema";
 
 const generalSchema = z.object({
   storeName: z.string().trim().min(1, "Store name is required").max(80),
@@ -111,10 +112,20 @@ const orderSchema = z.object({
   maxQtyPerItem: z.coerce.number().int().min(0),
 });
 
+const emailProviderSchema = z.object({
+  kind: z.enum(["smtp", "resend"]),
+  enabled: z.coerce.boolean(),
+  priority: z.coerce.number().int().min(0).max(999),
+  smtpHost: z.string().trim().max(120).optional().or(z.literal("")),
+  smtpPort: z.coerce.number().int().min(0).max(65535).optional(),
+  smtpUser: z.string().trim().max(120).optional().or(z.literal("")),
+});
+
 const emailSchema = z.object({
   fromName: z.string().trim().min(1).max(80),
   fromEmail: z.string().trim().email(),
   replyTo: z.string().trim().email().optional().or(z.literal("")),
+  providers: z.array(emailProviderSchema).max(10).optional(),
   smtpHost: z.string().trim().max(120).optional().or(z.literal("")),
   smtpPort: z.coerce.number().int().min(0).max(65535).optional(),
   smtpUser: z.string().trim().max(120).optional().or(z.literal("")),
@@ -135,6 +146,8 @@ export const updateSettingsSchema = z.object({
   inventory: inventorySchema.partial().optional(),
   order: orderSchema.partial().optional(),
   email: emailSchema.partial().optional(),
+  // Full-object replace (the admin editor sends the whole configurator).
+  configurator: globalConfiguratorSchema.optional(),
 });
 
 export type UpdateSettingsDto = z.infer<typeof updateSettingsSchema>;

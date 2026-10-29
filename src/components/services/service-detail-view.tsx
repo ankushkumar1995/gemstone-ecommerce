@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ScrollText,
@@ -124,13 +125,30 @@ export function ServiceDetailView({
         {/* ---- Right: detail + lead form ---- */}
         <div>
           {/* header card */}
-          <div className="relative overflow-hidden rounded-[2rem] border border-foreground/10 bg-nebula p-6 sm:p-8">
+          <div className="relative overflow-hidden rounded-[2rem] border border-foreground/10 bg-nebula">
+            {/* banner image (when set) */}
+            {service.image && (
+              <div className="relative aspect-[21/9] w-full overflow-hidden">
+                <Image
+                  src={service.image}
+                  alt={service.title}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 60vw"
+                  priority
+                  className="object-cover"
+                />
+              </div>
+            )}
+
+            <div className="relative p-6 sm:p-8">
             <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-royal-400/15 to-gold-400/20 blur-2xl" />
             <div className="relative flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
-                <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600">
-                  <Icon size={28} />
-                </span>
+                {!service.image && (
+                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600">
+                    <Icon size={28} />
+                  </span>
+                )}
                 <div>
                   <div className="flex items-center gap-2">
                     <h1 className="text-2xl font-semibold text-foreground sm:text-3xl">
@@ -162,9 +180,10 @@ export function ServiceDetailView({
               </div>
             </div>
 
-            <p className="relative mt-5 text-base leading-relaxed text-muted">
-              {service.description}
-            </p>
+            <div
+              className="prose-service relative mt-5 text-base leading-relaxed text-muted [&_a]:text-gold-600 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-gold-400/50 [&_blockquote]:pl-4 [&_blockquote]:italic [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground [&_img]:my-4 [&_img]:rounded-xl [&_li]:ml-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+              dangerouslySetInnerHTML={{ __html: service.description }}
+            />
 
             {/* trust row */}
             <div className="relative mt-5 flex flex-wrap gap-4 border-t border-foreground/8 pt-5 text-sm text-muted">
@@ -177,6 +196,7 @@ export function ServiceDetailView({
               <span className="flex items-center gap-1.5">
                 <Star size={16} className="text-gold-500" /> 4.9 rating
               </span>
+            </div>
             </div>
           </div>
 

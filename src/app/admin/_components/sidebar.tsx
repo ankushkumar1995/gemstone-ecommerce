@@ -22,6 +22,8 @@ import {
   FileText,
   FileStack,
   GalleryHorizontalEnd,
+  MessageSquare,
+  Mail,
   RotateCcw,
   ScrollText,
   Wallet,
@@ -86,6 +88,8 @@ const groups: NavGroup[] = [
     items: [
       { label: "Coupons", href: "/admin/coupons", icon: TicketPercent },
       { label: "Banners", href: "/admin/banners", icon: GalleryHorizontalEnd },
+      { label: "Popups", href: "/admin/popups", icon: MessageSquare },
+      { label: "Email", href: "/admin/email", icon: Mail },
       { label: "Services", href: "/admin/services", icon: Sparkles },
       { label: "Bookings", href: "/admin/bookings", icon: CalendarClock },
     ],

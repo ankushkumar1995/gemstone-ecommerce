@@ -8,7 +8,9 @@ import { StoreSettingsProvider, DEFAULT_STORE_SETTINGS } from "@/lib/store-setti
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { WhatsAppFloat } from "@/components/layout/whatsapp-float";
 import { CookieConsent } from "@/components/layout/cookie-consent";
+import { PopupManager } from "@/components/layout/popup-manager";
 import { settingsService } from "@/modules/settings";
+import { popupService } from "@/modules/popups";
 import { JsonLd } from "@/components/seo/json-ld";
 import { organizationSchema, websiteSchema, astrologyServiceSchema } from "@/lib/seo";
 
@@ -27,6 +29,9 @@ export default async function SiteLayout({
 }) {
   const res = await settingsService.get();
   const g = res.ok ? res.value.general : null;
+
+  const popupsRes = await popupService.liveForPublic();
+  const livePopups = popupsRes.ok ? popupsRes.value : [];
   const storeSettings = g
     ? {
         storeName: g.storeName || DEFAULT_STORE_SETTINGS.storeName,
@@ -56,6 +61,7 @@ export default async function SiteLayout({
             <CartDrawer />
             <WhatsAppFloat />
             <CookieConsent />
+            <PopupManager popups={livePopups} />
           </StoreSettingsProvider>
         </CommerceProvider>
       </CurrencyProvider>

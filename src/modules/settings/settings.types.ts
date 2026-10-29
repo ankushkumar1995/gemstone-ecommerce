@@ -128,10 +128,37 @@ export interface OrderSettings {
   maxQtyPerItem: number; // 0 = no max
 }
 
+/**
+ * A single email delivery provider. The send engine tries ENABLED providers
+ * in ascending `priority` order and falls back to the next one on failure.
+ * Secrets (SMTP password, Resend API key) live ONLY in env — never here.
+ */
+export type EmailProviderKind = "smtp" | "resend";
+
+export interface EmailProviderConfig {
+  kind: EmailProviderKind;
+  /** whether this provider participates in sending */
+  enabled: boolean;
+  /** lower = tried first */
+  priority: number;
+  /** SMTP connection (kind === "smtp"); password comes from env SMTP_PASSWORD */
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  /** Resend (kind === "resend"); the API key comes from env RESEND_API_KEY */
+  // (no non-secret config needed beyond from address, which is shared below)
+}
+
 export interface EmailSettings {
   fromName: string;
   fromEmail: string;
   replyTo?: string;
+
+  /** Ordered list of delivery providers with automatic fallback. */
+  providers: EmailProviderConfig[];
+
+  // ── Legacy single-SMTP fields (kept for backward compatibility; the engine
+  //    reads `providers` when present, else falls back to these). ──
   smtpHost?: string;
   smtpPort?: number;
   smtpUser?: string;
@@ -153,5 +180,12 @@ export interface StoreSettings {
   inventory: InventorySettings;
   order: OrderSettings;
   email: EmailSettings;
+  /**
+   * Store-wide product-configurator defaults (pooja / mantra-jaap /
+   * choice-of-wear). Optional for backward compatibility — when absent, the
+   * resolver falls back to DEFAULT_GLOBAL_CONFIGURATOR. Products inherit,
+   * customize or disable these per group.
+   */
+  configurator?: import("@/modules/configurator/configurator.types").GlobalConfigurator;
   updatedAt: string; // ISO
 }

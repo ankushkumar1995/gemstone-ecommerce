@@ -271,8 +271,17 @@ function fromDoc(doc: ProductDoc): Product {
       weightCarat: gem.weightCarat ?? 0,
       certification: gem.certification ?? "Lab Certified",
       color: gem.color ?? "—",
+      // Optional attributes surfaced to the PDP spec cards when present.
+      ...(gem.clarity ? { clarity: gem.clarity } : {}),
+      ...(gem.cut ? { cut: gem.cut } : {}),
+      ...(gem.treatment ? { treatment: gem.treatment } : {}),
+      ...(gem.labName ? { labName: gem.labName } : {}),
+      ...(gem.certificateNumber ? { certificateNumber: gem.certificateNumber } : {}),
     },
     inStock,
+    // Per-product configurator override (undefined on legacy products).
+    configurator: (doc as unknown as { configurator?: unknown }).configurator as
+      | Product["configurator"],
 
     /* extended / production surface */
     status: (doc.status === "active" ? "active" : doc.status === "archived" ? "archived" : "draft"),
@@ -426,6 +435,7 @@ function toDoc(p: Partial<Product>): Record<string, unknown> {
   if (p.badge !== undefined) out.badge = p.badge ?? null;
   if (p.publishAt !== undefined) out.publishAt = p.publishAt ? new Date(p.publishAt) : null;
   if (p.gemstone !== undefined) out.gemstone = p.gemstone;
+  if (p.configurator !== undefined) out.configurator = p.configurator;
   if (p.fullVariants !== undefined) out.variants = p.fullVariants;
   if (p.videos !== undefined) {
     out.videos = p.videos.map((v) => ({ url: v.url, kind: v.kind, label: v.label }));

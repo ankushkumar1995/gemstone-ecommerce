@@ -18,6 +18,8 @@ import {
   Star,
 } from "lucide-react";
 import type { Product, ProductContentSection, ProductVideo, Collection, Category } from "@/types";
+import type { ProductConfigurator, GlobalConfigurator } from "@/modules/configurator";
+import { ProductConfiguratorField } from "./product-configurator-field";
 import type { CreateProductDto } from "@/modules/products";
 import { adminApi } from "@/lib/admin-api";
 import {
@@ -49,7 +51,15 @@ const PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn",
   (p) => ({ value: p, label: p })
 );
 
-type TabKey = "general" | "variants" | "content" | "media" | "seo" | "organise" | "workflow";
+type TabKey =
+  | "general"
+  | "variants"
+  | "configurator"
+  | "content"
+  | "media"
+  | "seo"
+  | "organise"
+  | "workflow";
 
 const fade = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
@@ -120,6 +130,12 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
   /* workflow */
   const [publishAt, setPublishAt] = useState(toLocalInput(editing?.publishAt));
 
+  /* configurator (per-product override of the global config) */
+  const [configurator, setConfigurator] = useState<ProductConfigurator>(
+    editing?.configurator ?? {},
+  );
+  const [globalConfig, setGlobalConfig] = useState<GlobalConfigurator | undefined>(undefined);
+
   /* fetched data for pickers */
   const [allCollections, setAllCollections] = useState<Collection[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -127,13 +143,15 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
 
   useEffect(() => {
     (async () => {
-      const [cols, prods, cats] = await Promise.all([
+      const [cols, prods, cats, settings] = await Promise.all([
         adminApi.collections.list(),
         adminApi.products.list(),
         adminApi.categories.list(),
+        adminApi.settings.get(),
       ]);
       if (cols.ok) setAllCollections(cols.data);
       if (prods.ok) setAllProducts(prods.data);
+      if (settings.ok) setGlobalConfig(settings.data.configurator);
       if (cats.ok) {
         setAllCategories(cats.data);
         // default to the first category when creating a new product
@@ -211,6 +229,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
         certification,
         color,
       },
+      configurator,
     };
 
     setSaving(true);
@@ -234,6 +253,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
   const tabs: { value: TabKey; label: string }[] = [
     { value: "general", label: "General" },
     { value: "variants", label: "Variants" },
+    { value: "configurator", label: "Configurator" },
     { value: "content", label: "Content" },
     { value: "media", label: "Media" },
     { value: "seo", label: "SEO" },
@@ -391,6 +411,23 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
                   </p>
                 </div>
               )}
+            </div>
+          </Card>
+        )}
+
+        {tab === "configurator" && (
+          <Card>
+            <SectionTitle icon={Sparkles} title="Product configurator" />
+            <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>
+              Pooja, mantra jaap and choice-of-wear for this product. Inherit the
+              store defaults, customize them, or disable a group entirely.
+            </p>
+            <div className="mt-4">
+              <ProductConfiguratorField
+                value={configurator}
+                onChange={setConfigurator}
+                global={globalConfig}
+              />
             </div>
           </Card>
         )}

@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { configSelectionSchema } from "@/modules/configurator/configurator.schema";
 
 const addressSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -19,6 +20,8 @@ const itemSchema = z.object({
   productId: z.string().trim().min(1),
   variantId: z.string().trim().optional(),
   qty: z.coerce.number().int().min(1, "Quantity must be at least 1"),
+  /** Configurator selection (IDs only). Server recomputes the price from it. */
+  config: configSelectionSchema.optional(),
 });
 
 export const createOrderSchema = z.object({

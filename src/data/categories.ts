@@ -1,6 +1,52 @@
 import type { Category } from "@/types";
 
+/**
+ * Seed taxonomy — demonstrates the 2-level hierarchy (parent → child).
+ *
+ *  Gemstones (parent)
+ *    ├─ Gemstone Rings
+ *    ├─ Pendants & Lockets
+ *    └─ Certified Loose Stones
+ *  Spiritual (parent)
+ *    ├─ Healing Bracelets
+ *    └─ Rudraksha & Malas
+ *
+ * `parentId: null` + empty `ancestors` = a top-level category. A child carries
+ * its parent's id in both `parentId` and `ancestors` (nearest-last). Existing
+ * flat categories (no parentId) simply render as top-level, so nothing breaks.
+ */
 export const categories: Category[] = [
+  // ── Top-level parents ──────────────────────────────────────────
+  {
+    id: "cat_gemstones",
+    slug: "gemstones",
+    title: "Gemstones & Jewellery",
+    tagline: "Astrologically energised stones, set in gold & silver",
+    image:
+      "https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?auto=format&fit=crop&w=1200&q=80",
+    tint: "linear-gradient(135deg, rgba(122,69,245,0.35), rgba(21,15,50,0.1))",
+    order: 1,
+    status: "active",
+    parentId: null,
+    ancestors: [],
+    createdAt: "2026-01-05T09:00:00.000Z",
+  },
+  {
+    id: "cat_spiritual",
+    slug: "spiritual",
+    title: "Spiritual & Wellness",
+    tagline: "Sacred beads and crystals for balance & protection",
+    image:
+      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80",
+    tint: "linear-gradient(135deg, rgba(145,105,255,0.32), rgba(11,8,32,0.1))",
+    order: 2,
+    status: "active",
+    parentId: null,
+    ancestors: [],
+    createdAt: "2026-01-05T09:00:00.000Z",
+  },
+
+  // ── Children of "Gemstones & Jewellery" ────────────────────────
   {
     id: "cat_rings",
     slug: "rings",
@@ -10,6 +56,9 @@ export const categories: Category[] = [
       "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80",
     tint: "linear-gradient(135deg, rgba(122,69,245,0.35), rgba(21,15,50,0.1))",
     order: 1,
+    status: "active",
+    parentId: "cat_gemstones",
+    ancestors: ["cat_gemstones"],
     createdAt: "2026-01-05T09:00:00.000Z",
   },
   {
@@ -21,17 +70,9 @@ export const categories: Category[] = [
       "https://images.unsplash.com/photo-1611085583191-a3b181a88401?auto=format&fit=crop&w=1200&q=80",
     tint: "linear-gradient(135deg, rgba(34,211,238,0.3), rgba(21,15,50,0.1))",
     order: 2,
-    createdAt: "2026-01-05T09:00:00.000Z",
-  },
-  {
-    id: "cat_bracelets",
-    slug: "bracelets",
-    title: "Healing Bracelets",
-    tagline: "Crystal & gemstone beads for daily balance",
-    image:
-      "https://images.unsplash.com/photo-1535556116002-6281ff3e9f36?auto=format&fit=crop&w=1200&q=80",
-    tint: "linear-gradient(135deg, rgba(255,107,166,0.3), rgba(21,15,50,0.1))",
-    order: 3,
+    status: "active",
+    parentId: "cat_gemstones",
+    ancestors: ["cat_gemstones"],
     createdAt: "2026-01-05T09:00:00.000Z",
   },
   {
@@ -42,7 +83,26 @@ export const categories: Category[] = [
     image:
       "https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?auto=format&fit=crop&w=1200&q=80",
     tint: "linear-gradient(135deg, rgba(230,180,58,0.3), rgba(21,15,50,0.1))",
-    order: 4,
+    order: 3,
+    status: "active",
+    parentId: "cat_gemstones",
+    ancestors: ["cat_gemstones"],
+    createdAt: "2026-01-05T09:00:00.000Z",
+  },
+
+  // ── Children of "Spiritual & Wellness" ─────────────────────────
+  {
+    id: "cat_bracelets",
+    slug: "bracelets",
+    title: "Healing Bracelets",
+    tagline: "Crystal & gemstone beads for daily balance",
+    image:
+      "https://images.unsplash.com/photo-1535556116002-6281ff3e9f36?auto=format&fit=crop&w=1200&q=80",
+    tint: "linear-gradient(135deg, rgba(255,107,166,0.3), rgba(21,15,50,0.1))",
+    order: 1,
+    status: "active",
+    parentId: "cat_spiritual",
+    ancestors: ["cat_spiritual"],
     createdAt: "2026-01-05T09:00:00.000Z",
   },
   {
@@ -53,7 +113,10 @@ export const categories: Category[] = [
     image:
       "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80",
     tint: "linear-gradient(135deg, rgba(145,105,255,0.32), rgba(11,8,32,0.1))",
-    order: 5,
+    order: 2,
+    status: "active",
+    parentId: "cat_spiritual",
+    ancestors: ["cat_spiritual"],
     createdAt: "2026-01-05T09:00:00.000Z",
   },
 ];

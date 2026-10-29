@@ -43,6 +43,10 @@ const schema = z.object({
   // port/user/from come from store settings; this completes the credentials.
   // When absent, the mailer logs emails instead of sending (dev-safe).
   SMTP_PASSWORD: z.string().optional(),
+
+  // Resend API key (email provider). Lives ONLY in env. When absent, the
+  // Resend provider is skipped and the engine falls back to the next provider.
+  RESEND_API_KEY: z.string().optional(),
 });
 
 const parsed = schema.safeParse({
@@ -69,6 +73,7 @@ const parsed = schema.safeParse({
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
 });
 
 if (!parsed.success) {

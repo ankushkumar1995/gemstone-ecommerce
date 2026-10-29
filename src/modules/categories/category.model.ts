@@ -69,6 +69,25 @@ const CategorySchema = new Schema(
       index: true,
     },
 
+    // ── Taxonomy / hierarchy (2 levels: parent → child) ──────────
+    // null = top-level category. A category with a parent can never itself be a
+    // parent (enforced in the service layer).
+    parentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      default: null,
+      index: true,
+    },
+    // Denormalized ancestor chain (nearest-last). For this 2-level tree it holds
+    // exactly `[parentId]` for a child and `[]` for a top-level category. Kept so
+    // subtree queries ("every product under this parent") and breadcrumbs are a
+    // single indexed lookup rather than a recursive walk.
+    ancestors: {
+      type: [Schema.Types.ObjectId],
+      ref: "Category",
+      default: [],
+    },
+
     // ── Soft delete ──────────────────────────────────────────────
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
@@ -101,6 +120,11 @@ const CategorySchema = new Schema(
  */
 CategorySchema.index({ isDeleted: 1, status: 1, order: 1 });
 CategorySchema.index({ isDeleted: 1, order: 1 });
+// List a parent's direct children in display order, and find top-level
+// categories (parentId: null) — both hit this compound index.
+CategorySchema.index({ isDeleted: 1, parentId: 1, order: 1 });
+// Subtree queries: "every category descending from X" via the ancestors chain.
+CategorySchema.index({ isDeleted: 1, ancestors: 1 });
 
 export type CategoryDoc = InferSchemaType<typeof CategorySchema> & { _id: Types.ObjectId };
 

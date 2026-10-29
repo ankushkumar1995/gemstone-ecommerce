@@ -51,6 +51,8 @@ export interface OrderItem {
   unitPrice: number;
   qty: number;
   lineTotal: number;
+  /** Priced configurator snapshot (pooja / jaap / wear) chosen for this line. */
+  config?: import("@/modules/configurator").PricedConfig;
 }
 
 export interface OrderAddress {
@@ -123,6 +125,8 @@ export interface CreateOrderItemInput {
   productId: string;
   variantId?: string;
   qty: number;
+  /** Configurator selection (IDs only); server recomputes the price. */
+  config?: import("@/modules/configurator").ConfigSelection;
 }
 
 /** Fields accepted when creating an order. */

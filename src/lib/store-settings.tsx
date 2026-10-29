@@ -19,10 +19,10 @@ export interface StorePublicSettings {
 
 export const DEFAULT_STORE_SETTINGS: StorePublicSettings = {
   storeName: "Astrounkle",
-  supportEmail: "care@astrounkle.com",
-  supportPhone: "+91 90000 00000",
-  whatsappNumber: "+91 90000 00000",
-  address: "Jaipur, Rajasthan, India",
+  supportEmail: "admin@astrounkle.com",
+  supportPhone: "+91 92053 18484",
+  whatsappNumber: "+91 92053 18484",
+  address: "Noida, Uttar Pradesh, India",
 };
 
 const Ctx = createContext<StorePublicSettings>(DEFAULT_STORE_SETTINGS);

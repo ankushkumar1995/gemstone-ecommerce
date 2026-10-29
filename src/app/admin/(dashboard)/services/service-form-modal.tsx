@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AstroService } from "@/types";
 import { SERVICE_ICONS } from "@/modules/services/service.schema";
@@ -9,10 +9,11 @@ import {
   Modal,
   Field,
   AdminInput,
-  AdminTextarea,
   AdminButton,
   AdminDropdown,
   Toggle,
+  ImagePickerField,
+  RichTextEditor,
   useAdminToast,
 } from "../../_components";
 
@@ -28,29 +29,19 @@ export function ServiceFormModal({
   onSaved: (s: AstroService, isNew: boolean) => void;
 }) {
   const { toast } = useAdminToast();
-  const [title, setTitle] = useState("");
-  const [tagline, setTagline] = useState("");
-  const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState<string>("Sparkles");
-  const [priceFrom, setPriceFrom] = useState("");
-  const [duration, setDuration] = useState("");
-  const [popular, setPopular] = useState(false);
-  const [status, setStatus] = useState<string>("active");
-  const [features, setFeatures] = useState<string[]>([""]);
+  // State initialises straight from `editing`. The parent remounts this modal
+  // (via a key) whenever the target changes, so there's no reset effect.
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [tagline, setTagline] = useState(editing?.tagline ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [icon, setIcon] = useState<string>(editing?.icon ?? "Sparkles");
+  const [image, setImage] = useState(editing?.image ?? "");
+  const [priceFrom, setPriceFrom] = useState(editing ? String(editing.priceFrom) : "");
+  const [duration, setDuration] = useState(editing?.duration ?? "");
+  const [popular, setPopular] = useState(editing?.popular ?? false);
+  const [status, setStatus] = useState<string>(editing?.status ?? "active");
+  const [features, setFeatures] = useState<string[]>(editing?.features?.length ? editing.features : [""]);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(editing?.title ?? "");
-    setTagline(editing?.tagline ?? "");
-    setDescription(editing?.description ?? "");
-    setIcon(editing?.icon ?? "Sparkles");
-    setPriceFrom(editing ? String(editing.priceFrom) : "");
-    setDuration(editing?.duration ?? "");
-    setPopular(editing?.popular ?? false);
-    setStatus(editing?.status ?? "active");
-    setFeatures(editing?.features?.length ? editing.features : [""]);
-  }, [open, editing]);
 
   const save = async () => {
     if (!title.trim()) return toast("Title is required", "error");
@@ -59,6 +50,7 @@ export function ServiceFormModal({
       tagline,
       description,
       icon: icon as (typeof SERVICE_ICONS)[number],
+      image,
       priceFrom: Number(priceFrom || 0),
       duration,
       popular,
@@ -97,8 +89,16 @@ export function ServiceFormModal({
           <AdminInput value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Your complete birth chart, decoded" />
         </Field>
 
-        <Field label="Description">
-          <AdminTextarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+        <Field label="Service image" hint="Shown on the service card. If empty, the icon above is used.">
+          <ImagePickerField value={image} onChange={setImage} folder="services" aspect="aspect-[16/9]" />
+        </Field>
+
+        <Field label="Description" hint="Rich text — formatting, headings, lists, links & images">
+          <RichTextEditor
+            value={description}
+            onChange={setDescription}
+            placeholder="Describe this service — what's covered, who it's for, what to expect…"
+          />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">

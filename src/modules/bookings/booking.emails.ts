@@ -6,10 +6,25 @@ import "server-only";
  * logs). Senders never throw — a notification failure must not break a booking.
  */
 
-import { sendMail } from "@/core/mailer";
+import { emailService } from "@/modules/email";
 import type { Booking } from "./booking.types";
 
 const BRAND = "Astrounkle";
+
+function bookingVars(b: Booking): Record<string, string> {
+  return {
+    customerName: b.customer.name,
+    serviceTitle: b.serviceTitle,
+    bookingNumber: b.bookingNumber,
+    amount: `₹${b.amount.toLocaleString("en-IN")}`,
+    paymentStatus: b.paymentStatus,
+    scheduledAt: b.scheduledAt
+      ? new Date(b.scheduledAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" })
+      : "",
+    adminNotes: b.adminNotes ?? "",
+    storeName: BRAND,
+  };
+}
 
 function money(n: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
@@ -52,7 +67,13 @@ export async function sendBookingConfirmed(b: Booking): Promise<void> {
      </table>
      <p>Our astrologer will reach out to schedule your session.</p>`,
   );
-  await sendMail({ to, subject, text, html });
+  const tpl = await emailService.renderEventOrNull("booking_confirmed", bookingVars(b));
+  await emailService.sendAndLog("booking_confirmed", {
+    to,
+    subject: tpl?.subject ?? subject,
+    text: tpl?.text ?? text,
+    html: tpl?.html ?? html,
+  });
 }
 
 /** Appointment scheduled by the admin. */
@@ -78,7 +99,13 @@ export async function sendBookingScheduled(b: Booking): Promise<void> {
      <p style="color:#777">Ref: ${b.bookingNumber}</p>
      ${b.adminNotes ? `<p style="background:#faf7ef;padding:12px;border-radius:8px">${b.adminNotes}</p>` : ""}`,
   );
-  await sendMail({ to, subject, text, html });
+  const tpl = await emailService.renderEventOrNull("booking_scheduled", bookingVars(b));
+  await emailService.sendAndLog("booking_scheduled", {
+    to,
+    subject: tpl?.subject ?? subject,
+    text: tpl?.text ?? text,
+    html: tpl?.html ?? html,
+  });
 }
 
 /** Service delivered / completed. */
@@ -98,5 +125,11 @@ export async function sendBookingCompleted(b: Booking): Promise<void> {
      ${b.adminNotes ? `<p style="background:#faf7ef;padding:12px;border-radius:8px">${b.adminNotes}</p>` : ""}
      <p>Thank you for choosing ${BRAND}. We'd love your feedback!</p>`,
   );
-  await sendMail({ to, subject, text, html });
+  const tpl = await emailService.renderEventOrNull("booking_completed", bookingVars(b));
+  await emailService.sendAndLog("booking_completed", {
+    to,
+    subject: tpl?.subject ?? subject,
+    text: tpl?.text ?? text,
+    html: tpl?.html ?? html,
+  });
 }

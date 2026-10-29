@@ -18,6 +18,7 @@ function fromDoc(doc: ServiceDoc): AstroService {
     tagline: doc.tagline,
     description: doc.description,
     icon: doc.icon,
+    image: doc.image || undefined,
     priceFrom: doc.priceFrom,
     duration: doc.duration,
     popular: doc.popular,

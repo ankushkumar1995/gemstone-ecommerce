@@ -114,7 +114,13 @@ export function CheckoutView() {
     return {
       ...(user?.id && { customerId: user.id }),
       customer: { name, email: user?.email ?? "", phone },
-      items: cart.map((l) => ({ productId: l.product.id, qty: l.qty })),
+      items: cart.map((l) => ({
+        productId: l.product.id,
+        qty: l.qty,
+        ...(l.selection && Object.keys(l.selection).length > 0
+          ? { config: l.selection }
+          : {}),
+      })),
       shippingAddress: {
         name,
         phone,
@@ -469,7 +475,7 @@ export function CheckoutView() {
                     {l.product.name}
                   </span>
                   <span className="text-sm font-medium text-foreground">
-                    {format(l.product.price * l.qty)}
+                    {format((l.unitPrice ?? l.product.price) * l.qty)}
                   </span>
                 </li>
               ))}

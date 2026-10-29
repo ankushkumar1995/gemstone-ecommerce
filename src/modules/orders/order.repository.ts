@@ -8,7 +8,7 @@
 
 import { dataSourceFor } from "@/core/config/env";
 import { orders as seed } from "@/data/orders";
-import type { Order } from "./order.types";
+import type { Order, OrderItem } from "./order.types";
 import type { OrderDoc } from "./order.model";
 
 export interface OrderRepository {
@@ -94,6 +94,7 @@ function fromDoc(doc: OrderDoc): Order {
       unitPrice: i.unitPrice,
       qty: i.qty,
       lineTotal: i.lineTotal,
+      config: (i as { config?: unknown }).config as OrderItem["config"],
     })),
     pricing: {
       subtotal: doc.pricing?.subtotal ?? 0,

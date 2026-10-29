@@ -57,8 +57,27 @@ export interface Category {
   tint: string; // brand gradient overlay for mood + readability
   order?: number; // display order (lower = first)
   status?: "active" | "inactive"; // storefront visibility
+  /**
+   * Parent category id. `null`/absent = a top-level category.
+   * The taxonomy is intentionally limited to TWO levels (parent → child), so a
+   * category with a parent can never itself be a parent.
+   */
+  parentId?: string | null;
+  /**
+   * Denormalized list of ancestor category ids, nearest-last. For the 2-level
+   * tree this is `[parentId]` for a child and `[]` for a top-level category.
+   * Stored so "all products under this parent" and breadcrumb lookups are a
+   * single indexed query instead of a recursive traversal — the key to keeping
+   * category reads cheap as the catalogue grows.
+   */
+  ancestors?: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** A top-level category with its direct children nested — used by admin + storefront tree views. */
+export interface CategoryTreeNode extends Category {
+  children: Category[];
 }
 
 export interface GemstoneAttributes {
@@ -69,6 +88,12 @@ export interface GemstoneAttributes {
   weightCarat: number;
   certification: string;
   color: string;
+  /* Optional gemstone attributes — surfaced on the PDP spec cards when set. */
+  clarity?: string;
+  cut?: string;
+  treatment?: string;
+  labName?: string;
+  certificateNumber?: string;
 }
 
 /**
@@ -254,6 +279,14 @@ export interface Product {
   ratingCount?: number;
   soldCount?: number;
   viewCount?: number;
+
+  /**
+   * Per-product configurator override (pooja / mantra-jaap / choice-of-wear).
+   * Undefined on legacy products → resolves to the store-wide global defaults.
+   * Typed loosely here to avoid a circular import; the authoritative shape is
+   * `ProductConfigurator` in `@/modules/configurator`.
+   */
+  configurator?: import("@/modules/configurator/configurator.types").ProductConfigurator;
 }
 
 export interface Testimonial {
@@ -331,6 +364,7 @@ export interface AstroService {
   tagline: string;
   description: string;
   icon: string; // lucide icon name (resolved in the view)
+  image?: string; // optional banner image URL (shown on the card when set)
   priceFrom: number; // INR (0 = free)
   duration: string; // e.g. "45 min"
   popular?: boolean;

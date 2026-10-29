@@ -26,8 +26,9 @@ const ServiceSchema = new Schema(
     },
     title: { type: String, required: [true, "title is required"], trim: true, minlength: 2, maxlength: 120 },
     tagline: { type: String, default: "", trim: true, maxlength: 200 },
-    description: { type: String, default: "", trim: true, maxlength: 4000 },
+    description: { type: String, default: "", trim: true, maxlength: 20000 },
     icon: { type: String, default: "Sparkles", trim: true, maxlength: 60 },
+    image: { type: String, default: "", trim: true, maxlength: 600 },
     priceFrom: { type: Number, default: 0, min: [0, "price cannot be negative"] },
     duration: { type: String, default: "30 min", trim: true, maxlength: 40 },
     popular: { type: Boolean, default: false },
@@ -55,6 +56,12 @@ ServiceSchema.index({ slug: 1 }, { unique: true });
 ServiceSchema.index({ status: 1, order: 1 });
 
 export type ServiceDoc = InferSchemaType<typeof ServiceSchema> & { _id: Types.ObjectId };
+
+// Dev: drop the stale cached model so schema changes (e.g. the new `image`
+// field) take effect on hot-reload without a manual restart. No-op in prod.
+if (process.env.NODE_ENV !== "production" && models.Service) {
+  delete models.Service;
+}
 
 export const ServiceModel: Model<ServiceDoc> =
   (models.Service as Model<ServiceDoc>) ?? model<ServiceDoc>("Service", ServiceSchema);

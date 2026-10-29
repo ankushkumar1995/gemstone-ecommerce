@@ -17,13 +17,28 @@ import {
   Share2,
   Check,
   Ruler,
+  Video,
+  MessageCircle,
+  FileCheck2,
+  Globe,
+  Gem,
+  Palette,
+  Scissors,
+  Award,
+  Download,
 } from "lucide-react";
 import type { Product } from "@/types";
 import { discountPercent, cn } from "@/lib/utils";
 import { useCommerce } from "@/lib/store";
 import { useCurrency } from "@/lib/currency";
 import { useToast } from "@/lib/toast";
-import { Badge, badgeTone } from "@/components/ui/badge";
+import { useStoreSettings, phoneDigits } from "@/lib/store-settings";
+import {
+  priceConfig,
+  type ResolvedConfigurator,
+  type ConfigSelection,
+} from "@/modules/configurator";
+import { ProductConfigurator } from "@/components/product/product-configurator";
 import { Rating } from "@/components/ui/rating";
 import { Button } from "@/components/ui/button";
 import { getZodiac } from "@/data/zodiac";
@@ -40,18 +55,66 @@ const trustItems = [
   { icon: BadgeIndianRupee, label: "Lifetime Buyback" },
 ];
 
-export function ProductDetail({ product }: { product: Product }) {
+export function ProductDetail({
+  product,
+  resolved,
+}: {
+  product: Product;
+  /** Effective configurator for this product (resolved server-side). */
+  resolved?: ResolvedConfigurator;
+}) {
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [caratGuide, setCaratGuide] = useState(false);
   const [pincode, setPincode] = useState("");
   const [eta, setEta] = useState<string | null>(null);
+  // Customer's configurator selection (pooja / jaap / wear). IDs only.
+  const [selection, setSelection] = useState<ConfigSelection>({});
   const { addToCart, toggleWishlist, isInWishlist, viewProduct } = useCommerce();
   const { format } = useCurrency();
   const { toast } = useToast();
+  const store = useStoreSettings();
   const wished = isInWishlist(product.id);
   const discount = discountPercent(product.mrp, product.price);
+
+  // Live configurator pricing (preview). The server re-validates on checkout.
+  const priced = resolved
+    ? priceConfig(product.price, resolved, selection)
+    : null;
+  const addOnTotal = priced?.ok ? priced.priced!.addOnTotal : 0;
+  const effectivePrice =
+    priced?.ok && priced.unitPrice !== undefined ? priced.unitPrice : product.price;
+
+  const attr = product.attributes;
+  // Per-carat price — only meaningful when a carat weight is known.
+  const perCarat =
+    attr.weightCarat && attr.weightCarat > 0
+      ? Math.round(product.price / attr.weightCarat)
+      : null;
+
+  // WhatsApp "real photos / video call" deep link, prefilled with this product.
+  const waNumber = phoneDigits(store.whatsappNumber || store.supportPhone || "");
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(
+        `Hi, I'd like real photos / a live video call for: ${product.name}`,
+      )}`
+    : null;
+
+  // Spec cards — each renders only if its value exists (data is the switch).
+  const specCards = [
+    { icon: Globe, label: "Origin", value: attr.origin },
+    { icon: Gem, label: "Weight", value: attr.weightCarat ? `${attr.weightCarat} carat` : "" },
+    { icon: Palette, label: "Colour", value: attr.color },
+    {
+      icon: Scissors,
+      label: "Treatment",
+      value: (attr as { treatment?: string }).treatment,
+    },
+    { icon: Scissors, label: "Cut", value: (attr as { cut?: string }).cut },
+    { icon: Gem, label: "Clarity", value: (attr as { clarity?: string }).clarity },
+    { icon: Award, label: "Certification", value: attr.certification },
+  ].filter((s) => s.value && String(s.value).trim());
 
   // record this product in "recently viewed"
   useEffect(() => {
@@ -83,7 +146,17 @@ export function ProductDetail({ product }: { product: Product }) {
 
   const handleAdd = () => {
     if (!product.inStock) return;
-    addToCart(product, qty);
+    // If the configurator priced a selection, block on validation errors
+    // (e.g. "select a ring size") and carry the selection + priced snapshot.
+    if (resolved?.hasAny && priced && !priced.ok) {
+      toast(priced.error ?? "Please complete your selection", "wishlist");
+      return;
+    }
+    const opts =
+      resolved?.hasAny && priced?.ok
+        ? { selection, priced: priced.priced, unitPrice: priced.unitPrice }
+        : undefined;
+    addToCart(product, qty, opts);
     toast(`${product.name} added to cart`);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -130,9 +203,13 @@ export function ProductDetail({ product }: { product: Product }) {
         className="mb-8"
       />
 
-      <div className="grid gap-12 lg:grid-cols-2">
-        {/* gallery */}
-        <ProductGallery product={product} />
+      <div className="grid gap-12 lg:grid-cols-2 lg:items-start">
+        {/* gallery — capped width, sticks while the info column scrolls */}
+        <div className="lg:sticky lg:top-24">
+          <div className="mx-auto w-full max-w-md lg:max-w-none">
+            <ProductGallery product={product} />
+          </div>
+        </div>
 
         {/* info */}
         <motion.div
@@ -154,7 +231,7 @@ export function ProductDetail({ product }: { product: Product }) {
             </button>
           </div>
 
-          <h1 className="mt-3 text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
+          <h1 className="mt-3 text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
             {product.name}
           </h1>
 
@@ -168,7 +245,7 @@ export function ProductDetail({ product }: { product: Product }) {
 
           {/* price */}
           <div className="mt-6 flex items-end gap-3">
-            <span className="text-4xl font-semibold text-gradient-gold">
+            <span className="text-3xl font-semibold text-gradient-gold">
               {format(product.price)}
             </span>
             {discount > 0 && (
@@ -182,7 +259,26 @@ export function ProductDetail({ product }: { product: Product }) {
               </>
             )}
           </div>
-          <p className="mt-1 text-xs text-muted">Inclusive of all taxes</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            {perCarat && (
+              <>
+                <span>~{format(perCarat)} per carat</span>
+                <span className="text-foreground/20">•</span>
+              </>
+            )}
+            <span>Inclusive of all taxes</span>
+            <span className="text-foreground/20">•</span>
+            <span className="font-medium text-emerald-600">
+              Free energization included
+            </span>
+          </p>
+
+          {/* SKU — shown only when set */}
+          {product.sku && (
+            <p className="mt-2 text-xs text-muted">
+              SKU: <span className="font-medium text-foreground">{product.sku}</span>
+            </p>
+          )}
 
           {/* benefits */}
           <div className="mt-6 flex flex-wrap gap-2">
@@ -230,6 +326,35 @@ export function ProductDetail({ product }: { product: Product }) {
               <span className="text-rose-mystic">Currently out of stock</span>
             )}
           </div>
+
+          {/* configurator: pooja / mantra jaap (and wear in Phase C) */}
+          {resolved && (
+            <ProductConfigurator
+              resolved={resolved}
+              selection={selection}
+              onChange={setSelection}
+            />
+          )}
+
+          {/* running total when add-ons are selected */}
+          {resolved?.hasAny && addOnTotal > 0 && (
+            <div className="mt-6 flex items-center justify-between rounded-2xl border border-gold-400/30 bg-gold-400/5 px-5 py-4">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted">Total · incl. taxes</p>
+                <p className="text-xs text-muted">
+                  Base {format(product.price)} + add-ons {format(addOnTotal)}
+                </p>
+              </div>
+              <motion.span
+                key={effectivePrice}
+                initial={{ scale: 0.9, opacity: 0.6 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-2xl font-semibold text-gradient-gold"
+              >
+                {format(effectivePrice)}
+              </motion.span>
+            </div>
+          )}
 
           {/* qty + cart */}
           <div className="mt-6 flex flex-wrap items-center gap-4">
@@ -303,20 +428,69 @@ export function ProductDetail({ product }: { product: Product }) {
             )}
           </form>
 
-          {/* trust strip */}
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {trustItems.map((t) => (
-              <div
-                key={t.label}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-foreground/10 bg-nebula p-4 text-center"
+          {/* real photos / live video call + consultation */}
+          <div className="mt-6 space-y-3">
+            {waHref && (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-2.5 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3.5 py-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-[0_10px_28px_-16px_rgba(16,185,129,0.6)]"
               >
-                <t.icon size={20} className="text-gold-600" />
-                <span className="text-xs font-medium text-foreground">{t.label}</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600">
+                  <Video size={15} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold leading-tight text-foreground">
+                    Real photos + live video call
+                  </p>
+                  <p className="text-[11px] text-muted">See the exact stone on WhatsApp</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-white transition-transform group-hover:scale-105">
+                  Get Now
+                </span>
+              </a>
+            )}
+
+            <Link
+              href="/services"
+              className="group flex items-center gap-2.5 rounded-xl border border-royal-400/25 bg-royal-400/5 px-3.5 py-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-royal-400/50 hover:shadow-[0_10px_28px_-16px_rgba(122,69,245,0.5)]"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-royal-400/15 text-royal-600">
+                <MessageCircle size={15} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold leading-tight text-foreground">
+                  Gemstone Consultation
+                </p>
+                <p className="text-[11px] text-muted">
+                  Ask our Vedic astrologers if it suits you
+                </p>
               </div>
+              <span className="shrink-0 rounded-full bg-royal-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-transform group-hover:scale-105">
+                Book Now
+              </span>
+            </Link>
+          </div>
+
+          {/* trust strip */}
+          <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {trustItems.map((t, i) => (
+              <motion.div
+                key={t.label}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.05 * i }}
+                whileHover={{ y: -3 }}
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-foreground/10 bg-nebula p-3 text-center transition-colors hover:border-gold-400/40"
+              >
+                <t.icon size={18} className="text-gold-600" />
+                <span className="text-[11px] font-medium text-foreground">{t.label}</span>
+              </motion.div>
             ))}
           </div>
 
-          {/* spec table */}
+          {/* spec cards */}
           <div className="mt-8 flex items-center justify-between">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-muted">
               Specifications
@@ -328,13 +502,58 @@ export function ProductDetail({ product }: { product: Product }) {
               <Ruler size={15} /> Carat &amp; Size Guide
             </button>
           </div>
-          <div className="mt-3 overflow-hidden rounded-2xl glass">
-            <Spec label="Stone" value={product.attributes.stone} />
-            <Spec label="Origin" value={product.attributes.origin} />
-            <Spec label="Weight" value={`${product.attributes.weightCarat} carat`} />
-            <Spec label="Colour" value={product.attributes.color} />
-            <Spec label="Certification" value={product.attributes.certification} last />
-          </div>
+          {specCards.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {specCards.map((s, i) => (
+                <motion.div
+                  key={s.label}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.05 }}
+                  whileHover={{ y: -2 }}
+                  className="rounded-xl border border-foreground/10 bg-nebula p-3 text-center"
+                >
+                  <s.icon size={15} className="mx-auto text-gold-600" />
+                  <p className="mt-1.5 text-[10px] uppercase tracking-wider text-muted">
+                    {s.label}
+                  </p>
+                  <p className="mt-0.5 text-[13px] font-semibold text-foreground">
+                    {s.value}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* certification line — authority + certificate no. + PDF */}
+          {product.attributes.certification && (
+            <div className="group mt-3 flex flex-wrap items-center gap-2.5 rounded-xl border border-gold-400/25 bg-gold-400/5 px-3.5 py-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-gold-400/50 hover:shadow-[0_10px_28px_-16px_rgba(201,148,42,0.5)]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold-400/15 text-gold-600">
+                <FileCheck2 size={15} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-foreground">
+                  {product.attributes.certification} Certified
+                </p>
+                <p className="text-[11px] text-muted">
+                  Included in price
+                  {(product.attributes as { certificateNumber?: string }).certificateNumber
+                    ? ` · Certificate no. ${(product.attributes as { certificateNumber?: string }).certificateNumber}`
+                    : ""}
+                </p>
+              </div>
+              {product.certificatePdf && (
+                <a
+                  href={product.certificatePdf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold-400/40 px-3 py-1.5 text-xs font-semibold text-gold-600 transition-colors hover:bg-gold-400/10"
+                >
+                  <Download size={13} /> Certificate
+                </a>
+              )}
+            </div>
+          )}
         </motion.div>
       </div>
 
@@ -375,24 +594,4 @@ export function ProductDetail({ product }: { product: Product }) {
   );
 }
 
-function Spec({
-  label,
-  value,
-  last,
-}: {
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between px-5 py-3.5 text-sm",
-        !last && "border-b border-foreground/8"
-      )}
-    >
-      <span className="text-muted">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
+

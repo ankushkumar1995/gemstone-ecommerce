@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { productService } from "@/modules/products";
+import { settingsService } from "@/modules/settings";
+import { resolveConfig } from "@/modules/configurator";
 import { ProductDetail } from "@/components/product/product-detail";
 import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { ProductCard } from "@/components/ui/product-card";
@@ -57,6 +59,12 @@ export default async function ProductPage({
   if (!res.ok) notFound();
   const product = res.value;
 
+  // Resolve the effective configurator server-side (product override + global
+  // defaults) so the PDP renders exactly what the server will also price.
+  const settingsRes = await settingsService.get();
+  const globalConfig = settingsRes.ok ? settingsRes.value.configurator : undefined;
+  const resolved = resolveConfig(product.configurator, globalConfig ?? null);
+
   const relatedRes = await productService.relatedActive(slug, 4);
   const related = relatedRes.ok ? relatedRes.value : [];
 
@@ -84,7 +92,7 @@ export default async function ProductPage({
           ]),
         ]}
       />
-      <ProductDetail product={product} />
+      <ProductDetail product={product} resolved={resolved} />
 
       <RecentlyViewed excludeId={product.slug === slug ? product.id : undefined} />
 

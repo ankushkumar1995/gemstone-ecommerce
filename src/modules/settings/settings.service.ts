@@ -8,11 +8,17 @@ import { newId } from "@/core/id";
 import { getSettingsRepository } from "./settings.repository";
 import type { StoreSettings } from "./settings.types";
 import type { UpdateSettingsDto } from "./settings.schema";
+import { DEFAULT_GLOBAL_CONFIGURATOR } from "@/modules/configurator";
 
 export const settingsService = {
   async get(): Promise<Result<StoreSettings>> {
     const repo = getSettingsRepository();
-    return ok(await repo.get());
+    const current = await repo.get();
+    // Always surface a configurator config so the PDP/server never see undefined.
+    if (!current.configurator) {
+      current.configurator = DEFAULT_GLOBAL_CONFIGURATOR;
+    }
+    return ok(current);
   },
 
   async update(dto: UpdateSettingsDto): Promise<Result<StoreSettings>> {
@@ -55,6 +61,10 @@ export const settingsService = {
       inventory: { ...current.inventory, ...(dto.inventory ?? {}) },
       order: { ...current.order, ...(dto.order ?? {}) },
       email: { ...current.email, ...(dto.email ?? {}) },
+      // Configurator: full-group replace when provided (the admin editor sends
+      // the whole configurator object), else keep current / default.
+      configurator:
+        dto.configurator ?? current.configurator ?? DEFAULT_GLOBAL_CONFIGURATOR,
       updatedAt: new Date().toISOString(),
     };
 

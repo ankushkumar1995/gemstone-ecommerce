@@ -7,7 +7,7 @@ import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
 import { cache } from "@/core/cache";
 import { paginate, type ListParams, type Paginated } from "@/core/query";
-import type { Category } from "@/types";
+import type { Category, CategoryTreeNode } from "@/types";
 import { getCategoryRepository } from "./category.repository";
 import type { CreateCategoryDto, UpdateCategoryDto } from "./category.schema";
 
@@ -30,6 +30,67 @@ function slugify(title: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/** Normalize a parentId coming off a DTO: "" / undefined → null (top-level). */
+function normalizeParentId(raw: string | null | undefined): string | null {
+  const v = (raw ?? "").toString().trim();
+  return v === "" ? null : v;
+}
+
+/**
+ * Validate a requested parent and compute the ancestors chain for a 2-level
+ * taxonomy. `selfId` is the category being edited (omitted on create) so we can
+ * reject self-parenting and illegal re-parents.
+ *
+ * Rules enforced:
+ *  • parent must exist and not be soft-deleted
+ *  • parent must itself be top-level (no grandparents → 2 levels max)
+ *  • a category cannot be its own parent
+ *  • a category that already has children cannot become a child (would create
+ *    a 3rd level under it)
+ */
+async function resolveParent(
+  parentId: string | null,
+  selfId: string | undefined,
+): Promise<Result<{ parentId: string | null; ancestors: string[] }>> {
+  if (parentId === null) {
+    return ok({ parentId: null, ancestors: [] });
+  }
+
+  const repo = getCategoryRepository();
+
+  if (selfId && parentId === selfId) {
+    return fail(AppErrors.validation("A category cannot be its own parent"));
+  }
+
+  const parent = await repo.findById(parentId);
+  if (!parent) {
+    return fail(AppErrors.validation("Selected parent category does not exist"));
+  }
+
+  // 2-level rule: the chosen parent must be top-level.
+  if (parent.parentId) {
+    return fail(
+      AppErrors.validation(
+        "Categories can only be nested two levels deep. Pick a top-level category as the parent.",
+      ),
+    );
+  }
+
+  // Prevent turning a parent-of-children into a child (would create a 3rd level).
+  if (selfId) {
+    const childCount = await repo.countChildren(selfId);
+    if (childCount > 0) {
+      return fail(
+        AppErrors.validation(
+          "This category already has sub-categories, so it cannot itself become a sub-category.",
+        ),
+      );
+    }
+  }
+
+  return ok({ parentId: parent.id, ancestors: [parent.id] });
 }
 
 export const categoryService = {
@@ -77,6 +138,10 @@ export const categoryService = {
     let slug = slugify(dto.title);
     if (await repo.findBySlug(slug)) slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
 
+    // Resolve + validate the parent and derive the ancestors chain.
+    const parent = await resolveParent(normalizeParentId(dto.parentId), undefined);
+    if (!parent.ok) return parent;
+
     const all = await repo.findAll();
     const maxOrder = all.reduce((m, c) => Math.max(m, c.order ?? 0), 0);
 
@@ -89,6 +154,8 @@ export const categoryService = {
       tint: dto.tint?.trim() || DEFAULT_TINT,
       order: dto.order ?? maxOrder + 1,
       status: "active",
+      parentId: parent.value.parentId,
+      ancestors: parent.value.ancestors,
     });
     invalidate();
     return ok(created);
@@ -106,6 +173,20 @@ export const categoryService = {
       ...(dto.order !== undefined && { order: dto.order }),
       ...(dto.status !== undefined && { status: dto.status }),
     };
+
+    // Re-parenting: only when the client actually sent parentId. Validate the
+    // new parent (2-level, exists, no self/cycle, not-a-parent-already) and
+    // recompute the ancestors chain. Because a category with children can never
+    // become a child, its own children's ancestors can never go stale here.
+    if (dto.parentId !== undefined) {
+      const nextParentId = normalizeParentId(dto.parentId);
+      if (nextParentId !== (existing.parentId ?? null)) {
+        const parent = await resolveParent(nextParentId, id);
+        if (!parent.ok) return parent;
+        patch.parentId = parent.value.parentId;
+        patch.ancestors = parent.value.ancestors;
+      }
+    }
 
     // If the title changes, re-derive the slug and guard its uniqueness so we
     // return a clean 409 instead of letting the DB throw a duplicate-key error.
@@ -150,10 +231,52 @@ export const categoryService = {
 
   async remove(id: string): Promise<Result<{ id: string }>> {
     const repo = getCategoryRepository();
+    // Safe production default: never orphan sub-categories. Block deleting a
+    // parent while it still has children — the admin must remove or re-parent
+    // them first. This keeps the ancestors chain and product links consistent.
+    const childCount = await repo.countChildren(id);
+    if (childCount > 0) {
+      return fail(
+        AppErrors.conflict(
+          `This category has ${childCount} sub-${childCount === 1 ? "category" : "categories"}. Delete or move them before deleting this category.`,
+        ),
+      );
+    }
     const removed = await repo.remove(id);
     if (!removed) return fail(AppErrors.notFound("Category not found"));
     invalidate();
     return ok({ id });
+  },
+
+  /**
+   * Full taxonomy as a tree: top-level categories each with their direct
+   * children nested. Used by the admin manager and storefront navigation.
+   * Built from a single `findAll()` (one query) — no N+1.
+   */
+  async tree(): Promise<Result<CategoryTreeNode[]>> {
+    const repo = getCategoryRepository();
+    const all = await cache.wrap(CACHE_ALL, CACHE_TTL, () => repo.findAll());
+
+    const byParent = new Map<string, Category[]>();
+    const roots: Category[] = [];
+    for (const c of all) {
+      if (c.parentId) {
+        const list = byParent.get(c.parentId) ?? [];
+        list.push(c);
+        byParent.set(c.parentId, list);
+      } else {
+        roots.push(c);
+      }
+    }
+
+    const sortByOrder = (a: Category, b: Category) => (a.order ?? 999) - (b.order ?? 999);
+    const nodes: CategoryTreeNode[] = roots
+      .sort(sortByOrder)
+      .map((root) => ({
+        ...root,
+        children: (byParent.get(root.id) ?? []).sort(sortByOrder),
+      }));
+    return ok(nodes);
   },
 
   /** Undo a soft delete. */

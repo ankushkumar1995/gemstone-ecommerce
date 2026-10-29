@@ -23,8 +23,9 @@ export const SERVICE_ICONS = [
 export const createServiceSchema = z.object({
   title: z.string().trim().min(2, "Title is too short").max(80),
   tagline: z.string().trim().max(120).optional().or(z.literal("")),
-  description: z.string().trim().max(600).optional().or(z.literal("")),
+  description: z.string().trim().max(20000).optional().or(z.literal("")),
   icon: z.enum(SERVICE_ICONS).optional(),
+  image: z.string().trim().max(600).optional().or(z.literal("")),
   priceFrom: z.coerce.number().min(0),
   duration: z.string().trim().max(40).optional().or(z.literal("")),
   popular: z.coerce.boolean().optional(),

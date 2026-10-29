@@ -25,6 +25,8 @@ const ItemSchema = new Schema(
     unitPrice: { type: Number, required: true, min: 0 },
     qty: { type: Number, required: true, min: 1 },
     lineTotal: { type: Number, required: true, min: 0 },
+    // Priced configurator snapshot (pooja / jaap / wear) chosen for this line.
+    config: { type: Schema.Types.Mixed, default: undefined },
   },
   { _id: false },
 );

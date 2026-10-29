@@ -32,6 +32,8 @@ import type { CreateArticleDto, UpdateArticleDto } from "@/modules/blog";
 import type { Coupon, CreateCouponDto, UpdateCouponDto } from "@/modules/coupons";
 import type { CmsPage, CreatePageDto, UpdatePageDto } from "@/modules/pages";
 import type { Banner, CreateBannerDto, UpdateBannerDto } from "@/modules/banners";
+import type { Popup, CreatePopupDto, UpdatePopupDto } from "@/modules/popups";
+import type { EmailTemplate, EmailLog, CreateTemplateDto, UpdateTemplateDto } from "@/modules/email";
 import type { SalesReport } from "@/modules/reports";
 import type {
   ReturnRequest,
@@ -186,6 +188,7 @@ export const adminApi = {
   },
   categories: {
     list: () => request<Category[]>("/api/v1/categories"),
+    get: (id: string) => request<Category>(`/api/v1/categories/${id}`),
     getBySlug: (slug: string) => request<Category>(`/api/v1/categories/slug/${slug}`),
     create: (dto: CreateCategoryDto) =>
       request<Category>("/api/v1/categories", {
@@ -375,6 +378,44 @@ export const adminApi = {
       }),
     remove: (id: string) =>
       request<{ id: string }>(`/api/v1/banners/${id}`, { method: "DELETE" }),
+  },
+  popups: {
+    list: () => request<Popup[]>("/api/v1/popups"),
+    get: (id: string) => request<Popup>(`/api/v1/popups/${id}`),
+    create: (dto: CreatePopupDto) =>
+      request<Popup>("/api/v1/popups", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    update: (id: string, dto: UpdatePopupDto) =>
+      request<Popup>(`/api/v1/popups/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(dto),
+      }),
+    remove: (id: string) =>
+      request<{ id: string }>(`/api/v1/popups/${id}`, { method: "DELETE" }),
+  },
+  email: {
+    listTemplates: () => request<EmailTemplate[]>("/api/v1/email/templates"),
+    getTemplate: (id: string) => request<EmailTemplate>(`/api/v1/email/templates/${id}`),
+    createTemplate: (dto: CreateTemplateDto) =>
+      request<EmailTemplate>("/api/v1/email/templates", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    updateTemplate: (id: string, dto: UpdateTemplateDto) =>
+      request<EmailTemplate>(`/api/v1/email/templates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(dto),
+      }),
+    removeTemplate: (id: string) =>
+      request<{ id: string }>(`/api/v1/email/templates/${id}`, { method: "DELETE" }),
+    logs: (limit = 100) => request<EmailLog[]>(`/api/v1/email/logs?limit=${limit}`),
+    test: (to: string) =>
+      request<{ delivered: boolean; provider?: string; detail: string }>("/api/v1/email/test", {
+        method: "POST",
+        body: JSON.stringify({ to }),
+      }),
   },
   reports: {
     sales: (from?: string, to?: string) => {

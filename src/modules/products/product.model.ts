@@ -217,6 +217,13 @@ const ProductSchema = new Schema(
     // ── Gemstone attributes ──────────────────────────────────────
     gemstone: { type: GemstoneSchema, default: undefined },
 
+    // ── Configurator (pooja / mantra-jaap / choice-of-wear) ──────
+    // Per-product override of the store-wide global config. Each group has a
+    // mode: "inherit" | "custom" | "disabled". Stored as a flexible object
+    // (shape guarded by zod + the ProductConfigurator type); undefined on
+    // legacy products, which safely resolve to the global defaults.
+    configurator: { type: Schema.Types.Mixed, default: undefined },
+
     // ── Content & SEO ────────────────────────────────────────────
     shortDescription: { type: String, trim: true, maxlength: 600 },
     description: { type: String, trim: true, maxlength: 20000 },

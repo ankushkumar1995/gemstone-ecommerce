@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { productConfiguratorSchema } from "@/modules/configurator/configurator.schema";
 
 const planets = [
   "Sun",
@@ -173,6 +174,9 @@ export const createProductSchema = z.object({
 
   bestseller: z.coerce.boolean().optional(),
   displayOrder: z.coerce.number().optional(),
+
+  // Per-product configurator override (pooja / mantra-jaap / choice-of-wear).
+  configurator: productConfiguratorSchema.optional(),
 });
 
 export const updateProductSchema = createProductSchema.partial();

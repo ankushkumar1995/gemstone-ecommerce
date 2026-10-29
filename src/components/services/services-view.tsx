@@ -113,29 +113,46 @@ export function ServicesView({ services }: { services: AstroService[] }) {
             const Icon = iconMap[s.icon] ?? Sparkles;
             return (
               <motion.div key={s.slug} variants={staggerItem}>
-                <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-nebula p-6 transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-28px_rgba(122,69,245,0.4)]">
+                <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-nebula transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-28px_rgba(122,69,245,0.4)]">
+                  {/* Banner image (when set) */}
+                  {s.image && (
+                    <Link href={`/services/${s.slug}`} className="relative block aspect-[16/9] w-full overflow-hidden">
+                      <Image
+                        src={s.image}
+                        alt={s.title}
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 33vw"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    </Link>
+                  )}
+
+                  <div className="flex h-full flex-col p-6">
                   {s.popular && (
-                    <span className="absolute right-5 top-5 flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-1 text-[11px] font-semibold text-gold-600">
+                    <span className="absolute right-5 top-5 z-10 flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-1 text-[11px] font-semibold text-gold-600 backdrop-blur-sm">
                       <Star size={11} className="fill-gold-500 text-gold-500" />
                       Popular
                     </span>
                   )}
 
-                  <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600 transition-transform duration-500 group-hover:scale-110">
-                    <Icon size={24} />
-                  </span>
+                  {/* Icon badge — only when there's no banner image */}
+                  {!s.image && (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600 transition-transform duration-500 group-hover:scale-110">
+                      <Icon size={24} />
+                    </span>
+                  )}
 
                   <Link
                     href={`/services/${s.slug}`}
-                    className="mt-5 inline-block text-xl font-semibold text-foreground transition-colors hover:text-gold-600"
+                    className={`${s.image ? "" : "mt-5"} inline-block text-xl font-semibold text-foreground transition-colors hover:text-gold-600`}
                   >
                     {s.title}
                   </Link>
                   <p className="mt-1 text-sm font-medium text-gold-600">
                     {s.tagline}
                   </p>
-                  <p className="mt-3 text-sm leading-relaxed text-muted">
-                    {s.description}
+                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted">
+                    {stripHtml(s.description)}
                   </p>
 
                   <ul className="mt-4 space-y-2">
@@ -164,6 +181,7 @@ export function ServicesView({ services }: { services: AstroService[] }) {
                         Book Now
                       </Button>
                     </Link>
+                  </div>
                   </div>
                 </div>
               </motion.div>
@@ -302,4 +320,9 @@ function Stat({ value, label }: { value: string; label: string }) {
       <p className="text-xs text-muted">{label}</p>
     </div>
   );
+}
+
+/** Rich-text descriptions are HTML; cards show a plain-text preview. */
+function stripHtml(html: string): string {
+  return (html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }

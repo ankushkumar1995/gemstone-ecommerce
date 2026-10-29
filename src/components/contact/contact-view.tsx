@@ -330,7 +330,7 @@ export function ContactView() {
             <div className="overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_20px_50px_-30px_rgba(36,26,59,0.4)]">
               <iframe
                 title="Astrounkle store location"
-                src="https://www.google.com/maps?q=Jaipur,Rajasthan&output=embed"
+                src="https://www.google.com/maps?q=Noida,Uttar+Pradesh&output=embed"
                 className="h-56 w-full border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"

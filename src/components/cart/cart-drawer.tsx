@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
-import { useCommerce } from "@/lib/store";
+import { useCommerce, describeConfig } from "@/lib/store";
 import { useCurrency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 
@@ -139,12 +139,17 @@ export function CartDrawer() {
                             <p className="mt-0.5 text-xs text-muted">
                               {line.product.attributes.stone}
                             </p>
+                            {describeConfig(line.priced).length > 0 && (
+                              <p className="mt-0.5 line-clamp-2 text-[11px] text-gold-700">
+                                {describeConfig(line.priced).join(" · ")}
+                              </p>
+                            )}
                             <div className="mt-2 flex items-center justify-between">
                               {/* qty stepper */}
                               <div className="flex items-center gap-1 rounded-full border border-foreground/15 p-0.5">
                                 <button
                                   onClick={() =>
-                                    setQty(line.product.id, line.qty - 1)
+                                    setQty(line.lineKey ?? line.product.id, line.qty - 1)
                                   }
                                   aria-label="Decrease"
                                   className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/10"
@@ -156,7 +161,7 @@ export function CartDrawer() {
                                 </span>
                                 <button
                                   onClick={() =>
-                                    setQty(line.product.id, line.qty + 1)
+                                    setQty(line.lineKey ?? line.product.id, line.qty + 1)
                                   }
                                   aria-label="Increase"
                                   className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/10"
@@ -165,13 +170,13 @@ export function CartDrawer() {
                                 </button>
                               </div>
                               <span className="text-sm font-semibold text-foreground">
-                                {format(line.product.price * line.qty)}
+                                {format((line.unitPrice ?? line.product.price) * line.qty)}
                               </span>
                             </div>
                           </div>
 
                           <button
-                            onClick={() => removeFromCart(line.product.id)}
+                            onClick={() => removeFromCart(line.lineKey ?? line.product.id)}
                             aria-label="Remove item"
                             className="self-start text-muted transition-colors hover:text-rose-mystic"
                           >

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { StoreSettings, UpdateSettingsDto } from "@/modules/settings";
 import { adminApi } from "@/lib/admin-api";
+import { ConfiguratorTab } from "./settings-configurator-tab";
 import {
   PageHeader,
   Card,
@@ -46,7 +47,8 @@ type TabKey =
   | "email"
   | "notifications"
   | "seo"
-  | "appearance";
+  | "appearance"
+  | "configurator";
 
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "SGD", "AUD", "CAD"];
 const TIMEZONES = [
@@ -108,6 +110,7 @@ export function SettingsManager() {
     { value: "notifications", label: "Notifications" },
     { value: "seo", label: "SEO & Social" },
     { value: "appearance", label: "Appearance" },
+    { value: "configurator", label: "Configurator" },
   ];
 
   return (
@@ -131,6 +134,7 @@ export function SettingsManager() {
         {tab === "notifications" && <NotificationsTab settings={settings} saving={saving} onSave={save} />}
         {tab === "seo" && <SeoTab settings={settings} saving={saving} onSave={save} />}
         {tab === "appearance" && <AppearanceTab settings={settings} saving={saving} onSave={save} />}
+        {tab === "configurator" && <ConfiguratorTab settings={settings} saving={saving} onSave={save} />}
       </motion.div>
     </div>
   );

@@ -44,6 +44,7 @@ export const STORAGE_FOLDERS = [
   "collections",
   "blog",
   "banners",
+  "popups",
   "services",
   "pages",
   "media",

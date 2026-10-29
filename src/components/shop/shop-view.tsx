@@ -11,7 +11,7 @@ import { cn, discountPercent } from "@/lib/utils";
 import type { Product, ProductCategory, ZodiacSign } from "@/types";
 
 /** Minimal category shape the filter sidebar needs (from the DB). */
-type ShopCategory = { slug: string; title: string };
+type ShopCategory = { slug: string; title: string; id: string; parentId: string | null };
 
 type SortKey = "featured" | "price-asc" | "price-desc" | "rating";
 
@@ -46,9 +46,46 @@ export function ShopView({
   const [sort, setSort] = useState<SortKey>("featured");
   const [mobileFilters, setMobileFilters] = useState(false);
 
+  // --- Hierarchy helpers (2-level) -----------------------------------------
+  const bySlug = useMemo(() => {
+    const m = new Map<string, ShopCategory>();
+    for (const c of categories) m.set(c.slug, c);
+    return m;
+  }, [categories]);
+
+  const childrenByParentId = useMemo(() => {
+    const m = new Map<string, ShopCategory[]>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const list = m.get(c.parentId) ?? [];
+        list.push(c);
+        m.set(c.parentId, list);
+      }
+    }
+    return m;
+  }, [categories]);
+
+  const rootCategories = useMemo(
+    () => categories.filter((c) => !c.parentId),
+    [categories],
+  );
+
+  // The set of category slugs a selection matches: the slug itself plus, if the
+  // selected category is a top-level parent, all of its children's slugs. This
+  // is what makes selecting a parent show the whole subtree's products.
+  const selectedSlugs = useMemo(() => {
+    if (category === "all") return null;
+    const self = bySlug.get(category);
+    const slugs = new Set<string>([category]);
+    if (self && !self.parentId) {
+      for (const child of childrenByParentId.get(self.id) ?? []) slugs.add(child.slug);
+    }
+    return slugs;
+  }, [category, bySlug, childrenByParentId]);
+
   const filtered = useMemo(() => {
     let list = [...products];
-    if (category !== "all") list = list.filter((p) => p.category === category);
+    if (selectedSlugs) list = list.filter((p) => selectedSlugs.has(p.category));
     if (zodiac !== "all") list = list.filter((p) => p.zodiac.includes(zodiac));
     if (saleOnly)
       list = list.filter((p) => discountPercent(p.mrp, p.price) > 0);
@@ -79,7 +116,24 @@ export function ShopView({
         break;
     }
     return list;
-  }, [products, category, zodiac, saleOnly, search, sort]);
+  }, [products, selectedSlugs, zodiac, saleOnly, search, sort]);
+
+  // Breadcrumb: Shop › [Parent ›] Selected
+  const breadcrumbItems = useMemo(() => {
+    const items: { label: string; href?: string }[] = [{ label: "Shop", href: "/shop" }];
+    if (category === "all") {
+      items[0] = { label: "Shop" };
+      return items;
+    }
+    const self = bySlug.get(category);
+    if (!self) return [{ label: "Shop" }];
+    if (self.parentId) {
+      const parent = categories.find((c) => c.id === self.parentId);
+      if (parent) items.push({ label: parent.title, href: `/shop?category=${parent.slug}` });
+    }
+    items.push({ label: self.title });
+    return items;
+  }, [category, bySlug, categories]);
 
   const activeFilters =
     (category !== "all" ? 1 : 0) +
@@ -96,20 +150,37 @@ export function ShopView({
         </FilterPill>
       </FilterGroup>
 
-      {/* Category */}
+      {/* Category (2-level: parents, with children indented under them) */}
       <FilterGroup title="Category">
         <FilterPill active={category === "all"} onClick={() => setCategory("all")}>
           All Jewellery
         </FilterPill>
-        {categories.map((c) => (
-          <FilterPill
-            key={c.slug}
-            active={category === c.slug}
-            onClick={() => setCategory(c.slug)}
-          >
-            {c.title}
-          </FilterPill>
-        ))}
+        {rootCategories.map((parent) => {
+          const kids = childrenByParentId.get(parent.id) ?? [];
+          return (
+            <div key={parent.slug} className="w-full">
+              <FilterPill
+                active={category === parent.slug}
+                onClick={() => setCategory(parent.slug)}
+              >
+                {parent.title}
+              </FilterPill>
+              {kids.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2 border-l border-foreground/12 pl-3">
+                  {kids.map((child) => (
+                    <FilterPill
+                      key={child.slug}
+                      active={category === child.slug}
+                      onClick={() => setCategory(child.slug)}
+                    >
+                      {child.title}
+                    </FilterPill>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </FilterGroup>
 
       {/* Zodiac */}
@@ -147,7 +218,7 @@ export function ShopView({
 
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
-      <Breadcrumb items={[{ label: "Shop" }]} className="mb-6" />
+      <Breadcrumb items={breadcrumbItems} className="mb-6" />
       {/* header */}
       <div className="mb-8">
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold-600">

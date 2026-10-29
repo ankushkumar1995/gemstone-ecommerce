@@ -11,6 +11,17 @@ export const createCategorySchema = z.object({
   tint: z.string().trim().max(240).optional().or(z.literal("")),
   order: z.coerce.number().int().min(0).optional(),
   status: z.enum(["active", "inactive"]).optional(),
+  /**
+   * Optional parent category id. `null`/empty = top-level. The 2-level limit,
+   * existence check and cycle/self-parent guards are enforced in the service
+   * layer (they need a DB lookup); here we only accept the shape.
+   */
+  parentId: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .or(z.literal("")),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();

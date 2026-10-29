@@ -14,6 +14,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Order, OrderStatus, PaymentStatus } from "@/modules/orders";
+import type { PricedConfig } from "@/modules/configurator";
 import { adminApi } from "@/lib/admin-api";
 import { formatPrice } from "@/lib/utils";
 import {
@@ -193,6 +194,19 @@ export function OrderDetailView({ id }: { id: string }) {
                     <p className="text-xs" style={{ color: "var(--a-faint)" }}>
                       {it.variantLabel ? `${it.variantLabel} · ` : ""}{it.sku ?? "—"}
                     </p>
+                    {describeOrderConfig(it.config).length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {describeOrderConfig(it.config).map((c) => (
+                          <span
+                            key={c}
+                            className="rounded-full px-2 py-0.5 text-[11px]"
+                            style={{ background: "var(--a-gold-soft)", color: "var(--a-gold)" }}
+                          >
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm" style={{ color: "var(--a-muted)" }}>
@@ -323,6 +337,29 @@ export function OrderDetailView({ id }: { id: string }) {
       </div>
     </div>
   );
+}
+
+/** Readable chips for an order item's configurator snapshot (fulfilment info). */
+function describeOrderConfig(config?: PricedConfig): string[] {
+  if (!config) return [];
+  const out: string[] = [];
+  if (config.wear && config.wear.type !== "loose") {
+    const w = config.wear;
+    out.push(
+      [
+        w.type === "ring" ? "Ring" : "Pendant",
+        w.metal?.label,
+        w.design?.label,
+        w.size ? `Size ${w.size}` : undefined,
+        w.design?.advanceOnly ? "ADVANCE ONLY" : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
+  if (config.pooja && config.pooja.price > 0) out.push(config.pooja.label);
+  if (config.jaap) out.push(config.jaap.label);
+  return out;
 }
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: "green" }) {

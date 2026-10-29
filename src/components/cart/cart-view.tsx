@@ -13,7 +13,7 @@ import {
   ArrowRight,
   Tag,
 } from "lucide-react";
-import { useCommerce } from "@/lib/store";
+import { useCommerce, describeConfig } from "@/lib/store";
 import { useCurrency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
@@ -107,11 +107,19 @@ export function CartView() {
                         {line.product.attributes.planet} •{" "}
                         {line.product.attributes.stone}
                       </p>
+                      {describeConfig(line.priced).map((c) => (
+                        <p
+                          key={c}
+                          className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold-400/10 px-2 py-0.5 text-xs text-gold-700"
+                        >
+                          {c}
+                        </p>
+                      ))}
                     </div>
                     <motion.button
                       whileHover={{ scale: 1.15, rotate: -8 }}
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => removeFromCart(line.product.id)}
+                      onClick={() => removeFromCart(line.lineKey ?? line.product.id)}
                       aria-label="Remove"
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-rose-mystic/10 hover:text-rose-mystic"
                     >
@@ -124,7 +132,7 @@ export function CartView() {
                     <div className="flex w-fit items-center gap-1 rounded-full border border-foreground/15 p-1 transition-colors group-hover:border-gold-400/40">
                       <motion.button
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => setQty(line.product.id, line.qty - 1)}
+                        onClick={() => setQty(line.lineKey ?? line.product.id, line.qty - 1)}
                         aria-label="Decrease"
                         className="flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-gold-400/15 hover:text-gold-600"
                       >
@@ -141,7 +149,7 @@ export function CartView() {
                       </motion.span>
                       <motion.button
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => setQty(line.product.id, line.qty + 1)}
+                        onClick={() => setQty(line.lineKey ?? line.product.id, line.qty + 1)}
                         aria-label="Increase"
                         className="flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-gold-400/15 hover:text-gold-600"
                       >
@@ -151,13 +159,13 @@ export function CartView() {
 
                     <div className="flex items-baseline gap-2 sm:block sm:text-right">
                       <motion.p
-                        key={line.product.price * line.qty}
+                        key={(line.unitPrice ?? line.product.price) * line.qty}
                         initial={{ y: -6, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ duration: 0.25 }}
                         className="font-semibold text-foreground transition-colors group-hover:text-gold-600"
                       >
-                        {format(line.product.price * line.qty)}
+                        {format((line.unitPrice ?? line.product.price) * line.qty)}
                       </motion.p>
                       {line.product.mrp > line.product.price && (
                         <p className="text-xs text-muted line-through">

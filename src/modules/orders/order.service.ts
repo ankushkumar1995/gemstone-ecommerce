@@ -16,7 +16,14 @@ import { customerService } from "@/modules/customers";
 import { couponService } from "@/modules/coupons";
 import { auditService } from "@/modules/audit";
 import { settingsService } from "@/modules/settings";
+import { resolveConfig, priceConfig } from "@/modules/configurator";
 import { getOrderRepository } from "./order.repository";
+import {
+  sendOrderPlaced,
+  sendAdminNewOrderAlert,
+  sendOrderShipped,
+  sendOrderDelivered,
+} from "./order.emails";
 import type {
   Order,
   OrderActivity,
@@ -210,6 +217,20 @@ export const orderService = {
         available = v.stockQty;
       }
 
+      // Configurator pricing — SERVER-AUTHORITATIVE. The client sends only the
+      // selected option IDs; we recompute the price from the product's resolved
+      // config so a tampered or stale selection can never set the price.
+      let pricedConfig: OrderItem["config"];
+      if (line.config && Object.keys(line.config).length > 0) {
+        const resolved = resolveConfig(p.configurator, settings?.configurator ?? null);
+        const result = priceConfig(unitPrice, resolved, line.config);
+        if (!result.ok) {
+          return fail(AppErrors.validation(`${p.name}: ${result.error}`));
+        }
+        unitPrice = result.unitPrice!;
+        pricedConfig = result.priced;
+      }
+
       items.push({
         productId: p.id,
         variantId: line.variantId,
@@ -220,6 +241,7 @@ export const orderService = {
         unitPrice,
         qty: line.qty,
         lineTotal: unitPrice * line.qty,
+        config: pricedConfig,
       });
 
       // availability only matters when we are about to commit stock
@@ -319,6 +341,16 @@ export const orderService = {
       entityLabel: created.orderNumber,
       summary: `Order ${created.orderNumber} placed (${status})`,
     });
+
+    // Notifications (fire-and-forget; never block or fail the order).
+    const notif = settings?.notifications;
+    if (notif?.sendOrderConfirmation !== false) {
+      void sendOrderPlaced(created).catch(() => {});
+    }
+    if (notif?.adminAlertEmail) {
+      void sendAdminNewOrderAlert(created, notif.adminAlertEmail).catch(() => {});
+    }
+
     return ok(created);
   },
 
@@ -388,6 +420,17 @@ export const orderService = {
       entityLabel: updated.orderNumber,
       summary: `Order ${updated.orderNumber}: ${current} → ${next}`,
     });
+
+    // Customer notifications on key transitions (fire-and-forget).
+    if (next === "shipped") {
+      const sRes = await settingsService.get();
+      const sendShip = sRes.ok ? sRes.value.notifications.sendShippingUpdate !== false : true;
+      if (sendShip) void sendOrderShipped(updated).catch(() => {});
+    }
+    if (next === "delivered") {
+      void sendOrderDelivered(updated).catch(() => {});
+    }
+
     return ok(updated);
   },
 

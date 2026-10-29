@@ -311,6 +311,7 @@ export const productService = {
             certificateNumber: dto.attributes.certificateNumber?.trim() || undefined,
           }
         : undefined,
+      configurator: dto.configurator,
       bestseller: dto.bestseller ?? false,
       displayOrder: dto.displayOrder ?? 0,
       ratingAvg: 0,
@@ -373,6 +374,7 @@ export const productService = {
           ),
         },
       }),
+      ...(dto.configurator !== undefined && { configurator: dto.configurator }),
 
       /* workflow */
       ...(dto.publishAt !== undefined && { publishAt: dto.publishAt || undefined }),

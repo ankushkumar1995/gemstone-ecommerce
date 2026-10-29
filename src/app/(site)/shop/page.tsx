@@ -61,9 +61,15 @@ export default async function ShopPage({
     categoryService.list(),
   ]);
   const products = productsRes.ok ? productsRes.value : [];
-  const categories = (categoriesRes.ok ? categoriesRes.value : [])
-    .filter((c) => (c.status ?? "active") === "active")
-    .map((c) => ({ slug: c.slug, title: c.title }));
+  const activeCats = (categoriesRes.ok ? categoriesRes.value : []).filter(
+    (c) => (c.status ?? "active") === "active",
+  );
+  const categories = activeCats.map((c) => ({
+    slug: c.slug,
+    title: c.title,
+    parentId: c.parentId ?? null,
+    id: c.id,
+  }));
 
   const initialSearch = (search ?? "").trim();
 

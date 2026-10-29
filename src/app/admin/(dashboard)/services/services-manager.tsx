@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Sparkles, CheckCircle2, Star, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import type { AstroService } from "@/types";
 import { adminApi } from "@/lib/admin-api";
@@ -188,6 +188,7 @@ export function ServicesManager() {
       </div>
 
       <ServiceFormModal
+        key={`${formOpen ? "open" : "closed"}-${editing?.id ?? "new"}`}
         open={formOpen}
         editing={editing}
         onClose={() => setFormOpen(false)}

@@ -67,7 +67,7 @@ export function ProductGallery({ product }: { product: Product }) {
         transition={{ duration: 0.6 }}
         onMouseMove={handleMove}
         onMouseLeave={() => setZoom((z) => ({ ...z, on: false }))}
-        className="relative aspect-square flex-1 cursor-zoom-in overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_30px_80px_-40px_rgba(36,26,59,0.5)]"
+        className="relative aspect-square w-full flex-1 cursor-zoom-in overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_30px_80px_-40px_rgba(36,26,59,0.5)]"
       >
         <AnimatePresence mode="wait">
           <motion.div

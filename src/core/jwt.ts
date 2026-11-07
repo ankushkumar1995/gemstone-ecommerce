@@ -49,6 +49,8 @@ export interface AdminTokenClaims {
 async function sign(claims: AdminTokenClaims, ttlSeconds: number): Promise<string> {
   return new SignJWT({ roleId: claims.roleId, ver: claims.ver, fp: claims.fp, kind: claims.kind })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    // Unique per token, so a rotated refresh token is never identical to the new one.
+    .setJti(crypto.randomUUID())
     .setSubject(claims.sub)
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)

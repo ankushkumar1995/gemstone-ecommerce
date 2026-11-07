@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { adminApi } from "@/lib/admin-api";
+import { astroAdminApi } from "@/lib/admin-astro-api";
 import {
   LayoutDashboard,
   BarChart3,
@@ -80,6 +81,13 @@ const groups: NavGroup[] = [
     ],
   },
   {
+    title: "Astrology Platform",
+    items: [
+      { label: "Astrologers", href: "/admin/astrologers", icon: Sparkles },
+      { label: "Program Settings", href: "/admin/astrologers/settings", icon: Settings },
+    ],
+  },
+  {
     title: "Finance",
     items: [{ label: "Payments", href: "/admin/payments", icon: Wallet }],
   },
@@ -117,11 +125,15 @@ export function Sidebar({
   const pathname = usePathname();
   // Live "active bookings" count for the Bookings nav badge.
   const [bookingBadge, setBookingBadge] = useState<number | undefined>(undefined);
+  const [astroBadge, setAstroBadge] = useState<number | undefined>(undefined);
   useEffect(() => {
     let active = true;
     (async () => {
-      const res = await adminApi.bookings.counts();
-      if (active && res.ok) setBookingBadge(res.data.active || undefined);
+      const [res, astro] = await Promise.all([adminApi.bookings.counts(), astroAdminApi.astrologers.counts()]);
+      if (!active) return;
+      if (res.ok) setBookingBadge(res.data.active || undefined);
+      // Applications waiting + profile edits waiting = work for the admin.
+      if (astro.ok) setAstroBadge(astro.data.pendingReview + astro.data.pendingEdits || undefined);
     })();
     return () => {
       active = false;
@@ -182,7 +194,9 @@ export function Sidebar({
               {group.items.map((item) => {
                 // Override the Bookings badge with the live active count.
                 const navItem =
-                  item.href === "/admin/bookings" ? { ...item, badge: bookingBadge } : item;
+                  item.href === "/admin/bookings" ? { ...item, badge: bookingBadge }
+                  : item.href === "/admin/astrologers" ? { ...item, badge: astroBadge }
+                  : item;
                 return (
                   <NavLink
                     key={item.href}

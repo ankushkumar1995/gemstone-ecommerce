@@ -19,7 +19,11 @@ export type AuditEntity =
   | "settings"
   | "inventory"
   | "service"
-  | "user";
+  | "user"
+  | "astrologer"
+  | "consultation"
+  | "wallet"
+  | "payout";
 
 export type AuditAction =
   | "create"

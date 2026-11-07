@@ -49,6 +49,10 @@ const ENTITY_ICON: Record<AuditEntity, LucideIcon> = {
   inventory: Boxes,
   service: Sparkles,
   user: ShieldCheck,
+  astrologer: Sparkles,
+  consultation: Users,
+  wallet: Boxes,
+  payout: ShoppingCart,
 };
 
 function actionTone(a: AuditAction): "muted" | "gold" | "green" | "blue" | "rose" | "royal" {

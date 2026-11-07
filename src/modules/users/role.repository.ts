@@ -34,10 +34,39 @@ async function model() {
 }
 
 /** Seed preset roles if the collection is empty. Idempotent. */
+/**
+ * One-time additive migration: when new resources are introduced, grant their
+ * preset permissions to EXISTING system roles. Runs once per migration key
+ * (recorded in the `migrations` collection), so permissions an owner later
+ * removes on purpose are never re-added. Never removes anything.
+ */
+const ROLE_MIGRATIONS: { key: string; resources: string[] }[] = [
+  { key: "roles-astrologer-platform-v1", resources: ["astrologers", "consultations", "wallets", "payouts"] },
+];
+
+async function migrateSystemRoles(M: Awaited<ReturnType<typeof model>>): Promise<void> {
+  const db = M.db.db;
+  if (!db) return;
+  const done = db.collection<{ _id: string; at: Date }>("migrations");
+  for (const mig of ROLE_MIGRATIONS) {
+    if (await done.findOne({ _id: mig.key })) continue;
+    for (const preset of PRESET_ROLES) {
+      const add = preset.permissions.filter((p) => mig.resources.some((r) => p.startsWith(`${r}:`)));
+      if (add.length) await M.updateOne({ key: preset.key }, { $addToSet: { permissions: { $each: add } } });
+    }
+    await done.updateOne({ _id: mig.key }, { $set: { at: new Date() } }, { upsert: true });
+  }
+}
+
 async function ensureSeeded(): Promise<void> {
   const M = await model();
   const count = await M.estimatedDocumentCount();
-  if (count > 0) return;
+  if (count > 0) {
+    await migrateSystemRoles(M).catch(() => {
+      /* never block role loading on a migration hiccup; it retries next load */
+    });
+    return;
+  }
   await M.insertMany(
     PRESET_ROLES.map((r) => ({
       key: r.key,

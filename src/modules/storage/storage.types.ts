@@ -49,6 +49,8 @@ export const STORAGE_FOLDERS = [
   "pages",
   "media",
   "misc",
+  // Public astrologer profile photos (KYC documents live in a separate private store).
+  "astrologers",
 ] as const;
 
 export type StorageFolder = (typeof STORAGE_FOLDERS)[number];

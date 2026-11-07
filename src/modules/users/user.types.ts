@@ -30,7 +30,11 @@ export type Resource =
   | "reports"
   | "audit"
   | "settings"
-  | "users";
+  | "users"
+  | "astrologers"
+  | "consultations"
+  | "wallets"
+  | "payouts";
 
 /** A single permission, e.g. "orders:edit". "*:*" is the superuser wildcard. */
 export type Permission = `${Resource}:${Action}` | "*:*";

@@ -39,6 +39,10 @@ export const RESOURCES: Resource[] = [
   "audit",
   "settings",
   "users",
+  "astrologers",
+  "consultations",
+  "wallets",
+  "payouts",
 ];
 
 /** The four actions, in display order. */
@@ -65,6 +69,10 @@ export const RESOURCE_LABELS: Record<Resource, string> = {
   audit: "Activity Log",
   settings: "Settings",
   users: "Users & Roles",
+  astrologers: "Astrologers",
+  consultations: "Consultations",
+  wallets: "Customer Wallets",
+  payouts: "Astrologer Payouts",
 };
 
 /* ---------------- permission builders ---------------- */
@@ -131,6 +139,10 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...all("reviews"),
       ...viewOnly("reports"),
       ...viewOnly("payments"),
+      ...all("astrologers"),
+      ...all("consultations"),
+      ...viewOnly("wallets"),
+      ...viewOnly("payouts"),
     ],
     isSystem: true,
     priority: 60,
@@ -154,6 +166,9 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...only("customers", ["view", "edit"]),
       ...viewOnly("reviews"),
       ...viewOnly("products"),
+      ...viewOnly("astrologers"),
+      ...only("consultations", ["view", "edit"]),
+      ...viewOnly("wallets"),
     ],
     isSystem: true,
     priority: 30,

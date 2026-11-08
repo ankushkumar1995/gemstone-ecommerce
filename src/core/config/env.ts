@@ -92,21 +92,24 @@ if (env.NODE_ENV === "production" && (!env.ADMIN_SESSION_SECRET || env.ADMIN_SES
 }
 
 /**
- * Per-module data source resolver.
+ * Per-module data source resolver, used by every repository that has a Mongo
+ * implementation.
  *
- * This is the key to one-at-a-time migration. Each repository calls
- * `dataSourceFor("services")`, which checks for a module-specific override env
- * var (e.g. DATA_SOURCE_SERVICES) and falls back to the global DATA_SOURCE
- * (which stays "mock"). So a module only switches to Mongo once we explicitly
- * set its flag — every other module keeps running on mock, untouched.
+ * Resolution order:
+ *  1. An explicit per-module override, if set (DATA_SOURCE_<MODULE>=mock|mongo).
+ *     Optional; only useful to force one module onto mock for a test/debug.
+ *  2. MONGODB_URI is set → "mongo". No per-module flag is needed: a new module
+ *     with a Mongo repository works on the real database out of the box.
+ *  3. Otherwise the global DATA_SOURCE (default "mock"), so the app still runs
+ *     with zero setup when no database is configured.
  *
- * Example .env:
- *   DATA_SOURCE=mock            # global default, keep as mock
- *   DATA_SOURCE_SERVICES=mongo  # only services uses the real database
+ * Modules that only have a mock repository read `env.DATA_SOURCE` directly and
+ * are unaffected by this.
  */
 export function dataSourceFor(moduleName: string): DataSource {
   const key = `DATA_SOURCE_${moduleName.toUpperCase()}`;
   const raw = process.env[key];
   if (raw === "mongo" || raw === "mock") return raw;
+  if (env.MONGODB_URI && env.MONGODB_URI.trim() !== "") return "mongo";
   return env.DATA_SOURCE;
 }

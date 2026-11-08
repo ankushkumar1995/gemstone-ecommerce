@@ -18,18 +18,23 @@ const KNOWN_MODULES = [
   "settings",
   "products",
   "categories",
-  "collections",
   "blog",
-  "pages",
   "orders",
   "customers",
-  "leads",
-  "reviews",
   "coupons",
   "banners",
-  "returns",
-  "audit",
+  "bookings",
+  "popups",
+  "email",
+  "users",
+  "astrologers",
+  "astro_settings",
+  "wallets",
+  "poojas",
 ] as const;
+
+/** Modules that only have an in-memory repository so far (always mock). */
+const MOCK_ONLY_MODULES = ["collections", "pages", "leads", "reviews", "returns", "audit"] as const;
 
 interface HealthReport {
   status: "ok" | "degraded";
@@ -50,7 +55,7 @@ interface HealthReport {
 
 export async function GET() {
   const modulesOnMongo = KNOWN_MODULES.filter((m) => dataSourceFor(m) === "mongo");
-  const modulesOnMock = KNOWN_MODULES.filter((m) => dataSourceFor(m) !== "mongo");
+  const modulesOnMock = [...KNOWN_MODULES.filter((m) => dataSourceFor(m) !== "mongo"), ...MOCK_ONLY_MODULES];
   const dbUsed = modulesOnMongo.length > 0;
 
   const report: HealthReport = {

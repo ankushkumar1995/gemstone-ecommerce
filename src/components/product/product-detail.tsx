@@ -193,7 +193,7 @@ export function ProductDetail({
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 pb-28 sm:px-8 lg:pb-10">
+    <div className="mx-auto max-w-[90rem] px-5 py-10 pb-28 sm:px-8 lg:pb-10">
       {/* breadcrumb */}
       <Breadcrumb
         items={[

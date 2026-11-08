@@ -33,7 +33,7 @@ export function AnnouncementBar() {
 
   return (
     <div className="relative z-50 overflow-hidden bg-gradient-to-r from-royal-700 via-royal-600 to-royal-700">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-2 text-xs text-royal-50 sm:px-8">
+      <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-4 px-5 py-2 text-xs text-royal-50 sm:px-8">
         {/* ---- Left: contact info ---- */}
         <div className="flex items-center gap-4 sm:gap-5">
           {contact.map((c, i) => {

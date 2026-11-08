@@ -124,3 +124,23 @@ export function verifyWebhookSignature(rawBody: string, signature: string): bool
     .digest("hex");
   return safeEqualHex(expected, signature);
 }
+
+/**
+ * Refund (part of) a captured payment. `receipt` makes the request idempotent
+ * on Razorpay's side too: the same receipt is never refunded twice.
+ */
+export async function createRazorpayRefund(params: { paymentId: string; amountInRupees: number; receipt: string; notes?: Record<string, string> }): Promise<{ id: string; status: string }> {
+  if (!razorpayConfigured()) throw new Error("Razorpay is not configured");
+  const amount = Math.round(params.amountInRupees * 100);
+  if (!Number.isFinite(amount) || amount < 100) throw new Error("Refund amount must be at least ₹1");
+  const res = await fetch(`${API_BASE}/payments/${encodeURIComponent(params.paymentId)}/refund`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({ amount, receipt: params.receipt.slice(0, 40), notes: params.notes ?? {} }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Razorpay refund failed (${res.status}): ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as { id: string; status: string };
+}

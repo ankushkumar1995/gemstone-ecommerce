@@ -65,7 +65,7 @@ export function ConsultationPricing() {
   const TEL = `tel:+${phoneDigits(store.supportPhone)}`;
 
   return (
-    <section className="relative overflow-hidden py-20">
+    <section className="relative overflow-hidden py-9 md:py-11">
       {/* ambient background glows */}
       <div
         aria-hidden
@@ -89,7 +89,7 @@ export function ConsultationPricing() {
           className="mb-14"
         />
 
-        <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <div className="grid items-stretch gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* ============================================================ *
            *  LEFT — Sacred Yagya promo card
            * ============================================================ */}
@@ -98,7 +98,7 @@ export function ConsultationPricing() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="group relative flex flex-col overflow-hidden rounded-[2rem] border border-foreground/10 bg-gradient-to-br from-[#1a1230] via-royal-700 to-[#2a1a4d] p-8 sm:p-10"
+            className="group relative flex flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-gradient-to-br from-[#1a1230] via-royal-700 to-[#2a1a4d] p-5 sm:p-6"
           >
             {/* decorative overlays + glows */}
             <div
@@ -119,7 +119,7 @@ export function ConsultationPricing() {
                 The answer may lie in a 5,000-year-old Vedic fire ritual.&rdquo;
               </p>
 
-              <h3 className="mt-5 font-display text-4xl font-bold leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.3)] sm:text-5xl">
+              <h3 className="mt-3.5 font-display text-3xl font-bold leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.3)] sm:text-4xl">
                 Tara Devi Yagya
               </h3>
               <p className="mt-2 text-lg font-semibold text-gold-300">
@@ -134,7 +134,7 @@ export function ConsultationPricing() {
               </p>
 
               {/* pills */}
-              <div className="mt-6 flex flex-wrap gap-2.5">
+              <div className="mt-4 flex flex-wrap gap-2.5">
                 {yagyaPills.map((p) => (
                   <motion.span
                     key={p}
@@ -182,7 +182,7 @@ export function ConsultationPricing() {
                   </Link>
                 </div>
 
-                <p className="mt-5 flex items-center gap-2 text-xs text-white/60">
+                <p className="mt-3.5 flex items-center gap-2 text-xs text-white/60">
                   <span className="flex h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                   12 devotees booked this week · Next auspicious muhurat: Friday
                 </p>
@@ -198,14 +198,14 @@ export function ConsultationPricing() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="relative overflow-hidden rounded-[2rem] border border-foreground/10 bg-nebula p-8 sm:p-10"
+            className="relative overflow-hidden rounded-3xl border border-foreground/10 bg-nebula p-5 sm:p-6"
           >
             <div className="pointer-events-none absolute -left-16 -bottom-16 h-56 w-56 rounded-full bg-royal-500/10 blur-3xl" />
 
-            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className="relative flex flex-col gap-3.5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="font-display text-2xl italic text-muted">Get Your</p>
-                <div className="mt-1 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-royal-500 to-royal-700 px-4 py-2 text-xl font-semibold text-white shadow-[0_12px_30px_-12px_rgba(122,69,245,0.6)]">
+                <div className="mt-1 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-royal-500 to-royal-700 px-4 py-2 text-[17px] font-semibold text-white shadow-[0_12px_30px_-12px_rgba(122,69,245,0.6)]">
                   <Sparkles size={18} className="text-gold-300" />
                   Consultation Call
                 </div>
@@ -219,7 +219,7 @@ export function ConsultationPricing() {
                 transition={{ duration: 0.5, delay: 0.2 }}
                 className="flex items-center gap-3"
               >
-                <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-gold-400/40">
+                <div className="relative h-12 w-12 overflow-hidden rounded-2xl border border-gold-400/40">
                   <Image
                     src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?auto=format&fit=crop&w=300&q=85"
                     alt="Senior Vedic astrologer"
@@ -243,7 +243,7 @@ export function ConsultationPricing() {
             </div>
 
             {/* plans list */}
-            <ul className="relative mt-8 space-y-2.5">
+            <ul className="relative mt-6 space-y-2.5">
               {plans.map((plan, i) => {
                 const ModeIcon = plan.mode === "video" ? Video : Phone;
                 return (
@@ -258,7 +258,7 @@ export function ConsultationPricing() {
                       href={WA}
                       target="_blank"
                       rel="noreferrer"
-                      className="group/row relative flex items-center justify-between gap-4 rounded-2xl border border-foreground/8 bg-void/40 px-4 py-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-gold-400/40 hover:bg-void hover:shadow-[0_16px_40px_-24px_rgba(122,69,245,0.5)]"
+                      className="group/row relative flex items-center justify-between gap-3.5 rounded-2xl border border-foreground/8 bg-void/40 px-4 py-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-gold-400/40 hover:bg-void hover:shadow-[0_16px_40px_-24px_rgba(122,69,245,0.5)]"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -313,7 +313,7 @@ export function ConsultationPricing() {
             </div>
 
             {/* featured in */}
-            <div className="relative mt-8 border-t border-foreground/8 pt-5">
+            <div className="relative mt-6 border-t border-foreground/8 pt-3.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
                 As Featured In
               </p>

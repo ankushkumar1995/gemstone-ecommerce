@@ -10,7 +10,7 @@ import { Container } from "@/components/ui/container";
 
 export function Testimonials() {
   return (
-    <section className="py-20">
+    <section className="py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Loved by Thousands"
@@ -18,13 +18,13 @@ export function Testimonials() {
           description="Real stories from a community that trusts us with their most meaningful purchases."
         />
 
-        <StaggerContainer className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <StaggerContainer className="mt-6 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           {testimonials.map((t) => (
             <motion.figure
               key={t.id}
               variants={staggerItem}
               whileHover={{ y: -6 }}
-              className="relative flex flex-col rounded-3xl glass border-gradient p-6"
+              className="relative flex flex-col rounded-2xl glass border-gradient p-4"
             >
               <Quote className="text-gold-400/50" size={28} />
               <blockquote className="mt-3 flex-1 text-sm leading-relaxed text-foreground/90">

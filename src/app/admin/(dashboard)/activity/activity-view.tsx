@@ -19,6 +19,7 @@ import {
   Boxes,
   Sparkles,
   ShieldCheck,
+  Flame,
   type LucideIcon,
 } from "lucide-react";
 import type { AuditEntry, AuditEntity, AuditAction } from "@/modules/audit";
@@ -50,6 +51,7 @@ const ENTITY_ICON: Record<AuditEntity, LucideIcon> = {
   service: Sparkles,
   user: ShieldCheck,
   astrologer: Sparkles,
+  pooja: Flame,
   consultation: Users,
   wallet: Boxes,
   payout: ShoppingCart,

@@ -1,0 +1,15 @@
+{
+  "name": "Astrounkle Partner",
+  "short_name": "AU Partner",
+  "description": "Astrounkle partner panel for astrologers: live requests, sessions, earnings and payouts.",
+  "id": "/astrologer",
+  "start_url": "/astrologer",
+  "scope": "/astrologer/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#c9942a",
+  "icons": [
+    { "src": "/images/image1.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

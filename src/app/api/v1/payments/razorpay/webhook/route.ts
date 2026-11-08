@@ -16,6 +16,7 @@ import { jsonError, jsonOk } from "@/core/http";
 import { AppErrors } from "@/core/errors";
 import { orderService } from "@/modules/orders";
 import { bookingService } from "@/modules/bookings";
+import { walletService } from "@/modules/wallets";
 import { verifyWebhookSignature } from "@/core/razorpay";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,15 @@ export async function POST(request: NextRequest) {
       razorpayOrderId,
       razorpayPaymentId: razorpayPaymentId ?? "webhook",
     });
+    return jsonOk({ received: true });
+  }
+
+  // Wallet recharge: credit exactly once (idempotent on the recharge id).
+  const recharge = await walletService.rechargeByOrder(razorpayOrderId);
+  if (recharge) {
+    const res = await walletService.settleRecharge(razorpayOrderId, razorpayPaymentId);
+    // A real failure → 500 so Razorpay retries later.
+    if (!res.ok) return jsonError(res.error);
   }
 
   // Unknown reference — still 200 so Razorpay stops retrying.

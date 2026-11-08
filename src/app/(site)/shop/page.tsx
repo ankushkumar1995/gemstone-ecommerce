@@ -25,14 +25,6 @@ export const metadata: Metadata = {
 // Shop pulls the live catalogue + categories from the admin.
 export const dynamic = "force-dynamic";
 
-const validCategories: ProductCategory[] = [
-  "rings",
-  "pendants",
-  "bracelets",
-  "loose-stones",
-  "rudraksha",
-];
-
 const validZodiac: ZodiacSign[] = [
   "aries", "taurus", "gemini", "cancer", "leo", "virgo",
   "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces",
@@ -44,10 +36,6 @@ export default async function ShopPage({
   searchParams: Promise<{ category?: string; zodiac?: string; sale?: string; search?: string }>;
 }) {
   const { category, zodiac, sale, search } = await searchParams;
-
-  const initialCategory = validCategories.includes(category as ProductCategory)
-    ? (category as ProductCategory)
-    : undefined;
 
   const initialZodiac = validZodiac.includes(zodiac as ZodiacSign)
     ? (zodiac as ZodiacSign)
@@ -70,6 +58,13 @@ export default async function ShopPage({
     parentId: c.parentId ?? null,
     id: c.id,
   }));
+
+  // Any active admin category (incl. sub-categories) is a valid filter, so the
+  // mega menu can link to categories created after launch.
+  const initialCategory =
+    category && categories.some((c) => c.slug === category)
+      ? (category as ProductCategory)
+      : undefined;
 
   const initialSearch = (search ?? "").trim();
 

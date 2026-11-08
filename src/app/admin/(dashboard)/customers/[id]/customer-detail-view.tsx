@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -31,8 +31,10 @@ import {
   EmptyState,
   AdminBreadcrumb,
   useAdminToast,
+  useOnMount,
 } from "@/app/admin/_components";
 import { CustomerFormModal } from "../customer-form-modal";
+import { CustomerWalletPanel } from "./customer-wallet-panel";
 
 function statusTone(s: Customer["status"]): "green" | "gold" | "rose" {
   return s === "vip" ? "gold" : s === "blocked" ? "rose" : "green";
@@ -66,10 +68,7 @@ export function CustomerDetailView({ id, initialEdit = false }: { id: string; in
     } else setState("missing");
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  useOnMount(load);
 
   const submitNote = async () => {
     if (!note.trim()) return;
@@ -148,6 +147,9 @@ export function CustomerDetailView({ id, initialEdit = false }: { id: string; in
               </p>
             </div>
           </Card>
+
+          {/* wallet (consultations) */}
+          <CustomerWalletPanel customerId={c.id} />
 
           {/* addresses */}
           <Card>

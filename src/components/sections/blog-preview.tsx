@@ -17,27 +17,27 @@ import { Button } from "@/components/ui/button";
 export function BlogPreview({ articles }: { articles: Article[] }) {
   if (articles.length === 0) return null;
   return (
-    <section className="py-20">
+    <section className="py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Learn & Grow"
           title={
             <>
-              The Gemstone <span className="text-gradient-royal">Journal</span>
+              The Astrology <span className="text-gradient-royal">Journal</span>
             </>
           }
-          description="Guides, astrology insights and buying tips — everything you need before you choose your stone."
+          description="Guides on kundli, doshas, transits and remedies from our astrologers."
         />
 
         <StaggerContainer
-          className="mt-14 grid grid-cols-1 gap-6 md:grid-cols-3"
+          className="mt-6 grid grid-cols-1 gap-3.5 md:grid-cols-3"
           stagger={0.08}
         >
           {articles.map((a) => (
             <motion.article key={a.slug} variants={staggerItem}>
               <Link
                 href={`/blog/${a.slug}`}
-                className="group flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-nebula transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-28px_rgba(36,26,59,0.45)]"
+                className="group flex h-full flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-nebula transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-28px_rgba(36,26,59,0.45)]"
               >
                 <div className="relative aspect-[16/10] overflow-hidden">
                   <Image
@@ -53,7 +53,7 @@ export function BlogPreview({ articles }: { articles: Article[] }) {
                   </span>
                 </div>
 
-                <div className="flex flex-1 flex-col p-6">
+                <div className="flex flex-1 flex-col p-4">
                   <div className="flex items-center gap-1.5 text-xs text-muted">
                     <Clock size={13} />
                     {a.readMins} min read
@@ -77,7 +77,7 @@ export function BlogPreview({ articles }: { articles: Article[] }) {
           ))}
         </StaggerContainer>
 
-        <div className="mt-12 flex justify-center">
+        <div className="mt-6 flex justify-center">
           <Link href="/blog">
             <Button variant="outline" size="lg">
               Read the Journal

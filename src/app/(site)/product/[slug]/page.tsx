@@ -98,7 +98,7 @@ export default async function ProductPage({
 
       {related.length > 0 && (
         <section className="py-16">
-          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+          <div className="mx-auto max-w-[90rem] px-5 sm:px-8">
             <SectionHeader
               align="left"
               eyebrow="You May Also Like"

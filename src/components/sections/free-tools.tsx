@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ScrollText, HeartHandshake, Moon, Gem, ShieldAlert, Star, ArrowRight, Sparkles } from "lucide-react";
+import { ScrollText, HeartHandshake, Moon, ShieldAlert, Star, ArrowRight, Sparkles } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StaggerContainer, staggerItem } from "@/components/ui/reveal";
@@ -25,12 +25,12 @@ const tools = [
     tag: "Gun Milan",
   },
   {
-    icon: Gem,
-    title: "Gemstone Recommendation",
-    desc: "Discover which gemstone you should wear based on your birth chart.",
-    href: "/gemstone-recommendation",
-    cta: "Find My Stone",
-    tag: "For You",
+    icon: Sparkles,
+    title: "Nakshatra Finder",
+    desc: "Find your birth star, its pada and ruling planet from your birth details.",
+    href: "/nakshatra-finder",
+    cta: "Find Nakshatra",
+    tag: "Instant",
   },
   {
     icon: Moon,
@@ -50,11 +50,11 @@ const tools = [
   },
   {
     icon: Star,
-    title: "Gemstone by Zodiac",
-    desc: "See the lucky gemstone for every zodiac sign (Rashi).",
-    href: "/gemstone-by-zodiac",
-    cta: "Explore Stones",
-    tag: "By Sign",
+    title: "Lucky Dates",
+    desc: "Find auspicious dates for new work, travel and important decisions.",
+    href: "/lucky-dates-calculator",
+    cta: "Find Dates",
+    tag: "Muhurat",
   },
 ];
 
@@ -64,25 +64,25 @@ const tools = [
  */
 export function FreeTools() {
   return (
-    <section className="py-20">
+    <section id="free-tools" className="scroll-mt-24 py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Free Astrology Tools"
           title={<>Start With a <span className="text-gradient-gold">Free Reading</span></>}
-          description="No sign-up, instant results. Explore your chart, then talk to our astrologers for personalised guidance and the right gemstone."
+          description="No sign-up, instant results. Explore your chart, then talk to our astrologers for personalised guidance."
           className="mb-14"
         />
-        <StaggerContainer className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3" stagger={0.08}>
+        <StaggerContainer className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3" stagger={0.08}>
           {tools.map((t) => (
             <motion.div key={t.title} variants={staggerItem}>
               <Link
                 href={t.href}
-                className="group relative flex h-full flex-col overflow-hidden rounded-[2rem] border border-foreground/10 bg-nebula p-8 transition-all duration-500 hover:-translate-y-1.5 hover:border-gold-400/40 hover:shadow-[0_28px_70px_-30px_rgba(122,69,245,0.4)]"
+                className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/10 bg-nebula p-5 transition-all duration-500 hover:-translate-y-1.5 hover:border-gold-400/40 hover:shadow-[0_28px_70px_-30px_rgba(122,69,245,0.4)]"
               >
                 <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gold-400/10 blur-3xl transition-transform duration-700 group-hover:scale-150" />
 
                 <div className="relative flex items-center justify-between">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600 transition-transform duration-500 group-hover:scale-110">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-gold-600 transition-transform duration-500 group-hover:scale-110">
                     <t.icon size={26} />
                   </span>
                   <span className="flex items-center gap-1 rounded-full bg-gold-400/15 px-3 py-1 text-[11px] font-semibold text-gold-600">
@@ -90,14 +90,14 @@ export function FreeTools() {
                   </span>
                 </div>
 
-                <h3 className="relative mt-6 font-display text-2xl font-semibold text-foreground transition-colors group-hover:text-gold-600">
+                <h3 className="relative mt-4 font-display text-xl font-semibold text-foreground transition-colors group-hover:text-gold-600">
                   {t.title}
                 </h3>
                 <p className="relative mt-2 flex-1 text-sm leading-relaxed text-muted">
                   {t.desc}
                 </p>
 
-                <span className="relative mt-6 inline-flex items-center gap-2 text-sm font-semibold text-gold-600">
+                <span className="relative mt-4 inline-flex items-center gap-2 text-sm font-semibold text-gold-600">
                   {t.cta}
                   <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </span>

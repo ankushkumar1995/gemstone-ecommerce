@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { SlidersHorizontal, X } from "lucide-react";
+import { SlidersHorizontal, X, Tag, ChevronDown, Check } from "lucide-react";
 import { zodiacSigns } from "@/data/zodiac";
 import { ProductCard } from "@/components/ui/product-card";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
@@ -12,6 +12,11 @@ import type { Product, ProductCategory, ZodiacSign } from "@/types";
 
 /** Minimal category shape the filter sidebar needs (from the DB). */
 type ShopCategory = { slug: string; title: string; id: string; parentId: string | null };
+
+/** Top-level categories shown before "more" (keeps the sidebar short, no inner scroll). */
+const CAT_PREVIEW = 6;
+/** Zodiac tiles shown before "more" (two rows of three). */
+const SIGN_PREVIEW = 6;
 
 type SortKey = "featured" | "price-asc" | "price-desc" | "rating";
 
@@ -45,6 +50,8 @@ export function ShopView({
   const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState<SortKey>("featured");
   const [mobileFilters, setMobileFilters] = useState(false);
+  const [showAllCats, setShowAllCats] = useState(false);
+  const [showAllSigns, setShowAllSigns] = useState(false);
 
   // --- Hierarchy helpers (2-level) -----------------------------------------
   const bySlug = useMemo(() => {
@@ -82,6 +89,22 @@ export function ShopView({
     }
     return slugs;
   }, [category, bySlug, childrenByParentId]);
+
+  // Product counts per category slug (a parent also counts its children).
+  const countBySlug = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of products) m.set(p.category, (m.get(p.category) ?? 0) + 1);
+    return m;
+  }, [products]);
+  const countFor = (c: ShopCategory) => {
+    let n = countBySlug.get(c.slug) ?? 0;
+    if (!c.parentId) for (const k of childrenByParentId.get(c.id) ?? []) n += countBySlug.get(k.slug) ?? 0;
+    return n;
+  };
+  const saleCount = useMemo(
+    () => products.filter((p) => discountPercent(p.mrp, p.price) > 0).length,
+    [products],
+  );
 
   const filtered = useMemo(() => {
     let list = [...products];
@@ -141,83 +164,197 @@ export function ShopView({
     (saleOnly ? 1 : 0) +
     (search.trim() ? 1 : 0);
 
+  const clearAll = () => {
+    setCategory("all");
+    setZodiac("all");
+    setSaleOnly(false);
+    setSearch("");
+  };
+
+  // Long category lists stay compact: first few, then "Show all".
+  // The selected category (or the parent of a selected sub-category) always
+  // stays visible, even when it sits beyond the preview.
+  const selectedRootSlug = (() => {
+    const self = bySlug.get(category);
+    if (!self) return null;
+    if (!self.parentId) return self.slug;
+    return categories.find((c) => c.id === self.parentId)?.slug ?? null;
+  })();
+  const visibleRoots = showAllCats
+    ? rootCategories
+    : rootCategories.filter(
+        (c, i) => i < CAT_PREVIEW || c.slug === selectedRootSlug,
+      );
+  const hiddenCount = rootCategories.length - visibleRoots.length;
+
+  // Same idea for zodiac: a short preview, the active sign always shown.
+  const visibleSigns = showAllSigns
+    ? zodiacSigns
+    : zodiacSigns.filter((z, i) => i < SIGN_PREVIEW || z.sign === zodiac);
+
   const filterPanel = (
-    <div className="space-y-8">
-      {/* Offers */}
-      <FilterGroup title="Offers">
-        <FilterPill active={saleOnly} onClick={() => setSaleOnly((v) => !v)}>
-          🔴 On Sale
-        </FilterPill>
-      </FilterGroup>
-
-      {/* Category (2-level: parents, with children indented under them) */}
-      <FilterGroup title="Category">
-        <FilterPill active={category === "all"} onClick={() => setCategory("all")}>
-          All Jewellery
-        </FilterPill>
-        {rootCategories.map((parent) => {
-          const kids = childrenByParentId.get(parent.id) ?? [];
-          return (
-            <div key={parent.slug} className="w-full">
-              <FilterPill
-                active={category === parent.slug}
-                onClick={() => setCategory(parent.slug)}
-              >
-                {parent.title}
-              </FilterPill>
-              {kids.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2 border-l border-foreground/12 pl-3">
-                  {kids.map((child) => (
-                    <FilterPill
-                      key={child.slug}
-                      active={category === child.slug}
-                      onClick={() => setCategory(child.slug)}
-                    >
-                      {child.title}
-                    </FilterPill>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </FilterGroup>
-
-      {/* Zodiac */}
-      <FilterGroup title="Zodiac Sign">
-        <FilterPill active={zodiac === "all"} onClick={() => setZodiac("all")}>
-          All Signs
-        </FilterPill>
-        {zodiacSigns.map((z) => (
-          <FilterPill
-            key={z.sign}
-            active={zodiac === z.sign}
-            onClick={() => setZodiac(z.sign)}
+    <div>
+      {/* panel header */}
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <SlidersHorizontal size={15} className="text-gold-600" />
+          Filters
+          {activeFilters > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-400 px-1.5 text-[11px] font-bold text-white">
+              {activeFilters}
+            </span>
+          )}
+        </h3>
+        {activeFilters > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-xs font-semibold text-gold-600 transition-colors hover:text-gold-500"
           >
-            <span className="mr-1">{z.symbol}</span>
-            {z.name}
-          </FilterPill>
-        ))}
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Offers: a single switch instead of a lone pill */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={saleOnly}
+        onClick={() => setSaleOnly((v) => !v)}
+        className={cn(
+          "flex w-full items-center justify-between rounded-2xl border px-3.5 py-2.5 text-left transition-colors",
+          saleOnly ? "border-gold-400/50 bg-gold-400/10" : "border-foreground/10 hover:border-foreground/20"
+        )}
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500">
+            <Tag size={14} />
+          </span>
+          <span>
+            <span className="block text-[13px] font-semibold text-foreground">On sale</span>
+            <span className="block text-[11px] text-muted">{saleCount} discounted</span>
+          </span>
+        </span>
+        <span
+          aria-hidden
+          className={cn(
+            "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+            saleOnly ? "bg-gold-500" : "bg-foreground/15"
+          )}
+        >
+          <motion.span
+            layout
+            transition={{ type: "spring", stiffness: 500, damping: 32 }}
+            className={cn(
+              "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow",
+              saleOnly ? "right-0.5" : "left-0.5"
+            )}
+          />
+        </span>
+      </button>
+
+      {/* Category (2-level: parents, children indented under them) */}
+      <FilterGroup title="Category">
+        <ul className="space-y-0.5">
+          <li>
+            <CategoryRow
+              label="All products"
+              count={products.length}
+              active={category === "all"}
+              onClick={() => setCategory("all")}
+            />
+          </li>
+          {visibleRoots.map((parent) => {
+            const kids = childrenByParentId.get(parent.id) ?? [];
+            const open =
+              category === parent.slug || kids.some((k) => k.slug === category);
+            return (
+              <li key={parent.slug}>
+                <CategoryRow
+                  label={parent.title}
+                  count={countFor(parent)}
+                  active={category === parent.slug}
+                  onClick={() => setCategory(parent.slug)}
+                />
+                {kids.length > 0 && open && (
+                  <ul className="mb-1 ml-4 mt-0.5 space-y-0.5 border-l border-foreground/10 pl-2">
+                    {kids.map((child) => (
+                      <li key={child.slug}>
+                        <CategoryRow
+                          label={child.title}
+                          count={countFor(child)}
+                          active={category === child.slug}
+                          onClick={() => setCategory(child.slug)}
+                          small
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        {(showAllCats || hiddenCount > 0) && (
+          <MoreToggle
+            open={showAllCats}
+            hidden={hiddenCount}
+            onClick={() => setShowAllCats((v) => !v)}
+          />
+        )}
       </FilterGroup>
 
-      {activeFilters > 0 && (
-        <button
-          onClick={() => {
-            setCategory("all");
-            setZodiac("all");
-            setSaleOnly(false);
-            setSearch("");
-          }}
-          className="text-sm text-gold-600 hover:text-gold-500"
-        >
-          Clear all filters
-        </button>
-      )}
+      {/* Zodiac: compact 3-column tiles */}
+      <FilterGroup
+        title="Zodiac sign"
+        action={
+          zodiac !== "all" ? (
+            <button
+              type="button"
+              onClick={() => setZodiac("all")}
+              className="text-[11px] font-semibold normal-case tracking-normal text-gold-600 hover:text-gold-500"
+            >
+              Reset
+            </button>
+          ) : null
+        }
+      >
+        <div className="grid grid-cols-3 gap-1.5">
+          {visibleSigns.map((z) => {
+            const active = zodiac === z.sign;
+            return (
+              <button
+                key={z.sign}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setZodiac(active ? "all" : z.sign)}
+                className={cn(
+                  "flex flex-col items-center rounded-xl border px-1 py-2 transition-all duration-200",
+                  active
+                    ? "border-gold-400/60 bg-gold-400/12 text-gold-600 shadow-[0_6px_16px_-10px_rgba(201,148,42,0.8)]"
+                    : "border-foreground/10 text-foreground/70 hover:-translate-y-0.5 hover:border-gold-400/40 hover:text-gold-600"
+                )}
+              >
+                <span className="text-base leading-none">{z.symbol}</span>
+                <span className="mt-1 text-[10.5px] font-medium leading-none">{z.name}</span>
+              </button>
+            );
+          })}
+        </div>
+        {(showAllSigns || zodiacSigns.length > visibleSigns.length) && (
+          <MoreToggle
+            open={showAllSigns}
+            hidden={zodiacSigns.length - visibleSigns.length}
+            onClick={() => setShowAllSigns((v) => !v)}
+          />
+        )}
+      </FilterGroup>
     </div>
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+    <div className="mx-auto max-w-[90rem] px-5 py-10 sm:px-8">
       <Breadcrumb items={breadcrumbItems} className="mb-6" />
       {/* header */}
       <div className="mb-8">
@@ -270,7 +407,10 @@ export function ShopView({
       <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
         {/* desktop sidebar */}
         <aside className="hidden lg:block">
-          <div className="sticky top-28 rounded-2xl glass p-6">{filterPanel}</div>
+          {/* full height, no inner scrollbar: long lists collapse behind "more" */}
+          <div className="rounded-3xl border border-foreground/10 bg-white p-4 shadow-[0_18px_50px_-34px_rgba(36,26,59,0.45)]">
+            {filterPanel}
+          </div>
         </aside>
 
         {/* grid */}
@@ -313,12 +453,15 @@ export function ShopView({
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 260 }}
-              className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85%] overflow-y-auto glass-strong p-6 lg:hidden"
+              className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85%] overflow-y-auto bg-white p-5 shadow-2xl lg:hidden"
             >
-              <div className="mb-6 flex items-center justify-between">
-                <h3 className="font-display text-xl text-foreground">Filters</h3>
-                <button onClick={() => setMobileFilters(false)} aria-label="Close">
-                  <X size={20} className="text-muted" />
+              <div className="mb-2 flex justify-end">
+                <button
+                  onClick={() => setMobileFilters(false)}
+                  aria-label="Close filters"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-foreground/5 hover:text-foreground"
+                >
+                  <X size={18} />
                 </button>
               </div>
               {filterPanel}
@@ -332,41 +475,101 @@ export function ShopView({
 
 function FilterGroup({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-foreground">
-        {title}
-      </h4>
-      <div className="flex flex-wrap gap-2">{children}</div>
+    <div className="mt-5 border-t border-foreground/10 pt-4">
+      <div className="mb-2.5 flex items-center justify-between px-1">
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{title}</h4>
+        {action}
+      </div>
+      {children}
     </div>
   );
 }
 
-function FilterPill({
-  active,
+/** "+N more" / "Show less" toggle under a collapsed list. */
+function MoreToggle({
+  open,
+  hidden,
   onClick,
-  children,
 }: {
-  active: boolean;
+  open: boolean;
+  hidden: number;
   onClick: () => void;
-  children: React.ReactNode;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-expanded={open}
+      className="mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-gold-600 transition-colors hover:bg-gold-400/10 hover:text-gold-500"
+    >
+      {open ? "Show less" : `+${hidden} more`}
+      <ChevronDown size={13} className={cn("transition-transform duration-300", open && "rotate-180")} />
+    </button>
+  );
+}
+
+/** One compact, radio-like category row with a product count. */
+function CategoryRow({
+  label,
+  count,
+  active,
+  onClick,
+  small = false,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+  small?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
       className={cn(
-        "rounded-full border px-3.5 py-1.5 text-sm transition-colors",
-        active
-          ? "border-gold-400/60 bg-gold-400/15 text-gold-600"
-          : "border-foreground/12 bg-nebula text-muted hover:border-foreground/25 hover:text-foreground"
+        "group flex w-full items-center gap-2.5 rounded-xl px-2.5 text-left transition-colors",
+        small ? "py-1.5" : "py-2",
+        active ? "bg-gold-400/12" : "hover:bg-foreground/[0.04]"
       )}
     >
-      {children}
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full border transition-colors",
+          small ? "h-3.5 w-3.5" : "h-4 w-4",
+          active
+            ? "border-gold-500 bg-gold-500 text-white"
+            : "border-foreground/25 group-hover:border-gold-400"
+        )}
+      >
+        {active && <Check size={small ? 9 : 10} strokeWidth={3} />}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          small ? "text-[12.5px]" : "text-[13px]",
+          active ? "font-semibold text-gold-600" : "text-foreground/80 group-hover:text-foreground"
+        )}
+      >
+        {label}
+      </span>
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-semibold tabular-nums",
+          active ? "bg-gold-400 text-white" : "bg-foreground/[0.06] text-muted"
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
 }

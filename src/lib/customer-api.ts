@@ -6,6 +6,7 @@
 import type { CustomerPublic } from "@/modules/customer-auth";
 import type { CustomerAddress } from "@/modules/customers";
 import type { Order } from "@/modules/orders";
+import type { WalletTxn, WalletTxnType, WalletView } from "@/modules/wallets";
 
 type Ok<T> = { ok: true; data: T };
 type Err = { ok: false; message: string };
@@ -130,6 +131,28 @@ export const customerApi = {
       request<{ addresses: CustomerAddress[] }>(`/api/v1/account/addresses/${id}`, {
         method: "DELETE",
       }),
+  },
+
+  /* ───────── wallet ───────── */
+  wallet: {
+    get: () => request<{ wallet: WalletView; txns: WalletTxn[]; nextCursor: string | null }>("/api/v1/account/wallet"),
+    txns: (cursor?: string, type?: WalletTxnType) => {
+      const q = new URLSearchParams();
+      if (cursor) q.set("cursor", cursor);
+      if (type) q.set("type", type);
+      return request<{ items: WalletTxn[]; nextCursor: string | null }>(`/api/v1/account/wallet/txns?${q}`);
+    },
+    /** Server prices the recharge; returns the data to open Razorpay Checkout. */
+    createRecharge: (input: { packAmount: number } | { customAmount: number }) =>
+      request<{ rechargeId: string; amountPaise: number; bonusPaise: number; gstPaise: number; amount: number; currency: string; razorpayOrderId: string; keyId: string }>(
+        "/api/v1/payments/razorpay/wallet",
+        { method: "POST", body: JSON.stringify(input) },
+      ),
+    verify: (payload: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
+      request<{ status: string; creditedPaise: number; balance: { cashPaise: number; promoPaise: number; totalPaise: number } }>(
+        "/api/v1/payments/razorpay/wallet-verify",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
   },
 
   /* ───────── wishlist ───────── */

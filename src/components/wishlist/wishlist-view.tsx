@@ -18,7 +18,7 @@ export function WishlistView() {
 
   if (wishlist.length === 0) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+      <div className="mx-auto flex max-w-[90rem] flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
         <span className="flex h-24 w-24 items-center justify-center rounded-full bg-foreground/5 text-muted">
           <Heart size={40} />
         </span>
@@ -38,7 +38,7 @@ export function WishlistView() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+    <div className="mx-auto max-w-[90rem] px-5 py-10 sm:px-8">
       <Breadcrumb items={[{ label: "Wishlist" }]} className="mb-6" />
       <h1 className="text-3xl font-semibold text-foreground sm:text-4xl">
         My Wishlist

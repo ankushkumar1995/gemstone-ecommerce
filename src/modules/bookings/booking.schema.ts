@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+export const MARITAL_STATUSES = ["single", "married", "divorced", "widowed", "separated"] as const;
+
 const intakeSchema = z.object({
   fullName: z.string().trim().min(2, "Please enter the full name").max(120),
   phone: z.string().trim().min(6, "Please enter a valid phone").max(30),
@@ -11,6 +13,7 @@ const intakeSchema = z.object({
   birthTime: z.string().trim().max(20).optional().or(z.literal("")),
   birthPlace: z.string().trim().max(160).optional().or(z.literal("")),
   gender: z.enum(["male", "female", "other", ""]).optional(),
+  maritalStatus: z.enum(MARITAL_STATUSES).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 

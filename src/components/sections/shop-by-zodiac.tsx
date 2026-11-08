@@ -15,7 +15,7 @@ import { StaggerContainer, staggerItem } from "@/components/ui/reveal";
  */
 export function ShopByZodiac() {
   return (
-    <section className="relative overflow-hidden py-20">
+    <section className="relative overflow-hidden py-9 md:py-11">
       {/* soft radial glow backdrop */}
       <div
         aria-hidden
@@ -38,14 +38,14 @@ export function ShopByZodiac() {
         />
 
         <StaggerContainer
-          className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+          className="mt-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4"
           stagger={0.05}
         >
           {zodiacSigns.map((z) => (
             <motion.div key={z.sign} variants={staggerItem}>
               <Link
                 href={`/shop?zodiac=${z.sign}`}
-                className="group relative block overflow-hidden rounded-3xl border border-foreground/10 bg-nebula transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_24px_60px_-24px_rgba(36,26,59,0.4)]"
+                className="group relative block overflow-hidden rounded-2xl border border-foreground/10 bg-nebula transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_24px_60px_-24px_rgba(36,26,59,0.4)]"
               >
                 {/* ---- Image backdrop ---- */}
                 <div className="relative aspect-[4/3] overflow-hidden">

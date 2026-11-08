@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { adminApi } from "@/lib/admin-api";
 import { astroAdminApi } from "@/lib/admin-astro-api";
+import { poojaAdminApi } from "@/lib/admin-pooja-api";
 import {
   LayoutDashboard,
   BarChart3,
@@ -34,6 +35,8 @@ import {
   PanelLeftClose,
   PanelLeft,
   CalendarClock,
+  Flame,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,6 +81,14 @@ const groups: NavGroup[] = [
       { label: "Leads", href: "/admin/leads", icon: Inbox, badge: 5 },
       { label: "Customers", href: "/admin/customers", icon: Users },
       { label: "Reviews", href: "/admin/reviews", icon: Star },
+    ],
+  },
+  {
+    title: "Pooja",
+    items: [
+      { label: "Poojas", href: "/admin/poojas", icon: Flame },
+      { label: "Pooja Bookings", href: "/admin/poojas/bookings", icon: CalendarClock },
+      { label: "Pandits", href: "/admin/poojas/pandits", icon: UserCheck },
     ],
   },
   {
@@ -126,12 +137,20 @@ export function Sidebar({
   // Live "active bookings" count for the Bookings nav badge.
   const [bookingBadge, setBookingBadge] = useState<number | undefined>(undefined);
   const [astroBadge, setAstroBadge] = useState<number | undefined>(undefined);
+  const [poojaBadge, setPoojaBadge] = useState<number | undefined>(undefined);
+  // The most specific nav item wins (so /admin/poojas/bookings is not also "Poojas").
+  const activeHref = groups
+    .flatMap((g) => g.items.map((i) => i.href))
+    .filter((h) => (h === "/admin" ? pathname === "/admin" : pathname === h || pathname.startsWith(`${h}/`)))
+    .sort((a, b) => b.length - a.length)[0];
   useEffect(() => {
     let active = true;
     (async () => {
-      const [res, astro] = await Promise.all([adminApi.bookings.counts(), astroAdminApi.astrologers.counts()]);
+      const [res, astro, pooja] = await Promise.all([adminApi.bookings.counts(), astroAdminApi.astrologers.counts(), poojaAdminApi.bookings.counts()]);
       if (!active) return;
       if (res.ok) setBookingBadge(res.data.active || undefined);
+      // Pooja work waiting: pandit to assign + proof pending + prasad to ship.
+      if (pooja.ok) setPoojaBadge(pooja.data.needsPandit + pooja.data.proofPending + pooja.data.prasadToShip || undefined);
       // Applications waiting + profile edits waiting = work for the admin.
       if (astro.ok) setAstroBadge(astro.data.pendingReview + astro.data.pendingEdits || undefined);
     })();
@@ -196,16 +215,13 @@ export function Sidebar({
                 const navItem =
                   item.href === "/admin/bookings" ? { ...item, badge: bookingBadge }
                   : item.href === "/admin/astrologers" ? { ...item, badge: astroBadge }
+                  : item.href === "/admin/poojas/bookings" ? { ...item, badge: poojaBadge }
                   : item;
                 return (
                   <NavLink
                     key={item.href}
                     item={navItem}
-                    active={
-                      item.href === "/admin"
-                        ? pathname === "/admin"
-                        : pathname.startsWith(item.href)
-                    }
+                    active={item.href === activeHref}
                     collapsed={collapsed}
                     onNavigate={onNavigate}
                   />

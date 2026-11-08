@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Sparkles, CheckCircle2, Star, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Sparkles, CheckCircle2, Star, Pencil, Trash2, ArrowUp, ArrowDown, Tags } from "lucide-react";
 import type { AstroService } from "@/types";
 import { adminApi } from "@/lib/admin-api";
 import { useOnMount } from "../../_components";
@@ -18,15 +18,18 @@ import {
   useAdminToast,
   type Column,
 } from "../../_components";
-import { ServiceFormModal } from "./service-form-modal";
+import { useRouter } from "next/navigation";
+import { ServiceCategoryDrawer, useServiceCategories } from "./service-categories";
 
 export function ServicesManager() {
   const { toast } = useAdminToast();
   const [services, setServices] = useState<AstroService[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<AstroService | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+  const router = useRouter();
   const [toDelete, setToDelete] = useState<AstroService | null>(null);
+  const [manageCats, setManageCats] = useState(false);
+  const { data: catData, reload: reloadCats } = useServiceCategories();
+  const catName = (id?: string | null) => (id ? catData?.categories.find((c) => c.id === id)?.name ?? "Uncategorised" : "Uncategorised");
 
   const load = async () => {
     setLoading(true);
@@ -44,10 +47,7 @@ export function ServicesManager() {
     return { total, active, popular };
   }, [services]);
 
-  const openEditor = (s: AstroService | null) => {
-    setEditing(s);
-    setFormOpen(true);
-  };
+  const openEditor = (s: AstroService | null) => router.push(s ? `/admin/services/${s.id}` : "/admin/services/new");
 
   const toggleActive = async (s: AstroService) => {
     const res = await adminApi.services.update(s.id, { status: s.status === "active" ? "inactive" : "active" });
@@ -101,6 +101,15 @@ export function ServicesManager() {
       ),
     },
     {
+      key: "category",
+      header: "Category",
+      sortable: true,
+      filterable: true,
+      filterOptions: ["Uncategorised", ...(catData?.categories.map((c) => c.name) ?? [])],
+      accessor: (s) => catName(s.categoryId),
+      cell: (s) => <span className="text-sm" style={{ color: s.categoryId ? "var(--a-fg)" : "var(--a-faint)" }}>{catName(s.categoryId)}</span>,
+    },
+    {
       key: "priceFrom",
       header: "Price",
       sortable: true,
@@ -148,9 +157,14 @@ export function ServicesManager() {
         title="Services"
         subtitle="Astrology services shown on the storefront /services page."
         action={
-          <AdminButton onClick={() => openEditor(null)}>
-            <Plus size={16} /> New Service
-          </AdminButton>
+          <div className="flex gap-2">
+            <AdminButton variant="outline" onClick={() => setManageCats(true)}>
+              <Tags size={16} /> Categories{catData ? ` (${catData.categories.length})` : ""}
+            </AdminButton>
+            <AdminButton onClick={() => openEditor(null)}>
+              <Plus size={16} /> New Service
+            </AdminButton>
+          </div>
         }
       />
 
@@ -187,20 +201,8 @@ export function ServicesManager() {
         />
       </div>
 
-      <ServiceFormModal
-        key={`${formOpen ? "open" : "closed"}-${editing?.id ?? "new"}`}
-        open={formOpen}
-        editing={editing}
-        onClose={() => setFormOpen(false)}
-        onSaved={(s, isNew) => {
-          setServices((prev) =>
-            (isNew ? [...prev, s] : prev.map((x) => (x.id === s.id ? s : x))).sort(
-              (a, b) => (a.order ?? 999) - (b.order ?? 999)
-            )
-          );
-          setFormOpen(false);
-        }}
-      />
+      {/* Deleting a category moves services, so reload both lists. */}
+      <ServiceCategoryDrawer open={manageCats} onClose={() => setManageCats(false)} onChanged={async () => { await reloadCats(); const r = await adminApi.services.list(); if (r.ok) setServices(r.data); }} />
 
       <ConfirmDialog
         open={!!toDelete}

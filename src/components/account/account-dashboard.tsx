@@ -19,11 +19,13 @@ import {
   CalendarClock,
   Clock,
   Loader2,
+  Wallet,
 } from "lucide-react";
 import { useCommerce, type Address } from "@/lib/store";
 import { customerApi } from "@/lib/customer-api";
 import { shopApi } from "@/lib/shop-api";
 import { AccountOrders } from "@/components/account/account-orders";
+import { AccountWallet } from "@/components/account/account-wallet";
 import type { Booking } from "@/modules/bookings";
 import { useCurrency } from "@/lib/currency";
 import { useToast } from "@/lib/toast";
@@ -32,17 +34,18 @@ import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "orders" | "bookings" | "addresses" | "profile";
+type Tab = "overview" | "wallet" | "orders" | "bookings" | "addresses" | "profile";
 
 const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "wallet", label: "My Wallet", icon: Wallet },
   { key: "orders", label: "My Orders", icon: Package },
   { key: "bookings", label: "My Bookings", icon: CalendarClock },
   { key: "addresses", label: "Addresses", icon: MapPin },
   { key: "profile", label: "Profile", icon: UserCog },
 ];
 
-const TAB_KEYS: Tab[] = ["overview", "orders", "bookings", "addresses", "profile"];
+const TAB_KEYS: Tab[] = ["overview", "wallet", "orders", "bookings", "addresses", "profile"];
 
 export function AccountDashboard() {
   const { user, logout, wishlistCount } = useCommerce();
@@ -132,6 +135,7 @@ export function AccountDashboard() {
               transition={{ duration: 0.25 }}
             >
               {tab === "overview" && <Overview onGoOrders={() => setTab("orders")} />}
+              {tab === "wallet" && <AccountWallet />}
               {tab === "orders" && <AccountOrders />}
               {tab === "bookings" && <Bookings />}
               {tab === "addresses" && <Addresses />}

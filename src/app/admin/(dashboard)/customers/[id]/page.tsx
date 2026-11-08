@@ -9,5 +9,6 @@ export default async function CustomerDetailPage({
 }) {
   const { id } = await params;
   const { edit } = await searchParams;
-  return <CustomerDetailView id={id} initialEdit={edit === "1"} />;
+  // Keyed by id so switching customers remounts (and reloads) the view.
+  return <CustomerDetailView key={id} id={id} initialEdit={edit === "1"} />;
 }

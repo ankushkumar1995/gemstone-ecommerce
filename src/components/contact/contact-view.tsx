@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   Phone,
@@ -97,21 +98,30 @@ export function ContactView() {
 
   return (
     <div className="pb-20">
-      <Container className="pt-6">
-        <Breadcrumb items={[{ label: "Contact" }]} />
-      </Container>
-
-      {/* ---- Header ---- */}
-      <section className="relative overflow-hidden py-12 sm:py-16">
+      {/* ---- Header (banner art: props on both sides, clear centre for text) ---- */}
+      <section className="relative isolate mb-10 overflow-hidden border-b border-gold-400/20 bg-[#f4eefb]">
+        <motion.div
+          aria-hidden
+          className="absolute inset-0 -z-10"
+          initial={{ scale: 1.06, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <Image src="/images/Contact-Banner.png" alt="" fill priority sizes="100vw" className="object-cover object-center" />
+        </motion.div>
+        {/* soft glow behind the text so it always reads clearly */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 rounded-full opacity-50 blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(230,180,58,0.18), transparent 70%)",
-          }}
+          className="absolute inset-0 -z-10"
+          style={{ background: "radial-gradient(ellipse 55% 70% at 50% 55%, rgba(255,255,255,0.85), rgba(255,255,255,0.45) 55%, transparent 80%)" }}
         />
-        <Container className="relative text-center">
+        {/* small screens: props sit behind the text, so fade more */}
+        <div aria-hidden className="absolute inset-0 -z-10 bg-white/45 md:hidden" />
+
+        <Container className="pt-6">
+          <Breadcrumb items={[{ label: "Contact" }]} />
+        </Container>
+        <Container className="relative pb-14 pt-8 text-center sm:pb-20 sm:pt-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -125,7 +135,7 @@ export function ContactView() {
             <h1 className="text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
               Get in <span className="text-gradient-gold">Touch</span>
             </h1>
-            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted">
+            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-foreground/75">
               Questions about a stone, your order or your birth chart? Our
               gemstone experts and astrologers are a message away.
             </p>

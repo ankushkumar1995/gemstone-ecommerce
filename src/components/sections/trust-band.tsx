@@ -30,7 +30,7 @@ const features = [
 export function TrustBand() {
   return (
     <section className="py-10">
-      <Container className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Container className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {features.map((f, i) => (
           <motion.div
             key={f.title}
@@ -39,7 +39,7 @@ export function TrustBand() {
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: i * 0.08 }}
             whileHover={{ y: -4 }}
-            className="group flex items-start gap-4 rounded-2xl glass p-5 transition-colors hover:border-gold-400/30"
+            className="group flex items-start gap-3.5 rounded-2xl glass p-4 transition-colors hover:border-gold-400/30"
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-royal-500/20 to-gold-400/25 text-gold-600 transition-transform group-hover:scale-110">
               <f.icon size={20} />

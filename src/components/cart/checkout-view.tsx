@@ -257,7 +257,7 @@ export function CheckoutView() {
 
   if (placed) {
     return (
-      <div className="relative mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+      <div className="relative mx-auto flex max-w-[90rem] flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
         {/* celebratory confetti burst (one-shot, respects reduced-motion) */}
         <OrderCelebration />
 
@@ -320,7 +320,7 @@ export function CheckoutView() {
   // sign-in gate never flashes for an already-logged-in customer on refresh.
   if (!authReady) {
     return (
-      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+      <div className="mx-auto max-w-[90rem] px-5 py-10 sm:px-8">
         <div className="mx-auto h-72 max-w-md animate-pulse rounded-3xl border border-foreground/10 bg-nebula" />
       </div>
     );
@@ -330,7 +330,7 @@ export function CheckoutView() {
   // account page and bring them straight back to checkout afterwards.
   if (!user) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+      <div className="mx-auto flex max-w-[90rem] flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
         <span className="flex h-20 w-20 items-center justify-center rounded-full bg-gold-400/12 text-gold-600">
           <Lock size={34} />
         </span>
@@ -362,7 +362,7 @@ export function CheckoutView() {
 
   if (cart.length === 0) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
+      <div className="mx-auto flex max-w-[90rem] flex-col items-center justify-center px-5 py-24 text-center sm:px-8">
         <h1 className="text-3xl font-semibold text-foreground">
           Nothing to check out
         </h1>
@@ -377,7 +377,7 @@ export function CheckoutView() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+    <div className="mx-auto max-w-[90rem] px-5 py-10 sm:px-8">
       <Breadcrumb
         items={[{ label: "Cart", href: "/cart" }, { label: "Checkout" }]}
         className="mb-6"

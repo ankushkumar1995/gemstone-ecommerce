@@ -371,6 +371,8 @@ export interface AstroService {
   features: string[];
   status: ServiceStatus;
   order: number; // display order (lower = first)
+  /** Service category id. null/undefined = Uncategorised (older services). */
+  categoryId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

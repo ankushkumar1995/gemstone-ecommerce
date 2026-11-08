@@ -7,6 +7,8 @@
 import type { ApiResponse } from "@/core/http";
 import type { Astrologer, AstrologerStatus, KycDocType } from "@/modules/astrologers/astrologer.types";
 import type { AstroProgramSettings } from "@/modules/astro-settings/astro-settings";
+import type { WalletRecharge, WalletTxn, WalletTxnType } from "@/modules/wallets/wallet.types";
+import type { WalletView } from "@/modules/wallets/wallet.service";
 
 export type AdminRes<T> = { ok: true; data: T } | { ok: false; message: string; details?: unknown };
 
@@ -48,6 +50,18 @@ export const astroAdminApi = {
     forceOffline: (id: string, note: string) => request<Astrologer>(`/api/v1/admin/astrologers/${id}/offline`, json("POST", { note })),
     addNote: (id: string, note: string) => request<Astrologer>(`/api/v1/admin/astrologers/${id}/notes`, json("POST", { note })),
     payoutDestination: (id: string) => request<{ method: "bank" | "upi"; accountHolder?: string; accountNumber?: string; ifsc?: string; bankName?: string; upiId?: string; verified: boolean; pan?: string }>(`/api/v1/admin/astrologers/${id}/payout-destination`),
+  },
+  wallets: {
+    get: (customerId: string) =>
+      request<{ wallet: WalletView; txns: WalletTxn[]; nextCursor: string | null; recharges: WalletRecharge[] }>(`/api/v1/admin/wallets/${customerId}`),
+    txns: (customerId: string, cursor?: string, type?: WalletTxnType) => {
+      const p = new URLSearchParams();
+      if (cursor) p.set("cursor", cursor);
+      if (type) p.set("type", type);
+      return request<{ items: WalletTxn[]; nextCursor: string | null }>(`/api/v1/admin/wallets/${customerId}/txns?${p.toString()}`);
+    },
+    adjust: (customerId: string, data: { bucket: "cash" | "promo"; direction: "credit" | "debit"; amount: number; reason: string; requestId: string }) =>
+      request<{ txn: WalletTxn; balance: { cashPaise: number; promoPaise: number } }>(`/api/v1/admin/wallets/${customerId}/adjust`, json("POST", data)),
   },
   settings: {
     get: () => request<AstroProgramSettings>("/api/v1/admin/astro-settings"),

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { serviceService } from "@/modules/services";
+import { serviceService, serviceCategoryService } from "@/modules/services";
 import { ServicesView } from "@/components/services/services-view";
 
 export const metadata: Metadata = {
@@ -25,7 +25,18 @@ export const metadata: Metadata = {
 // Services are admin-managed — always render the latest active set.
 export const dynamic = "force-dynamic";
 
-export default async function ServicesPage() {
-  const res = await serviceService.listActive();
-  return <ServicesView services={res.ok ? res.value : []} />;
+export default async function ServicesPage({ searchParams }: { searchParams: Promise<{ category?: string | string[] }> }) {
+  const sp = await searchParams;
+  const [res, cats] = await Promise.all([
+    serviceService.listActive(),
+    // A category failure must never take the services page down.
+    serviceCategoryService.listPublic().catch(() => []),
+  ]);
+  const services = res.ok ? res.value : [];
+  // Only show chips that actually have something to show.
+  const used = new Set(services.map((s) => s.categoryId).filter(Boolean));
+  const categories = cats.filter((c) => used.has(c.id)).map((c) => ({ id: c.id, name: c.name, slug: c.slug }));
+  const raw = Array.isArray(sp.category) ? sp.category[0] : sp.category;
+  const initial = categories.some((c) => c.slug === raw) ? raw! : null;
+  return <ServicesView services={services} categories={categories} initialCategory={initial} />;
 }

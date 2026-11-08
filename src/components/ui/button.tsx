@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion, type HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -20,12 +21,41 @@ const variants: Record<Variant, string> = {
     "border border-foreground/20 text-foreground hover:border-gold-400/70 hover:text-gold-500",
 };
 
+// Compact, consistent heights: sm 34px · md 40px · lg 44px (still easy to tap).
 const sizes: Record<Size, string> = {
-  sm: "px-4 py-2 text-sm",
-  md: "px-6 py-3 text-sm",
-  lg: "px-8 py-4 text-base",
+  sm: "h-[34px] px-4 text-[13px]",
+  md: "h-10 px-5 text-sm",
+  lg: "h-11 px-6 text-sm",
 };
 
+const base =
+  "relative inline-flex items-center justify-center gap-2 rounded-full font-medium tracking-wide transition-colors duration-300 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/60 focus-visible:ring-offset-2";
+
+const MotionLink = motion.create(Link);
+
+/**
+ * A link that looks and animates exactly like <Button> (same hover lift and
+ * tap press), without nesting a <button> inside an <a>.
+ */
+export function ButtonLink({
+  variant = "primary",
+  size = "md",
+  className,
+  children,
+  ...props
+}: { variant?: Variant; size?: Size } & Omit<React.ComponentProps<typeof MotionLink>, "ref">) {
+  return (
+    <MotionLink
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: "spring", stiffness: 400, damping: 22 }}
+      className={cn(base, variants[variant], sizes[size], className)}
+      {...props}
+    >
+      {children}
+    </MotionLink>
+  );
+}
 export function Button({
   variant = "primary",
   size = "md",
@@ -35,8 +65,8 @@ export function Button({
 }: ButtonProps) {
   return (
     <motion.button
-      whileHover={{ scale: 1.03, y: -2 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 400, damping: 22 }}
       className={cn(
         "relative inline-flex items-center justify-center gap-2 rounded-full font-medium tracking-wide transition-colors duration-300 cursor-pointer select-none",

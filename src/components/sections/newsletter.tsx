@@ -17,14 +17,14 @@ export function Newsletter() {
   }
 
   return (
-    <section className="py-20">
+    <section className="py-9 md:py-11">
       <Container>
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
-        className="relative mx-auto max-w-5xl overflow-hidden rounded-[2rem] border border-foreground/10 p-10 text-center shadow-[0_30px_80px_-40px_rgba(122,69,245,0.4)] sm:p-16"
+        className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl border border-foreground/10 p-6 text-center shadow-[0_30px_80px_-40px_rgba(122,69,245,0.4)] sm:p-16"
       >
         {/* backdrop */}
         <div className="absolute inset-0 bg-gradient-to-br from-twilight via-nebula to-gold-200/40" />
@@ -43,7 +43,7 @@ export function Newsletter() {
           <span className="inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-gold-400/15 px-4 py-1.5 text-xs font-medium text-gold-600">
             <Sparkles size={14} /> Join the inner circle
           </span>
-          <h2 className="mt-5 font-display text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
+          <h2 className="mt-3.5 font-display text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
             Unlock <span className="text-gradient-gold">10% Off</span> Your
             First Gemstone
           </h2>
@@ -56,14 +56,14 @@ export function Newsletter() {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mx-auto mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-6 py-3 text-sm font-medium text-emerald-300"
+              className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-6 py-3 text-sm font-medium text-emerald-300"
             >
               <Check size={18} /> You&apos;re in! Check your inbox for your code.
             </motion.div>
           ) : (
             <form
               onSubmit={handleSubmit}
-              className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row"
+              className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row"
             >
               <input
                 type="email"

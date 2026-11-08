@@ -43,6 +43,7 @@ export const RESOURCES: Resource[] = [
   "consultations",
   "wallets",
   "payouts",
+  "poojas",
 ];
 
 /** The four actions, in display order. */
@@ -73,6 +74,7 @@ export const RESOURCE_LABELS: Record<Resource, string> = {
   consultations: "Consultations",
   wallets: "Customer Wallets",
   payouts: "Astrologer Payouts",
+  poojas: "Poojas & Bookings",
 };
 
 /* ---------------- permission builders ---------------- */
@@ -143,6 +145,7 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...all("consultations"),
       ...viewOnly("wallets"),
       ...viewOnly("payouts"),
+      ...all("poojas"),
     ],
     isSystem: true,
     priority: 60,
@@ -169,6 +172,7 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...viewOnly("astrologers"),
       ...only("consultations", ["view", "edit"]),
       ...viewOnly("wallets"),
+      ...only("poojas", ["view", "edit"]),
     ],
     isSystem: true,
     priority: 30,

@@ -7,6 +7,7 @@ import { partnerApi } from "@/lib/astrologer-api";
 import { AdminButton, Card, PageHeader, StatCard, StatsSkeleton, Toggle, useAdminToast } from "@/app/admin/_components";
 import { usePartner } from "../_components/partner-context";
 import { STATUS_META } from "../_components/status-meta";
+import { DashboardToday } from "../_components/dashboard-today";
 
 export default function PartnerDashboard() {
   const { me, loading, setMe, goOnline } = usePartner();
@@ -102,6 +103,8 @@ export default function PartnerDashboard() {
           <p className="mt-3 text-xs" style={{ color: "var(--a-muted)" }}>Keep this tab open while online. If the panel is closed for about a minute you are set offline automatically.</p>
         </Card>
       )}
+
+      {me.status === "approved" && <DashboardToday />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Star} value={me.stats.reviewCount ? me.stats.rating.toFixed(1) : "–"} label={`Rating (${me.stats.reviewCount} reviews)`} tone="gold" />

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed-mongo.ts"
+    "seed": "tsx scripts/seed-mongo.ts",
+    "seed:poojas": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-poojas.ts",
+    "seed:havans": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-havans.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
@@ -42,6 +44,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
+    "mongodb-memory-server": "11.3.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"

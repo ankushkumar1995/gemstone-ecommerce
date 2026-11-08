@@ -83,16 +83,20 @@ export function Toggle({
   checked,
   onChange,
   label,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label?: string;
+  /** Accessible name when no visible label is shown. */
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label ? undefined : ariaLabel}
       onClick={() => onChange(!checked)}
       className="flex items-center gap-2.5"
     >

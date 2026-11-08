@@ -33,7 +33,7 @@ export function Categories({ categories = [] }: { categories?: Category[] }) {
   roots.sort(sortByOrder);
 
   return (
-    <section className="py-20">
+    <section className="py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Curated Collections"
@@ -41,7 +41,7 @@ export function Categories({ categories = [] }: { categories?: Category[] }) {
           description="From astrologically energised rings to sacred malas — find the piece that aligns with your path."
         />
 
-        <StaggerContainer className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <StaggerContainer className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {roots.map((cat, i) => {
             const children = (byParent.get(cat.id) ?? []).sort(sortByOrder);
             return (
@@ -51,7 +51,7 @@ export function Categories({ categories = [] }: { categories?: Category[] }) {
                 className={i === 0 ? "lg:row-span-2" : ""}
               >
                 <div
-                  className={`group relative flex h-full min-h-[14rem] flex-col justify-end overflow-hidden rounded-3xl border border-white/10 p-6 transition-all duration-500 hover:border-gold-400/40 ${
+                  className={`group relative flex h-full min-h-[14rem] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 p-4 transition-all duration-500 hover:border-gold-400/40 ${
                     i === 0 ? "lg:min-h-[29.5rem]" : ""
                   }`}
                 >
@@ -78,7 +78,7 @@ export function Categories({ categories = [] }: { categories?: Category[] }) {
                   <div className="relative z-10">
                     {/* Parent title links to its own listing */}
                     <Link href={`/shop?category=${cat.slug}`} className="block">
-                      <h3 className="text-xl font-semibold text-white">{cat.title}</h3>
+                      <h3 className="text-[17px] font-semibold text-white">{cat.title}</h3>
                       <p className="mt-2 max-w-xs text-sm text-white/70">{cat.tagline}</p>
                     </Link>
 

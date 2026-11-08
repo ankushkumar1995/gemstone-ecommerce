@@ -5,6 +5,7 @@
  * Pagination, FilterBar, DateRange. Shared across list/detail pages.
  */
 
+import { useEffect, useId, useRef } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ChevronRight, ChevronLeft, Home, X } from "lucide-react";
@@ -15,22 +16,88 @@ export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
+  variant = "underline",
 }: {
   tabs: { value: T; label: string; count?: number }[];
   value: T;
   onChange: (v: T) => void;
+  /** "pills": segmented bar with a sliding gold pill (work queues). */
+  variant?: "underline" | "pills";
 }) {
+  // Unique per instance, so two tab bars on one page never animate into each other.
+  const uid = useId();
+  const bar = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab visible when the bar scrolls sideways (bar only, never the page).
+  useEffect(() => {
+    const box = bar.current;
+    const el = box?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!box || !el) return;
+    const left = el.offsetLeft - box.offsetLeft;
+    const right = left + el.offsetWidth;
+    if (left < box.scrollLeft) box.scrollTo({ left: left - 8, behavior: "smooth" });
+    else if (right > box.scrollLeft + box.clientWidth) box.scrollTo({ left: right - box.clientWidth + 8, behavior: "smooth" });
+  }, [value]);
+
+  if (variant === "pills") {
+    return (
+      <div
+        ref={bar}
+        role="tablist"
+        className="flex gap-1 overflow-x-auto rounded-2xl border p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ borderColor: "var(--a-border)", background: "var(--a-surface)", boxShadow: "0 12px 30px -24px rgba(20,20,40,0.35)" }}
+      >
+        {tabs.map((t) => {
+          const active = value === t.value;
+          const hot = !active && (t.count ?? 0) > 0;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(t.value)}
+              className={cn(
+                "group relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e6b43a]/50",
+                active ? "text-white" : "text-[var(--a-muted)] hover:bg-black/[0.035] hover:text-[var(--a-fg)]",
+              )}
+            >
+              {active && (
+                <motion.span
+                  layoutId={`${uid}-pill`}
+                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#e6b43a] to-[#c9942a] shadow-[0_8px_18px_-8px_rgba(201,148,42,0.75)]"
+                />
+              )}
+              <span className="relative">{t.label}</span>
+              {t.count !== undefined && (
+                <span
+                  className={cn("relative min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[11px] font-bold tabular-nums", active && "bg-white/25 text-white")}
+                  style={active ? undefined : hot ? { background: "rgba(230,180,58,0.16)", color: "#a8771a" } : { background: "var(--a-surface-2)", color: "var(--a-faint)" }}
+                >
+                  {t.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex gap-1 border-b" style={{ borderColor: "var(--a-border)" }}>
+    <div ref={bar} role="tablist" className="flex gap-1 overflow-x-auto border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "var(--a-border)" }}>
       {tabs.map((t) => {
         const active = value === t.value;
         return (
           <button
             key={t.value}
             type="button"
+            role="tab"
+            aria-selected={active}
             onClick={() => onChange(t.value)}
             className={cn(
-              "relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors",
+              "relative flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors",
               active ? "text-[var(--a-gold)]" : "text-[var(--a-muted)] hover:text-[var(--a-fg)]"
             )}
           >
@@ -48,7 +115,7 @@ export function Tabs<T extends string>({
             )}
             {active && (
               <motion.span
-                layoutId="admin-tabs-underline"
+                layoutId={`${uid}-underline`}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
                 className="absolute inset-x-0 -bottom-px h-0.5 bg-gradient-to-r from-[#e6b43a] to-[#c9942a]"
               />

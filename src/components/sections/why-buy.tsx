@@ -52,7 +52,7 @@ const pillars = [
  */
 export function WhyBuy() {
   return (
-    <section className="relative py-20">
+    <section className="relative py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Why Astrounkle"
@@ -65,7 +65,7 @@ export function WhyBuy() {
         />
 
         <StaggerContainer
-          className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
           stagger={0.06}
         >
           {pillars.map((p) => (
@@ -73,15 +73,15 @@ export function WhyBuy() {
               key={p.title}
               variants={staggerItem}
               whileHover={{ y: -6 }}
-              className="group relative overflow-hidden rounded-3xl border border-foreground/10 bg-nebula p-7 transition-all duration-500 hover:border-transparent hover:shadow-[0_24px_60px_-26px_rgba(122,69,245,0.4)]"
+              className="group relative overflow-hidden rounded-2xl border border-foreground/10 bg-nebula p-6 transition-all duration-500 hover:border-transparent hover:shadow-[0_24px_60px_-26px_rgba(122,69,245,0.4)]"
             >
               <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-gradient-to-br from-royal-400/15 to-gold-400/15 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
 
-              <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-royal-600 transition-transform duration-500 group-hover:scale-110 group-hover:text-gold-600">
+              <span className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500/15 to-gold-400/20 text-royal-600 transition-transform duration-500 group-hover:scale-110 group-hover:text-gold-600">
                 <p.icon size={24} />
               </span>
 
-              <h3 className="relative mt-5 text-lg font-semibold text-foreground">
+              <h3 className="relative mt-3.5 text-lg font-semibold text-foreground">
                 {p.title}
               </h3>
               <p className="relative mt-2 text-sm leading-relaxed text-muted">

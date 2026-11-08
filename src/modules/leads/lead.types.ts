@@ -7,7 +7,10 @@
  * Lead across the whole module.
  */
 
-export type LeadSource = "contact" | "service" | "newsletter";
+export type LeadSource = "contact" | "service" | "newsletter" | "consultation";
+
+export type LeadGender = "male" | "female" | "other";
+export type LeadMaritalStatus = "single" | "married" | "divorced" | "widowed" | "separated";
 
 export type LeadStatus = "new" | "contacted" | "converted" | "closed";
 
@@ -27,6 +30,11 @@ export interface Lead {
     time?: string;
     place?: string;
   };
+  /** Consultation requests: about the person asking. */
+  gender?: LeadGender;
+  maritalStatus?: LeadMaritalStatus;
+  /** Consultation requests: the astrologer the customer picked (display name). */
+  astrologer?: string;
   status: LeadStatus;
   createdAt: string; // ISO
 }
@@ -44,4 +52,7 @@ export interface CreateLeadInput {
     time?: string;
     place?: string;
   };
+  gender?: LeadGender;
+  maritalStatus?: LeadMaritalStatus;
+  astrologer?: string;
 }

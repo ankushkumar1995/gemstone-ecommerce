@@ -6,7 +6,7 @@
  * to close. Used for DataTable filters, page-size, form selects, etc.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Children, Fragment, isValidElement, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,69 @@ import { cn } from "@/lib/utils";
 export interface DropdownOption {
   value: string;
   label: string;
+  /** optional leading icon, shown in the list and in the trigger */
+  icon?: React.ReactNode;
+  /** optional small muted text on the right, e.g. a count */
+  meta?: string;
+  disabled?: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* AdminSelectPro: drop-in for AdminSelect (same <option> children and */
+/* event-style onChange) that renders the premium dropdown.           */
+/* ------------------------------------------------------------------ */
+function nodeText(n: React.ReactNode): string {
+  if (n === null || n === undefined || typeof n === "boolean") return "";
+  if (typeof n === "string" || typeof n === "number") return String(n);
+  if (Array.isArray(n)) return n.map(nodeText).join("");
+  if (isValidElement(n)) return nodeText((n.props as { children?: React.ReactNode }).children);
+  return "";
+}
+
+function collectOptions(children: React.ReactNode, out: DropdownOption[] = []): DropdownOption[] {
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    const p = child.props as { value?: string | number; disabled?: boolean; children?: React.ReactNode };
+    if (child.type === "option") {
+      const label = nodeText(p.children).replace(/\s+/g, " ").trim();
+      out.push({ value: p.value !== undefined ? String(p.value) : label, label, disabled: p.disabled });
+    } else if (child.type === "optgroup" || child.type === Fragment) {
+      collectOptions(p.children, out);
+    }
+  });
+  return out;
+}
+
+export function AdminSelectPro({
+  value,
+  onChange,
+  children,
+  className,
+  disabled,
+  placeholder,
+  "aria-label": ariaLabel,
+}: {
+  value?: string | number | readonly string[];
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children?: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+  placeholder?: string;
+  "aria-label"?: string;
+}) {
+  const options = collectOptions(children);
+  return (
+    <AdminDropdown
+      className={cn("w-full", className)}
+      value={value === undefined ? "" : String(value)}
+      options={options}
+      placeholder={placeholder ?? "Select"}
+      active={false}
+      disabled={disabled}
+      ariaLabel={ariaLabel}
+      onChange={(v) => onChange?.({ target: { value: v }, currentTarget: { value: v } } as unknown as React.ChangeEvent<HTMLSelectElement>)}
+    />
+  );
 }
 
 export function AdminDropdown({
@@ -27,7 +90,11 @@ export function AdminDropdown({
   direction = "down",
   active,
   className,
+  disabled = false,
+  ariaLabel,
 }: {
+  disabled?: boolean;
+  ariaLabel?: string;
   value: string;
   options: DropdownOption[];
   onChange: (value: string) => void;
@@ -68,10 +135,13 @@ export function AdminDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-3 font-medium transition-colors",
+          disabled && "cursor-not-allowed opacity-50",
           h
         )}
         style={{
@@ -79,9 +149,12 @@ export function AdminDropdown({
           color: isActive ? "var(--a-gold)" : "var(--a-fg)",
         }}
       >
-        <span className="truncate">
-          {label && <span style={{ color: "var(--a-faint)" }}>{label}: </span>}
-          {selected?.label ?? placeholder}
+        <span className="flex min-w-0 items-center gap-2 truncate">
+          {selected?.icon}
+          <span className="truncate">
+            {label && <span style={{ color: "var(--a-faint)" }}>{label}: </span>}
+            {selected?.label ?? placeholder}
+          </span>
         </span>
         <ChevronDown
           size={size === "sm" ? 13 : 15}
@@ -99,7 +172,7 @@ export function AdminDropdown({
             exit={{ opacity: 0, y: direction === "up" ? -6 : 6, scale: 0.97 }}
             transition={{ duration: 0.15 }}
             className={cn(
-              "absolute z-40 max-h-64 min-w-[11rem] overflow-y-auto rounded-xl border p-1.5 shadow-xl",
+              "absolute z-40 max-h-64 min-w-[max(11rem,100%)] max-w-[min(30rem,90vw)] overflow-y-auto rounded-xl border p-1.5 shadow-xl",
               align === "right" ? "right-0" : "left-0",
               direction === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5"
             )}
@@ -113,21 +186,30 @@ export function AdminDropdown({
                     type="button"
                     role="option"
                     aria-selected={sel}
+                    aria-disabled={o.disabled}
+                    disabled={o.disabled}
                     onClick={() => {
                       onChange(o.value);
                       setOpen(false);
                     }}
                     className={cn(
                       "flex w-full items-center justify-between gap-4 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                      sel ? "font-medium" : "hover:bg-black/[0.04]"
+                      o.disabled && "cursor-not-allowed opacity-40",
+                      sel ? "font-medium" : !o.disabled && "hover:bg-black/[0.04]"
                     )}
                     style={{
                       background: sel ? "var(--a-gold-soft)" : undefined,
                       color: sel ? "var(--a-gold)" : "var(--a-fg)",
                     }}
                   >
-                    {o.label}
-                    {sel && <Check size={14} />}
+                    <span className="flex min-w-0 items-center gap-2">
+                      {o.icon}
+                      {o.label}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {o.meta && <span className="text-xs font-normal" style={{ color: "var(--a-faint)" }}>{o.meta}</span>}
+                      {sel && <Check size={14} />}
+                    </span>
                   </button>
                 </li>
               );

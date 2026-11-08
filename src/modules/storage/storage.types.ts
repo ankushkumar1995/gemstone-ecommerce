@@ -51,6 +51,8 @@ export const STORAGE_FOLDERS = [
   "misc",
   // Public astrologer profile photos (KYC documents live in a separate private store).
   "astrologers",
+  // Pooja catalog images and pooja proof photos.
+  "poojas",
 ] as const;
 
 export type StorageFolder = (typeof STORAGE_FOLDERS)[number];

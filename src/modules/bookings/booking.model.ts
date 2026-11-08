@@ -22,6 +22,7 @@ const IntakeSchema = new Schema(
     birthTime: { type: String, trim: true, maxlength: 20 },
     birthPlace: { type: String, trim: true, maxlength: 160 },
     gender: { type: String, enum: ["male", "female", "other", ""], default: "" },
+    maritalStatus: { type: String, enum: ["single", "married", "divorced", "widowed", "separated", ""], default: "" },
     message: { type: String, trim: true, maxlength: 2000 },
   },
   { _id: false },

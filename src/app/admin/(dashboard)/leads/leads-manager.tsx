@@ -113,7 +113,7 @@ export function LeadsManager() {
                     <p className="font-semibold" style={{ color: "var(--a-fg)" }}>
                       {lead.name}
                     </p>
-                    <StatusPill tone={lead.source === "service" ? "blue" : "muted"}>
+                    <StatusPill tone={lead.source === "service" ? "blue" : lead.source === "consultation" ? "gold" : "muted"}>
                       {lead.source}
                     </StatusPill>
                   </div>
@@ -140,6 +140,11 @@ export function LeadsManager() {
                   {lead.birth?.date && (
                     <p className="mt-1 text-xs" style={{ color: "var(--a-faint)" }}>
                       Birth: {lead.birth.date} {lead.birth.time} · {lead.birth.place}
+                    </p>
+                  )}
+                  {(lead.astrologer || lead.gender || lead.maritalStatus) && (
+                    <p className="mt-1 text-xs capitalize" style={{ color: "var(--a-faint)" }}>
+                      {[lead.astrologer && `Astrologer: ${lead.astrologer}`, lead.gender, lead.maritalStatus].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </div>

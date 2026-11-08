@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { serviceService } from "@/modules/services";
+import { serviceService, serviceCategoryService } from "@/modules/services";
 import { ServiceDetailView } from "@/components/services/service-detail-view";
 import { JsonLd } from "@/components/seo/json-ld";
 import { serviceSchema, breadcrumbSchema } from "@/lib/seo";
@@ -40,12 +40,15 @@ export default async function ServiceDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [res, allRes] = await Promise.all([
+  const [res, allRes, cats] = await Promise.all([
     serviceService.getActiveBySlug(slug),
     serviceService.listActive(),
+    // A category failure must never take the service page down.
+    serviceCategoryService.listPublic().catch(() => []),
   ]);
   if (!res.ok) notFound();
   const service = res.value;
+  const categories = cats.map((c) => ({ id: c.id, name: c.name, slug: c.slug, icon: c.icon }));
 
   return (
     <>
@@ -64,7 +67,7 @@ export default async function ServiceDetailPage({
           ]),
         ]}
       />
-      <ServiceDetailView service={service} services={allRes.ok ? allRes.value : []} />
+      <ServiceDetailView key={service.slug} service={service} services={allRes.ok ? allRes.value : []} categories={categories} />
     </>
   );
 }

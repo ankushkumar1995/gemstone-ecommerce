@@ -49,7 +49,7 @@ export function PromoBanner({ banner }: { banner?: PromoBannerData | null }) {
       <Container>
         <div
           ref={ref}
-          className="relative overflow-hidden rounded-[2rem] border border-foreground/10"
+          className="relative overflow-hidden rounded-3xl border border-foreground/10"
         >
           {/* Parallax background */}
           <motion.div style={{ y, scale }} className="absolute inset-0">
@@ -82,7 +82,7 @@ export function PromoBanner({ banner }: { banner?: PromoBannerData | null }) {
                 </span>
               )}
 
-              <h2 className="mt-5 font-display text-3xl font-semibold leading-tight text-foreground sm:text-4xl md:text-5xl">
+              <h2 className="mt-3.5 font-display text-3xl font-semibold leading-tight text-foreground sm:text-3xl md:text-4xl">
                 {b.title}
               </h2>
 
@@ -92,7 +92,7 @@ export function PromoBanner({ banner }: { banner?: PromoBannerData | null }) {
                 </p>
               )}
 
-              <div className="mt-8 flex flex-wrap items-center gap-4">
+              <div className="mt-6 flex flex-wrap items-center gap-3.5">
                 <Link href={b.ctaHref || "/shop"}>
                   <Button variant="gold" size="lg">
                     {b.ctaLabel || "Shop Now"} <ArrowRight size={16} />

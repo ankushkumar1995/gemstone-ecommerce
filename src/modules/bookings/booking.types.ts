@@ -42,6 +42,7 @@ export interface BookingIntake {
   /** Place of birth (city, country). */
   birthPlace?: string;
   gender?: "male" | "female" | "other" | "";
+  maritalStatus?: "single" | "married" | "divorced" | "widowed" | "separated" | "";
   /** The customer's question / what they want help with. */
   message?: string;
 }

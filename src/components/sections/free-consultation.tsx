@@ -94,7 +94,7 @@ export function FreeConsultation() {
   return (
     <section
       id="free-consultation"
-      className="relative scroll-mt-24 overflow-hidden py-20"
+      className="relative scroll-mt-24 overflow-hidden py-9 md:py-11"
     >
       {/* ambient glows */}
       <div
@@ -115,11 +115,11 @@ export function FreeConsultation() {
               <span className="text-gradient-gold">Absolutely Free</span>
             </>
           }
-          description="Book a no-obligation call with our master Vedic astrologer. Share your birth details and get personalised guidance on your kundli, gemstones and remedies."
+          description="Book a no-obligation call with our master Vedic astrologer. Share your birth details and get personalised guidance on your kundli, doshas and remedies."
           className="mb-14"
         />
 
-        <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="grid items-stretch gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           {/* ============================================================ *
            *  LEFT — pitch + perks
            * ============================================================ */}
@@ -128,7 +128,7 @@ export function FreeConsultation() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="relative flex flex-col justify-center rounded-[2rem] border border-foreground/10 bg-gradient-to-br from-[#1a1230] via-royal-700 to-[#2a1a4d] p-8 sm:p-10"
+            className="relative flex flex-col justify-center rounded-3xl border border-foreground/10 bg-gradient-to-br from-[#1a1230] via-royal-700 to-[#2a1a4d] p-5 sm:p-6"
           >
             <div
               aria-hidden
@@ -142,18 +142,18 @@ export function FreeConsultation() {
                 Free Expert Guidance
               </span>
 
-              <h3 className="mt-5 font-display text-3xl font-bold leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.3)] sm:text-4xl">
+              <h3 className="mt-3.5 font-display text-3xl font-bold leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.3)] sm:text-3xl">
                 Guidance That Aligns
                 <span className="block text-gold-300">With Your Stars</span>
               </h3>
 
               <p className="mt-4 max-w-md text-base leading-relaxed text-white/80">
                 Share your details and our Vedic astrologer will call you back for
-                a free, personalised session — covering your kundli, the right
-                gemstone, and remedies that actually work.
+                a free, personalised session covering your kundli, the planets
+                affecting you now, and remedies that actually work.
               </p>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="mt-6 grid gap-3.5 sm:grid-cols-2">
                 {perks.map((p) => (
                   <motion.div
                     key={p.title}
@@ -183,7 +183,7 @@ export function FreeConsultation() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="relative overflow-hidden rounded-[2rem] border border-gold-400/25 bg-gradient-to-br from-gold-400/[0.06] to-nebula p-8 sm:p-10"
+            className="relative overflow-hidden rounded-3xl border border-gold-400/25 bg-gradient-to-br from-gold-400/[0.06] to-nebula p-5 sm:p-6"
           >
             <div className="pointer-events-none absolute -left-16 -bottom-16 h-56 w-56 rounded-full bg-royal-500/10 blur-3xl" />
 
@@ -204,7 +204,7 @@ export function FreeConsultation() {
                   >
                     <CheckCircle2 size={38} />
                   </motion.span>
-                  <h3 className="mt-6 font-display text-2xl font-semibold text-foreground">
+                  <h3 className="mt-4 font-display text-xl font-semibold text-foreground">
                     Request Received!
                   </h3>
                   <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
@@ -214,7 +214,7 @@ export function FreeConsultation() {
                   <button
                     type="button"
                     onClick={() => setSent(false)}
-                    className="mt-6 text-sm font-semibold text-gold-600 underline-offset-4 hover:underline"
+                    className="mt-4 text-sm font-semibold text-gold-600 underline-offset-4 hover:underline"
                   >
                     Submit another request
                   </button>
@@ -230,7 +230,7 @@ export function FreeConsultation() {
                 >
                   <div className="flex items-center gap-2">
                     <Sparkles size={18} className="text-gold-500" />
-                    <h3 className="text-xl font-semibold text-foreground">
+                    <h3 className="text-[17px] font-semibold text-foreground">
                       Book Your Free Session
                     </h3>
                   </div>
@@ -238,8 +238,8 @@ export function FreeConsultation() {
                     Fill in your birth details so we can prepare before the call.
                   </p>
 
-                  <div className="mt-6 space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="mt-4 space-y-4">
+                    <div className="grid gap-3.5 sm:grid-cols-2">
                       <Labeled label="Full Name" required>
                         <input name="name" className={inputClass} placeholder="Your name" />
                       </Labeled>
@@ -275,7 +275,7 @@ export function FreeConsultation() {
                       </p>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                    <div className="flex flex-wrap items-center gap-3.5 pt-1">
                       <Button type="submit" variant="gold" size="lg" disabled={submitting}>
                         {submitting ? (
                           <>

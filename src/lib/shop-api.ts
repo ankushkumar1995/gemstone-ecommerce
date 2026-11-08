@@ -30,6 +30,16 @@ async function request<T>(
 }
 
 export const shopApi = {
+  poojas: {
+    /** Open dates for a pooja (not past cutoff, not full). */
+    slots: (slug: string) => request<import("@/modules/poojas/pooja.types").SlotView[]>(`/api/v1/poojas/${encodeURIComponent(slug)}/slots`),
+    /** Booking request (no payment; the team calls to confirm). Retry-safe via requestId. */
+    book: (dto: import("@/modules/poojas/pooja.schema").WebBookingInput) =>
+      request<{ bookingNumber: string; pooja: string; package: string; date: string; time: string; label: string; total: number }>(
+        "/api/v1/poojas/bookings",
+        { method: "POST", body: JSON.stringify(dto) },
+      ),
+  },
   orders: {
     create: (dto: CreateOrderDto) =>
       request<Order>("/api/v1/orders", {
@@ -97,9 +107,12 @@ export const shopApi = {
         birthTime?: string;
         birthPlace?: string;
         gender?: string;
+        maritalStatus?: string;
         message?: string;
       };
       preferredAt?: string;
+      /** Guest checkout only; ignored by the server when signed in. */
+      customer?: { name: string; email: string; phone?: string };
     }) =>
       request<{
         bookingId: string;

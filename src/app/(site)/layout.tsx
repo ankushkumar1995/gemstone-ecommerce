@@ -11,6 +11,7 @@ import { CookieConsent } from "@/components/layout/cookie-consent";
 import { PopupManager } from "@/components/layout/popup-manager";
 import { settingsService } from "@/modules/settings";
 import { popupService } from "@/modules/popups";
+import { getShopMenu } from "@/lib/shop-menu";
 import { JsonLd } from "@/components/seo/json-ld";
 import { organizationSchema, websiteSchema, astrologyServiceSchema } from "@/lib/seo";
 
@@ -29,6 +30,9 @@ export default async function SiteLayout({
 }) {
   const res = await settingsService.get();
   const g = res.ok ? res.value.general : null;
+
+  // Admin-managed categories + featured products for the "Shop All" mega menu.
+  const shopMenu = await getShopMenu();
 
   const popupsRes = await popupService.liveForPublic();
   const livePopups = popupsRes.ok ? popupsRes.value : [];
@@ -55,7 +59,7 @@ export default async function SiteLayout({
               ]}
             />
             <AnnouncementBar />
-            <Navbar />
+            <Navbar shopMenu={shopMenu} />
             <main className="relative min-h-screen">{children}</main>
             <Footer />
             <CartDrawer />

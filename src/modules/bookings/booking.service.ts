@@ -116,6 +116,7 @@ export const bookingService = {
         birthTime: dto.intake.birthTime?.trim() || undefined,
         birthPlace: dto.intake.birthPlace?.trim() || undefined,
         gender: dto.intake.gender || "",
+        maritalStatus: dto.intake.maritalStatus || "",
         message: dto.intake.message?.trim() || undefined,
       },
       preferredAt: dto.preferredAt || undefined,

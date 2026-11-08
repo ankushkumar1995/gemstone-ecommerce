@@ -12,13 +12,14 @@ import {
   X,
   Gem,
   ChevronDown,
+  PhoneCall,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "@/components/ui/container";
 import { MegaMenu } from "@/components/layout/mega-menu";
 import { SearchOverlay } from "@/components/layout/search-overlay";
 import { CurrencySelector } from "@/components/layout/currency-selector";
-import { categories } from "@/data/categories";
+import { EMPTY_SHOP_MENU, type ShopMenuData } from "@/lib/shop-menu.types";
 import { useCommerce } from "@/lib/store";
 
 type NavChild = { label: string; href: string; desc?: string };
@@ -35,6 +36,8 @@ const navLinks: NavLink[] = [
   { label: "Home", href: "/" },
   { label: "Shop All", href: "/shop", mega: true },
   { label: "Services", href: "/services" },
+  { label: "Pooja", href: "/pooja" },
+  { label: "Havan", href: "/havan" },
   {
     label: "Free Tools",
     href: "/free-kundli",
@@ -52,12 +55,12 @@ const navLinks: NavLink[] = [
       { label: "Love Calculator", href: "/love-calculator", desc: "FLAMES & love match (fun)" },
     ],
   },
-  { label: "Free Consultation", href: "/#free-consultation" },
   { label: "Blog", href: "/blog" },
   { label: "Contact", href: "/contact" },
 ];
 
-export function Navbar() {
+export function Navbar({ shopMenu = EMPTY_SHOP_MENU }: { shopMenu?: ShopMenuData }) {
+  const categories = shopMenu.categories;
   const [elevated, setElevated] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [megaOpen, setMegaOpen] = useState(false);
@@ -131,7 +134,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop links */}
-        <ul className="hidden items-center gap-7 lg:flex">
+        <ul className="hidden items-center gap-4 lg:flex xl:gap-6">
           {navLinks.map((link) =>
             link.mega ? (
               <li
@@ -253,6 +256,18 @@ export function Navbar() {
 
         {/* Actions */}
         <div className="flex items-center gap-1.5">
+          {/* Primary CTA */}
+          <Link
+            href="/consultation"
+            className="group relative mr-1 hidden h-10 items-center gap-1.5 overflow-hidden rounded-full bg-gradient-to-r from-gold-400 to-gold-500 px-4 text-[13px] font-semibold text-white shadow-[0_8px_22px_-10px_rgba(201,148,42,0.85)] transition-all duration-300 hover:-translate-y-px hover:shadow-[0_12px_28px_-10px_rgba(201,148,42,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/60 focus-visible:ring-offset-2 active:scale-[0.98] md:inline-flex"
+          >
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/3 -skew-x-12 bg-white/35 transition-all duration-700 group-hover:left-[120%] motion-reduce:hidden" />
+            <PhoneCall size={15} className="relative" />
+            <span className="relative">
+              <span className="xl:hidden">Consult</span>
+              <span className="hidden xl:inline">Book Consultation</span>
+            </span>
+          </Link>
           <CurrencySelector className="hidden sm:block" />
           <IconButton label="Search" onClick={() => setSearchOpen(true)}>
             <Search size={18} />
@@ -297,7 +312,7 @@ export function Navbar() {
             onMouseLeave={scheduleCloseMega}
           >
             {/* panel sits flush against the navbar bottom — no gap */}
-            <MegaMenu onNavigate={() => setMegaOpen(false)} />
+            <MegaMenu data={shopMenu} onNavigate={() => setMegaOpen(false)} />
           </div>
         )}
       </AnimatePresence>
@@ -313,6 +328,16 @@ export function Navbar() {
             className="overflow-hidden glass-strong lg:hidden"
           >
             <ul className="flex flex-col gap-1 px-4 py-4">
+              {/* Primary CTA on mobile */}
+              <li className="mb-2">
+                <Link
+                  href="/consultation"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-gold-400 to-gold-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(201,148,42,0.9)]"
+                >
+                  <PhoneCall size={16} /> Book Consultation
+                </Link>
+              </li>
               {navLinks.map((link) =>
                 link.mega ? (
                   <li key={link.href}>
@@ -359,6 +384,15 @@ export function Navbar() {
                               </Link>
                             </li>
                           ))}
+                          <li>
+                            <Link
+                              href="/shop"
+                              onClick={() => setMobileOpen(false)}
+                              className="block rounded-xl px-4 py-2.5 text-sm font-semibold text-gold-600 transition-colors hover:bg-foreground/5"
+                            >
+                              View all products
+                            </Link>
+                          </li>
                         </motion.ul>
                       )}
                     </AnimatePresence>

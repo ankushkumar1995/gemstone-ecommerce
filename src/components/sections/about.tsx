@@ -27,7 +27,7 @@ const highlights = [
  */
 export function About() {
   return (
-    <section id="about" className="scroll-mt-24 py-20">
+    <section id="about" className="scroll-mt-24 py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="About Astrounkle"
@@ -50,7 +50,7 @@ export function About() {
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="relative"
           >
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-foreground/10 shadow-[0_30px_80px_-30px_rgba(36,26,59,0.45)]">
+            <div className="relative aspect-[4/5] overflow-hidden rounded-3xl border border-foreground/10 shadow-[0_30px_80px_-30px_rgba(36,26,59,0.45)]">
               <Image
                 src="https://images.unsplash.com/photo-1611425143678-08fc480cafde?auto=format&fit=crop&w=1200&q=85"
                 alt="Certified natural gemstones"
@@ -67,7 +67,7 @@ export function About() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-80px" }}
               transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute -bottom-8 -right-4 hidden h-44 w-40 overflow-hidden rounded-3xl border-4 border-nebula shadow-xl sm:block"
+              className="absolute -bottom-8 -right-4 hidden h-44 w-40 overflow-hidden rounded-2xl border-4 border-nebula shadow-xl sm:block"
             >
               <Image
                 src="https://images.unsplash.com/photo-1615655406736-b37c4fabf923?auto=format&fit=crop&w=600&q=85"
@@ -149,7 +149,7 @@ export function About() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-16 grid grid-cols-2 gap-4 rounded-[2rem] border border-foreground/10 bg-nebula p-6 shadow-[0_20px_50px_-30px_rgba(36,26,59,0.4)] sm:p-8 lg:grid-cols-4"
+          className="mt-7 grid grid-cols-2 gap-3.5 rounded-3xl border border-foreground/10 bg-nebula p-4 shadow-[0_20px_50px_-30px_rgba(36,26,59,0.4)] sm:p-5 lg:grid-cols-4"
         >
           {stats.map((s) => (
             <div

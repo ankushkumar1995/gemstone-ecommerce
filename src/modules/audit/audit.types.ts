@@ -23,7 +23,8 @@ export type AuditEntity =
   | "astrologer"
   | "consultation"
   | "wallet"
-  | "payout";
+  | "payout"
+  | "pooja";
 
 export type AuditAction =
   | "create"

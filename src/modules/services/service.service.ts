@@ -10,6 +10,7 @@ import { auditService } from "@/modules/audit";
 import type { AstroService } from "@/types";
 import { getServiceRepository } from "./service.repository";
 import type { CreateServiceDto, UpdateServiceDto } from "./service.schema";
+import { serviceCategoryService } from "./service-category.service";
 
 function slugify(title: string): string {
   return title
@@ -34,6 +35,9 @@ export const serviceService = {
 
   async create(dto: CreateServiceDto): Promise<Result<AstroService>> {
     const repo = getServiceRepository();
+    if (dto.categoryId && !(await serviceCategoryService.exists(dto.categoryId))) {
+      return fail(AppErrors.validation("This category no longer exists. Choose another one."));
+    }
     let slug = slugify(dto.title);
     if (await repo.findBySlug(slug)) slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
 
@@ -54,6 +58,7 @@ export const serviceService = {
       features: (dto.features ?? []).filter((f) => f.trim()),
       status: dto.status ?? "active",
       order: dto.order ?? maxOrder + 1,
+      categoryId: dto.categoryId || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -72,8 +77,12 @@ export const serviceService = {
     const repo = getServiceRepository();
     const existing = await repo.findById(id);
     if (!existing) return fail(AppErrors.notFound("Service not found"));
+    if (dto.categoryId && dto.categoryId !== existing.categoryId && !(await serviceCategoryService.exists(dto.categoryId))) {
+      return fail(AppErrors.validation("This category no longer exists. Choose another one."));
+    }
 
     const patch: Partial<AstroService> = {
+      ...(dto.categoryId !== undefined && { categoryId: dto.categoryId || null }),
       ...(dto.title !== undefined && { title: dto.title.trim() }),
       ...(dto.tagline !== undefined && { tagline: dto.tagline }),
       ...(dto.description !== undefined && { description: dto.description }),

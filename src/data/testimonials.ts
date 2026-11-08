@@ -1,5 +1,6 @@
 import type { Testimonial } from "@/types";
 
+/** Homepage reviews: consultation experiences (astrology-first home). */
 export const testimonials: Testimonial[] = [
   {
     id: "t1",
@@ -8,7 +9,7 @@ export const testimonials: Testimonial[] = [
     rating: 5,
     initials: "AS",
     quote:
-      "The yellow sapphire ring is breathtaking and came with a proper IGI certificate. I felt a shift in my confidence within weeks.",
+      "The astrologer read my chart patiently and explained my career timing in simple words. Everything felt calm and honest.",
   },
   {
     id: "t2",
@@ -17,7 +18,7 @@ export const testimonials: Testimonial[] = [
     rating: 5,
     initials: "RM",
     quote:
-      "Finally a gemstone brand that feels premium and trustworthy. The astrology consultation before buying was a lovely touch.",
+      "Booked a call about my marriage. Clear answers, practical remedies and no pressure at all. I have already recommended it to family.",
   },
   {
     id: "t3",
@@ -26,7 +27,7 @@ export const testimonials: Testimonial[] = [
     rating: 5,
     initials: "KN",
     quote:
-      "Packaging, certification, finish — everything screamed luxury. My emerald pendant gets compliments everywhere.",
+      "The free kundli was detailed, and the follow-up consultation helped me understand my Sade Sati without any fear.",
   },
   {
     id: "t4",
@@ -35,6 +36,6 @@ export const testimonials: Testimonial[] = [
     rating: 4,
     initials: "VS",
     quote:
-      "Being from Jaipur I know stones. These are genuine, well-cut and fairly priced for the certification quality.",
+      "Good, experienced astrologers and a smooth booking. The session started on time and the guidance was to the point.",
   },
 ];

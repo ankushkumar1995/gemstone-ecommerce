@@ -6,6 +6,7 @@ import { partnerApi } from "@/lib/astrologer-api";
 import { AdminButton, AdminInput, Card, ConfirmDialog, Field, PageHeader, useAdminToast } from "@/app/admin/_components";
 import { usePartner } from "../../_components/partner-context";
 import { FormError } from "../../_components/auth-frame";
+import { DevicesCard, TwoStepCard } from "../../_components/security-extras";
 
 export default function SecurityPage() {
   return <Suspense><SecurityInner /></Suspense>;
@@ -50,7 +51,7 @@ function SecurityInner() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <PageHeader title="Security" subtitle={first ? "Set your own password to continue." : "Keep your partner account safe."} />
       {first && <Card className="p-4 text-sm" style={{ color: "var(--a-gold)" }}>You signed in with a temporary password. Choose a new one before using the panel.</Card>}
 
@@ -67,6 +68,8 @@ function SecurityInner() {
 
       {!first && (
         <>
+          <TwoStepCard />
+          <DevicesCard onSignOutAll={() => setAskAll(true)} />
           <Card className="flex flex-wrap items-center justify-between gap-3 p-5">
             <div>
               <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Sign out everywhere</p>

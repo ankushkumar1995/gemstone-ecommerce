@@ -10,7 +10,7 @@ import { Container } from "@/components/ui/container";
 
 export function FeaturedProducts({ products = [] }: { products?: Product[] }) {
   return (
-    <section className="py-20">
+    <section className="py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Most Loved"
@@ -18,13 +18,13 @@ export function FeaturedProducts({ products = [] }: { products?: Product[] }) {
           description="Hand-picked, certified and adored — the gemstones our community keeps coming back for."
         />
 
-        <StaggerContainer className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <StaggerContainer className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           {products.map((product, i) => (
             <ProductCard key={product.id} product={product} index={i} />
           ))}
         </StaggerContainer>
 
-        <div className="mt-12 flex justify-center">
+        <div className="mt-6 flex justify-center">
           <Link href="/shop">
             <Button variant="primary" size="lg">
               View All Gemstones

@@ -25,6 +25,7 @@ function fromDoc(doc: ServiceDoc): AstroService {
     features: doc.features,
     status: doc.status,
     order: doc.order,
+    categoryId: (doc as { categoryId?: string | null }).categoryId ?? null,
     createdAt: ts.createdAt?.toISOString(),
     updatedAt: ts.updatedAt?.toISOString(),
   };
@@ -37,9 +38,13 @@ export interface ServiceRepository {
   create(service: AstroService): Promise<AstroService>;
   update(id: string, patch: Partial<AstroService>): Promise<AstroService | null>;
   remove(id: string): Promise<boolean>;
+  /** Services per category id; key "" = Uncategorised. */
+  countByCategory(): Promise<Record<string, number>>;
+  /** Move every service from one category to another (null = Uncategorised). */
+  moveCategory(fromId: string, toId: string | null): Promise<number>;
 }
 
-const store: AstroService[] = seed.map((s) => ({ ...s }));
+const store: AstroService[] = seed.map((s) => ({ ...s, categoryId: s.categoryId ?? null }));
 
 function sorted(list: AstroService[]): AstroService[] {
   return [...list].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
@@ -72,6 +77,16 @@ const mockServiceRepository: ServiceRepository = {
     if (idx === -1) return false;
     store.splice(idx, 1);
     return true;
+  },
+  async countByCategory() {
+    const out: Record<string, number> = {};
+    for (const s of store) { const k = s.categoryId ?? ""; out[k] = (out[k] ?? 0) + 1; }
+    return out;
+  },
+  async moveCategory(fromId, toId) {
+    let n = 0;
+    for (const s of store) if (s.categoryId === fromId) { s.categoryId = toId; n++; }
+    return n;
   },
 };
 
@@ -117,7 +132,7 @@ function mongoServiceRepository(): ServiceRepository {
       void _ignore;
       void createdAt;
       void updatedAt;
-      const doc = await M.findByIdAndUpdate(id, { $set: safe }, { new: true, runValidators: true }).lean<ServiceDoc>();
+      const doc = await M.findByIdAndUpdate(id, { $set: safe }, { returnDocument: "after", runValidators: true }).lean<ServiceDoc>();
       return doc ? fromDoc(doc) : null;
     },
     async remove(id) {
@@ -125,6 +140,16 @@ function mongoServiceRepository(): ServiceRepository {
       if (!/^[a-f0-9]{24}$/i.test(id)) return false;
       const res = await M.findByIdAndDelete(id).lean<ServiceDoc>();
       return Boolean(res);
+    },
+    async countByCategory() {
+      const M = await model();
+      const rows = await M.aggregate<{ _id: string | null; n: number }>([{ $group: { _id: { $ifNull: ["$categoryId", ""] }, n: { $sum: 1 } } }]);
+      return Object.fromEntries(rows.map((r) => [r._id ?? "", r.n]));
+    },
+    async moveCategory(fromId, toId) {
+      const M = await model();
+      const r = await M.updateMany({ categoryId: fromId }, { $set: { categoryId: toId } });
+      return r.modifiedCount;
     },
   };
 }

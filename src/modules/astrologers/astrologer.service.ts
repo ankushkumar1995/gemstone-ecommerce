@@ -118,7 +118,8 @@ export function toPublic(a: Astrologer, s: AstroProgramSettings): PublicAstrolog
 function toSelf(a: Astrologer, s: AstroProgramSettings): SelfAstrologer {
   const { adminNotes: _n, sortWeight: _w, hidden: _h, commissionPct: _c, maxRate: _m, ...rest } = a;
   void _n; void _w; void _h; void _c; void _m;
-  return { ...rest, presence: { ...a.presence, online: isOnline(a, s) }, effectiveCommissionPct: effectiveCommission(a, s), effectiveMaxRate: effectiveMaxRate(a, s) };
+  // Admin notes on the timeline are internal: never send them to the partner.
+  return { ...rest, activity: a.activity.filter((e) => e.type !== "note"), presence: { ...a.presence, online: isOnline(a, s) }, effectiveCommissionPct: effectiveCommission(a, s), effectiveMaxRate: effectiveMaxRate(a, s) };
 }
 
 /** Admin view: presence normalised to the computed value. */

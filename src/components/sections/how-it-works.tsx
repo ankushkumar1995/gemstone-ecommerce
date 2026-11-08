@@ -35,7 +35,7 @@ const steps = [
  */
 export function HowItWorks() {
   return (
-    <section className="relative bg-void py-20">
+    <section className="relative bg-void py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Simple & Sacred"
@@ -48,7 +48,7 @@ export function HowItWorks() {
         />
 
         <StaggerContainer
-          className="relative mt-16 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4"
+          className="relative mt-7 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
           stagger={0.1}
         >
           {/* connecting line (desktop) */}
@@ -66,7 +66,7 @@ export function HowItWorks() {
               <div className="relative">
                 <motion.span
                   whileHover={{ scale: 1.08, rotate: 6 }}
-                  className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500 to-royal-700 text-white shadow-[0_12px_30px_-10px_rgba(122,69,245,0.5)]"
+                  className="relative z-10 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-royal-500 to-royal-700 text-white shadow-[0_12px_30px_-10px_rgba(122,69,245,0.5)]"
                 >
                   <s.icon size={22} />
                 </motion.span>
@@ -75,7 +75,7 @@ export function HowItWorks() {
                 </span>
               </div>
 
-              <h3 className="mt-5 text-lg font-semibold text-foreground">
+              <h3 className="mt-3.5 text-lg font-semibold text-foreground">
                 {s.title}
               </h3>
               <p className="mt-2 max-w-[16rem] text-sm leading-relaxed text-muted">

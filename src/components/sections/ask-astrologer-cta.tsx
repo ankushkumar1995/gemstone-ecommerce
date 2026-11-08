@@ -20,13 +20,13 @@ export function AskAstrologerCta() {
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             whileHover={{ y: -4 }}
-            className="relative flex flex-col items-start gap-6 overflow-hidden rounded-[2rem] bg-gradient-to-r from-gold-400 to-gold-500 p-7 shadow-[0_20px_50px_-24px_rgba(201,148,42,0.6)] transition-shadow duration-500 hover:shadow-[0_28px_70px_-24px_rgba(201,148,42,0.75)] sm:p-9 md:flex-row md:items-center md:justify-between"
+            className="relative flex flex-col items-start gap-3.5 overflow-hidden rounded-3xl bg-gradient-to-r from-gold-400 to-gold-500 p-6 shadow-[0_20px_50px_-24px_rgba(201,148,42,0.6)] transition-shadow duration-500 hover:shadow-[0_28px_70px_-24px_rgba(201,148,42,0.75)] sm:p-9 md:flex-row md:items-center md:justify-between"
           >
             {/* decorative glows */}
             <div className="pointer-events-none absolute -right-10 -top-12 h-48 w-48 rounded-full bg-white/20 blur-3xl transition-transform duration-700 group-hover:scale-125" />
             <div className="pointer-events-none absolute -bottom-16 left-20 h-48 w-48 rounded-full bg-royal-700/20 blur-3xl" />
 
-            <div className="relative flex items-start gap-4">
+            <div className="relative flex items-start gap-3.5">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/25 text-[#3a2a08] backdrop-blur-sm transition-transform duration-500 group-hover:rotate-6 group-hover:scale-110">
                 <MessageCircleQuestion size={24} />
               </span>

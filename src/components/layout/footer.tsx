@@ -31,9 +31,9 @@ const columns = [
     title: "Astrology",
     links: [
       { label: "All Services", href: "/services" },
-      { label: "Find Your Stone", href: "/#zodiac" },
-      { label: "Free Consultation", href: "/services" },
-      { label: "About Us", href: "/#about" },
+      { label: "Find Your Stone", href: "/gemstone-by-zodiac" },
+      { label: "Free Consultation", href: "/#free-consultation" },
+      { label: "Free Kundli", href: "/free-kundli" },
     ],
   },
   {
@@ -68,7 +68,7 @@ export function Footer() {
       {/* gold top hairline */}
       <div className="h-px w-full bg-gradient-to-r from-transparent via-gold-400/60 to-transparent" />
 
-      <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
+      <div className="relative mx-auto max-w-[90rem] px-5 sm:px-8">
         {/* ---------------- MAIN GRID ---------------- */}
         <div className="grid gap-10 pb-12 pt-14 lg:grid-cols-[1.5fr_repeat(3,1fr)]">
           {/* Brand */}

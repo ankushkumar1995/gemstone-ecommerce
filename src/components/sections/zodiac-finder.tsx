@@ -14,7 +14,7 @@ export function ZodiacFinder() {
   const [active, setActive] = useState(zodiacSigns[4]); // Leo default
 
   return (
-    <section id="zodiac" className="scroll-mt-24 py-20">
+    <section id="zodiac" className="scroll-mt-24 py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Astrology Finder"
@@ -22,7 +22,7 @@ export function ZodiacFinder() {
           description="Select your zodiac sign and reveal the gemstone the stars recommend for you."
         />
 
-        <div className="mt-14 grid gap-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="mt-6 grid gap-7 lg:grid-cols-[1.1fr_1fr]">
           {/* zodiac grid */}
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
             {zodiacSigns.map((z) => {
@@ -94,7 +94,7 @@ export function ZodiacFinder() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
-              className="relative overflow-hidden rounded-3xl glass-strong border-gradient"
+              className="relative overflow-hidden rounded-2xl glass-strong border-gradient"
             >
               {/* image hero band */}
               <div className="relative h-40 w-full overflow-hidden">
@@ -118,7 +118,7 @@ export function ZodiacFinder() {
                     {active.symbol}
                   </div>
                   <div>
-                    <h3 className="text-2xl font-semibold text-white drop-shadow">
+                    <h3 className="text-xl font-semibold text-white drop-shadow">
                       {active.name}
                     </h3>
                     <p className="text-sm text-white/80">{active.dateRange}</p>
@@ -126,24 +126,24 @@ export function ZodiacFinder() {
                 </div>
               </div>
 
-              <div className="relative z-10 p-8 pt-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="relative z-10 p-5 pt-6">
+                <div className="grid grid-cols-2 gap-3.5 text-sm">
                   <Detail label="Element" value={active.element} />
                   <Detail label="Ruling Planet" value={active.rulingPlanet} />
                 </div>
 
-                <div className="mt-6 rounded-2xl border border-gold-400/20 bg-gold-400/5 p-5">
+                <div className="mt-4 rounded-2xl border border-gold-400/20 bg-gold-400/5 p-4">
                   <p className="text-xs uppercase tracking-wider text-gold-600">
                     Your Lucky Gemstone
                   </p>
-                  <p className="mt-1 text-2xl font-semibold text-gradient-gold">
+                  <p className="mt-1 text-xl font-semibold text-gradient-gold">
                     {active.luckyStone}
                   </p>
                 </div>
 
                 <Link
                   href={`/shop?zodiac=${active.sign}`}
-                  className="mt-6 inline-block"
+                  className="mt-4 inline-block"
                 >
                   <Button variant="gold">
                     Shop {active.name} Stones <ArrowRight size={16} />

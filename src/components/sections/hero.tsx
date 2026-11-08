@@ -47,7 +47,7 @@ const slides: Slide[] = [
     description:
       "Your birth chart holds the answers. Consult India's trusted Vedic astrologers and wear the one gemstone destined to transform your destiny.",
     primaryCta: { label: "Talk to an Astrologer", href: "/#free-consultation" },
-    secondaryCta: { label: "Find My Stone", href: "/#zodiac" },
+    secondaryCta: { label: "Find My Stone", href: "/gemstone-by-zodiac" },
     image: "/images/image1.png",
     focus: "center",
   },
@@ -59,7 +59,7 @@ const slides: Slide[] = [
     description:
       "Authentic, lab-certified natural gemstones matched to your birth chart. Each stone is energised and ready to align your planets in your favour.",
     primaryCta: { label: "Explore Gemstones", href: "/shop" },
-    secondaryCta: { label: "Find My Stone", href: "/#zodiac" },
+    secondaryCta: { label: "Find My Stone", href: "/gemstone-by-zodiac" },
     image: "/images/gemstones-vedic-astrolabe.png",
     focus: "center",
   },
@@ -82,7 +82,7 @@ const slides: Slide[] = [
     titleAccent: "Lucky Gemstone",
     description:
       "Every rashi has a gemstone written in the stars. Discover the stone aligned to your zodiac sign and wear the energy meant for you.",
-    primaryCta: { label: "Find My Stone", href: "/#zodiac" },
+    primaryCta: { label: "Find My Stone", href: "/gemstone-by-zodiac" },
     secondaryCta: { label: "Talk to an Astrologer", href: "/#free-consultation" },
     image: "/images/sunlit-odiac-muse.png",
     focus: "right",
@@ -214,7 +214,7 @@ export function Hero() {
 
         {/* ---------------- CONTENT ---------------- */}
         <div className="relative z-10 flex h-full items-center">
-          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
+          <div className="mx-auto w-full max-w-[90rem] px-5 sm:px-8">
             <AnimatePresence mode="wait" custom={direction}>
               <motion.div
                 key={slide.id}
@@ -312,14 +312,14 @@ export function Hero() {
         </button>
 
         {/* ---------------- SLIDE INDICATORS ---------------- */}
-        <div className="absolute bottom-7 left-0 right-0 z-20 flex items-center justify-center gap-3">
+        <div className="absolute bottom-10 left-0 right-0 z-20 flex items-center justify-center gap-2">
           {slides.map((s, i) => (
             <button
               key={s.id}
               aria-label={`Go to slide ${i + 1}`}
               onClick={() => goTo(i)}
-              className="group relative h-2 overflow-hidden rounded-full transition-all duration-300"
-              style={{ width: i === index ? 56 : 22 }}
+              className="group relative h-1.5 overflow-hidden rounded-full transition-all duration-300"
+              style={{ width: i === index ? 44 : 18 }}
             >
               <span className="absolute inset-0 rounded-full bg-white/30" />
               {i === index ? (
@@ -343,7 +343,7 @@ export function Hero() {
       </div>
 
       {/* ---------------- STATS BAND (below hero, clean) ---------------- */}
-      <div className="mx-auto -mt-8 w-full max-w-7xl px-5 sm:px-8">
+      <div className="mx-auto -mt-7 w-full max-w-5xl px-5 sm:px-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -354,14 +354,14 @@ export function Hero() {
             <motion.div
               key={s.label}
               whileHover={{ y: -3 }}
-              className={`py-6 text-center ${
+              className={`py-3 text-center ${
                 i < stats.length - 1 ? "border-r border-foreground/10" : ""
               }`}
             >
-              <div className="font-display text-3xl font-semibold text-gradient-gold sm:text-4xl">
+              <div className="font-display text-xl font-semibold text-gradient-gold sm:text-2xl">
                 {s.value}
               </div>
-              <div className="mt-1 text-xs font-medium text-muted sm:text-sm">
+              <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted sm:text-xs">
                 {s.label}
               </div>
             </motion.div>

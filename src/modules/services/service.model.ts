@@ -35,6 +35,8 @@ const ServiceSchema = new Schema(
     features: { type: [String], default: [] },
     status: { type: String, enum: ["active", "inactive"], default: "active", index: true },
     order: { type: Number, default: 0, index: true },
+    // Optional: older services have no category (shown as Uncategorised).
+    categoryId: { type: String, default: null, index: true },
   },
   {
     collection: "services",

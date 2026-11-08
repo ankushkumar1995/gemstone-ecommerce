@@ -41,7 +41,7 @@ export function CollectionTabs({ products = [] }: { products?: Product[] }) {
   }, [tab, all]);
 
   return (
-    <section className="relative bg-void py-20">
+    <section className="relative bg-void py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Curated for You"
@@ -54,7 +54,7 @@ export function CollectionTabs({ products = [] }: { products?: Product[] }) {
         />
 
         {/* Tabs */}
-        <div className="mt-10 flex justify-center">
+        <div className="mt-7 flex justify-center">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 bg-nebula p-1.5 shadow-[0_10px_30px_-18px_rgba(36,26,59,0.5)]">
             {tabs.map((t) => {
               const active = tab === t.key;
@@ -94,14 +94,14 @@ export function CollectionTabs({ products = [] }: { products?: Product[] }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.3 }}
-            className="mt-12"
+            className="mt-6"
           >
             {list.length === 0 ? (
-              <p className="py-16 text-center text-muted">
+              <p className="py-8 md:py-10 text-center text-muted">
                 Nothing here yet — check back soon.
               </p>
             ) : (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
                 {list.map((p, i) => (
                   <ProductCard key={p.id} product={p} index={i} />
                 ))}
@@ -110,7 +110,7 @@ export function CollectionTabs({ products = [] }: { products?: Product[] }) {
           </motion.div>
         </AnimatePresence>
 
-        <div className="mt-12 flex justify-center">
+        <div className="mt-6 flex justify-center">
           <Link href="/shop">
             <Button variant="outline" size="lg">
               View All Gemstones

@@ -1,10 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "../admin/admin.css";
 
 export const metadata: Metadata = {
   title: "Partner Panel — Astrounkle",
   robots: { index: false, follow: false },
+  // Installable partner app (separate from the storefront PWA).
+  manifest: "/astrologer.webmanifest",
+  appleWebApp: { capable: true, title: "AU Partner", statusBarStyle: "default" },
 };
+
+export const viewport: Viewport = { themeColor: "#c9942a" };
 
 /**
  * Partner (astrologer) area. Reuses the admin design system (`.admin-root`

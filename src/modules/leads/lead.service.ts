@@ -28,6 +28,9 @@ export const leadService = {
       topic: input.topic?.trim() || undefined,
       message: input.message?.trim() || undefined,
       birth: input.birth,
+      gender: input.gender,
+      maritalStatus: input.maritalStatus,
+      astrologer: input.astrologer?.trim() || undefined,
       status: "new",
       createdAt: new Date().toISOString(),
     };

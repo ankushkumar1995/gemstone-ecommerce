@@ -95,6 +95,8 @@ function fromDoc(doc: BookingDoc): Booking {
       birthTime: doc.intake?.birthTime ?? undefined,
       birthPlace: doc.intake?.birthPlace ?? undefined,
       gender: (doc.intake?.gender ?? "") as Booking["intake"]["gender"],
+      // Older bookings have no marital status; "" = not given.
+      maritalStatus: ((doc.intake as { maritalStatus?: string } | undefined)?.maritalStatus ?? "") as Booking["intake"]["maritalStatus"],
       message: doc.intake?.message ?? undefined,
     },
     preferredAt: doc.preferredAt ?? undefined,

@@ -164,7 +164,8 @@ export function BookingDetailView({ id }: { id: string }) {
                 { label: "Date of birth", value: b.intake.dob || "—" },
                 { label: "Time of birth", value: b.intake.birthTime || "—" },
                 { label: "Place of birth", value: b.intake.birthPlace || "—" },
-                { label: "Gender", value: b.intake.gender || "—" },
+                { label: "Gender", value: b.intake.gender ? b.intake.gender[0].toUpperCase() + b.intake.gender.slice(1) : "—" },
+                { label: "Marital status", value: b.intake.maritalStatus ? b.intake.maritalStatus[0].toUpperCase() + b.intake.maritalStatus.slice(1) : "—" },
                 {
                   label: "Preferred time",
                   value: b.preferredAt ? new Date(b.preferredAt).toLocaleString("en-IN") : "—",

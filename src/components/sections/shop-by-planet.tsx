@@ -15,7 +15,7 @@ import { StaggerContainer, staggerItem } from "@/components/ui/reveal";
  */
 export function ShopByPlanet() {
   return (
-    <section className="relative py-20">
+    <section className="relative py-9 md:py-11">
       <Container>
         <SectionHeader
           eyebrow="Navagraha · नवग्रह"
@@ -28,14 +28,14 @@ export function ShopByPlanet() {
         />
 
         <StaggerContainer
-          className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
           stagger={0.06}
         >
           {planets.map((p) => (
             <motion.div key={p.key} variants={staggerItem}>
               <Link
                 href={`/product/${p.productSlug}`}
-                className="group relative flex items-center gap-5 overflow-hidden rounded-3xl border border-foreground/10 bg-nebula p-5 transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-26px_rgba(36,26,59,0.45)]"
+                className="group relative flex items-center gap-5 overflow-hidden rounded-2xl border border-foreground/10 bg-nebula p-4 transition-all duration-500 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_26px_60px_-26px_rgba(36,26,59,0.45)]"
               >
                 {/* accent glow */}
                 <div

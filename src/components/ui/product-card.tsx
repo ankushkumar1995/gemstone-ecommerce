@@ -34,7 +34,7 @@ export function ProductCard({
           transition: { duration: 0.5, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] },
         },
       }}
-      whileHover={{ y: -8 }}
+      whileHover={{ y: -4 }}
       className="group relative"
     >
       <Link href={`/product/${product.slug}`} className="block">
@@ -89,24 +89,24 @@ export function ProductCard({
           </div>
 
           {/* info */}
-          <div className="relative z-10 space-y-2 p-5">
-            <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-royal-600">
-              <Sparkles size={12} className="text-gold-500" />
-              {product.attributes.planet} • {product.attributes.stone.split("(")[0].trim()}
+          <div className="relative z-10 space-y-1 p-3 sm:p-3.5">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-royal-600">
+              <Sparkles size={11} className="text-gold-500" />
+              <span className="truncate">{product.attributes.planet} • {product.attributes.stone.split("(")[0].trim()}</span>
             </div>
-            <h3 className="text-base font-semibold leading-snug text-foreground transition-colors group-hover:text-gold-600">
+            <h3 className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-foreground transition-colors group-hover:text-gold-600">
               {product.name}
             </h3>
             <Rating value={product.rating} reviews={product.reviews} />
 
-            <div className="flex items-end justify-between pt-2">
+            <div className="flex items-end justify-between pt-1">
               <div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-bold text-foreground">
+                  <span className="text-base font-bold text-foreground">
                     {format(product.price)}
                   </span>
                   {discount > 0 && (
-                    <span className="text-sm text-muted line-through">
+                    <span className="text-xs text-muted line-through">
                       {format(product.mrp)}
                     </span>
                   )}
@@ -129,7 +129,7 @@ export function ProductCard({
                   }
                 }}
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-royal-500 to-royal-700 text-white shadow-lg transition-opacity",
+                  "flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-royal-500 to-royal-700 text-white shadow-lg transition-opacity",
                   !product.inStock && "pointer-events-none opacity-40"
                 )}
               >

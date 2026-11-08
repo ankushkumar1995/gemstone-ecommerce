@@ -21,14 +21,14 @@ const perks = [
 export function ConsultationCta() {
   const store = useStoreSettings();
   return (
-    <section className="py-16">
+    <section className="py-8 md:py-10">
       <Container>
-        <div className="relative overflow-hidden rounded-[2rem] border border-foreground/10 bg-gradient-to-br from-royal-500 to-royal-700 text-white">
+        <div className="relative overflow-hidden rounded-3xl border border-foreground/10 bg-gradient-to-br from-royal-500 to-royal-700 text-white">
           {/* decorative glows */}
           <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-gold-400/25 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 right-10 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
 
-          <div className="relative grid items-center gap-10 p-8 sm:p-12 lg:grid-cols-2">
+          <div className="relative grid items-center gap-7 p-5 sm:p-8 lg:grid-cols-2">
             {/* Copy */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
@@ -41,7 +41,7 @@ export function ConsultationCta() {
                 Free Expert Guidance
               </span>
 
-              <h2 className="mt-5 font-display text-3xl font-semibold leading-tight sm:text-4xl md:text-5xl">
+              <h2 className="mt-3.5 font-display text-3xl font-semibold leading-tight sm:text-3xl md:text-4xl">
                 Confused Which Stone
                 <span className="block text-gold-200">Is Right for You?</span>
               </h2>
@@ -52,7 +52,7 @@ export function ConsultationCta() {
                 stars.
               </p>
 
-              <ul className="mt-6 space-y-2.5">
+              <ul className="mt-4 space-y-2.5">
                 {perks.map((p) => (
                   <li key={p} className="flex items-center gap-3 text-sm text-white/90">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-400 text-white">
@@ -63,8 +63,8 @@ export function ConsultationCta() {
                 ))}
               </ul>
 
-              <div className="mt-8 flex flex-wrap items-center gap-4">
-                <Link href="/#zodiac">
+              <div className="mt-6 flex flex-wrap items-center gap-3.5">
+                <Link href="/#free-consultation">
                   <Button variant="gold" size="lg">
                     <Phone size={16} /> Book Free Consultation
                   </Button>
@@ -87,7 +87,7 @@ export function ConsultationCta() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true, margin: "-80px" }}
               transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-              className="relative hidden h-full min-h-[20rem] overflow-hidden rounded-3xl lg:block"
+              className="relative hidden h-full min-h-[20rem] overflow-hidden rounded-2xl lg:block"
             >
               <Image
                 src="https://images.unsplash.com/photo-1600353068440-6361ef3a86e8?auto=format&fit=crop&w=1200&q=85"

@@ -8,12 +8,15 @@ import { cn } from "@/lib/utils";
 export function Container({
   children,
   className,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
+  /** Optional anchor target (e.g. for "#section" links). */
+  id?: string;
 }) {
   return (
-    <div className={cn("mx-auto w-full max-w-7xl px-5 sm:px-8", className)}>
+    <div id={id} className={cn("mx-auto w-full max-w-[90rem] px-5 sm:px-8", className)}>
       {children}
     </div>
   );

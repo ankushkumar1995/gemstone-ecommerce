@@ -60,6 +60,8 @@ const checkoutSchema = z.object({
   guestCheckout: z.coerce.boolean(),
   requirePhone: z.coerce.boolean(),
   minOrderValue: z.coerce.number().min(0),
+  codEnabled: z.coerce.boolean().optional(),
+  codMaxOrderValue: z.coerce.number().min(0).max(10_000_000).optional(),
   termsText: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 

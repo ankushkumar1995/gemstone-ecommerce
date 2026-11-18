@@ -19,6 +19,19 @@ export interface BookingRepository {
   findByRazorpayOrderId(razorpayOrderId: string): Promise<Booking | null>;
   create(booking: Booking): Promise<Booking>;
   update(id: string, patch: Partial<Booking>): Promise<Booking | null>;
+  /**
+   * Apply `patch` ONLY if the booking is still unpaid (atomic). Returns the
+   * updated booking, or null when someone else already settled it. This is
+   * what makes callback + webhook + status poll safe to race.
+   */
+  markPaidOnce(id: string, patch: Partial<Booking>): Promise<Booking | null>;
+  /**
+   * Apply `patch` ONLY while the booking is still in one of `statuses` with
+   * this payment status and no appointment scheduled (atomic). Null = it
+   * changed meanwhile (e.g. the team scheduled it, or a double tap).
+   */
+  updateIfUnscheduled(id: string, statuses: Booking["status"][], paymentStatus: Booking["paymentStatus"], patch: Partial<Booking>): Promise<Booking | null>;
+  findByNumber(bookingNumber: string): Promise<Booking | null>;
   remove(id: string): Promise<boolean>;
 }
 
@@ -48,6 +61,23 @@ const mockBookingRepository: BookingRepository = {
     if (idx === -1) return null;
     store[idx] = { ...store[idx], ...patch };
     return { ...store[idx] };
+  },
+  async markPaidOnce(id, patch) {
+    const idx = store.findIndex((x) => x.id === id);
+    if (idx === -1 || store[idx].paymentStatus !== "unpaid") return null;
+    store[idx] = { ...store[idx], ...patch };
+    return { ...store[idx] };
+  },
+  async updateIfUnscheduled(id, statuses, paymentStatus, patch) {
+    const idx = store.findIndex((x) => x.id === id);
+    const b = idx === -1 ? null : store[idx];
+    if (!b || !statuses.includes(b.status) || b.paymentStatus !== paymentStatus || b.scheduledAt) return null;
+    store[idx] = { ...b, ...patch };
+    return { ...store[idx] };
+  },
+  async findByNumber(bookingNumber) {
+    const b = store.find((x) => x.bookingNumber === bookingNumber);
+    return b ? { ...b } : null;
   },
   async remove(id) {
     const idx = store.findIndex((x) => x.id === id);
@@ -115,6 +145,7 @@ function fromDoc(doc: BookingDoc): Booking {
       : undefined,
     scheduledAt: doc.scheduledAt ?? undefined,
     adminNotes: doc.adminNotes ?? undefined,
+    refund: ((doc as unknown as { refund?: Booking["refund"] }).refund ?? null),
     activity: (doc.activity ?? []).map((a) => ({
       id: a.id,
       at: a.at,
@@ -145,6 +176,7 @@ function toDoc(p: Partial<Booking>): Record<string, unknown> {
   if (p.payment !== undefined) out.payment = p.payment;
   if (p.scheduledAt !== undefined) out.scheduledAt = p.scheduledAt ?? null;
   if (p.adminNotes !== undefined) out.adminNotes = p.adminNotes ?? null;
+  if (p.refund !== undefined) out.refund = p.refund ?? null;
   if (p.activity !== undefined) out.activity = p.activity;
   if (p.placedAt !== undefined) out.placedAt = p.placedAt;
   return out;
@@ -186,6 +218,31 @@ const mongoBookingRepository: BookingRepository = {
       { $set: toDoc(patch) },
       { new: true, runValidators: true },
     ).lean<BookingDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async markPaidOnce(id, patch) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted, paymentStatus: "unpaid" },
+      { $set: toDoc(patch) },
+      { new: true, runValidators: true },
+    ).lean<BookingDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async updateIfUnscheduled(id, statuses, paymentStatus, patch) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted, status: { $in: statuses }, paymentStatus, $or: [{ scheduledAt: null }, { scheduledAt: "" }, { scheduledAt: { $exists: false } }] },
+      { $set: toDoc(patch) },
+      { new: true, runValidators: true },
+    ).lean<BookingDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async findByNumber(bookingNumber) {
+    const M = await model();
+    const doc = await M.findOne({ bookingNumber, ...notDeleted }).lean<BookingDoc>();
     return doc ? fromDoc(doc) : null;
   },
   async remove(id) {

@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { channelsSchema } from "@/core/channels";
 import { productConfiguratorSchema } from "@/modules/configurator/configurator.schema";
 
 const planets = [
@@ -124,6 +125,8 @@ export const createProductSchema = z.object({
   collections: z.array(z.string()).optional(),
   related: z.array(z.string()).optional(),
   featured: z.coerce.boolean().optional(),
+  /** Website / app visibility. Omitted on create = both; omitted on update = unchanged. */
+  channels: channelsSchema.optional(),
   attributes: z
     .object({
       stone: z.string().trim().max(120).optional().or(z.literal("")),

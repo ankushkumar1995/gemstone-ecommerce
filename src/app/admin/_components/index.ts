@@ -34,6 +34,7 @@ export { ImageUpload, FileList, Timeline, InlineEdit } from "./media-misc";
 /* overlays + forms + actions */
 export { Modal, Drawer, ConfirmDialog } from "./overlays";
 export { Field, AdminTextarea, AdminSelect, Toggle } from "./form";
+export { ChannelToggles, ChannelBadge } from "./channel-toggles";
 export { AdminDropdown, AdminSelectPro, type DropdownOption } from "./dropdown";
 export { ActionMenu, type Action } from "./action-menu";
 export { MediaPickerModal } from "./media-picker";

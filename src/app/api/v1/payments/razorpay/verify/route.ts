@@ -16,6 +16,7 @@ import { AppErrors } from "@/core/errors";
 import { parse } from "@/core/validation";
 import { rateLimit, clientIp } from "@/core/rate-limit";
 import { orderService } from "@/modules/orders";
+import { settlePayment } from "@/modules/orders/order-checkout.service";
 import { verifyPaymentSignature } from "@/core/razorpay";
 
 export const dynamic = "force-dynamic";
@@ -48,16 +49,14 @@ export async function POST(request: NextRequest) {
   const order = await orderService.findByRazorpayOrderId(razorpayOrderId);
   if (!order) return jsonError(AppErrors.notFound("Order not found"));
 
-  // 3) Settle (idempotent): mark paid + confirm + commit stock / stats.
-  const res = await orderService.markPaid(order.id, {
-    razorpayOrderId,
-    razorpayPaymentId,
-    razorpaySignature,
-  });
+  // 3) Settle exactly once (atomic): paid + confirmed, stats, emails. A late
+  //    payment on a cancelled order is revived or refunded in full.
+  const res = await settlePayment(razorpayOrderId, razorpayPaymentId, undefined, razorpaySignature);
   if (!res.ok) return jsonError(res.error);
 
-  const o = res.value;
+  const o = res.value.order;
   return jsonOk({
+    outcome: res.value.outcome,
     orderNumber: o.orderNumber,
     placedAt: o.placedAt,
     paymentStatus: o.paymentStatus,

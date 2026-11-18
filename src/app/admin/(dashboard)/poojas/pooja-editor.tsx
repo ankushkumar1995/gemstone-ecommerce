@@ -27,7 +27,7 @@ import {
 } from "@/modules/poojas/pooja.types";
 import {
   AdminBreadcrumb, AdminButton, AdminInput, AdminSelectPro, AdminTextarea, Badge, Card, ConfirmDialog, EmptyState, Field, ImagePickerField,
-  StatsSkeleton, StatusPill, Toggle, useAdminToast, useOnMount,
+  ChannelToggles, StatsSkeleton, StatusPill, Toggle, useAdminToast, useOnMount,
 } from "../../_components";
 import { POOJA_STATUS, WEEKDAYS, fmtSlot, inr, shortId } from "./pooja-meta";
 import { CategoryField } from "./pooja-categories";
@@ -185,6 +185,7 @@ export function blankForm(type: Form["type"] = "pooja"): Form {
     location: { mode: "temple", place: "", city: "", state: "", mapUrl: "" }, durationMin: 60, panditCount: 1, mantraCount: 0,
     packages: [blankPackage(0)], addOns: [], schedule: blankSchedule(), sankalp: blankSankalp(), policy: blankPolicy(),
     seo: { title: "", description: "" }, status: "draft", featured: false, sortOrder: 0,
+    channels: { web: true, app: true },
   };
 }
 function toForm(p: Pooja): Form {
@@ -355,7 +356,7 @@ export function PoojaEditor({ id, defaultType = "pooja" }: { id?: string; defaul
           <div className="flex flex-wrap gap-2">
             <AdminButton variant="outline" onClick={() => go(`/admin/poojas/bookings?poojaId=${id}`)}><CalendarDays size={15} /> Bookings</AdminButton>
             <AdminButton variant="outline" onClick={duplicate}><Copy size={15} /> Duplicate</AdminButton>
-            {meta?.status === "active" && <a href={`/pooja/${meta.slug}`} target="_blank" rel="noopener noreferrer"><AdminButton variant="ghost"><ExternalLink size={15} /> View</AdminButton></a>}
+            {meta?.status === "active" && meta.channels?.web !== false && <a href={`/pooja/${meta.slug}`} target="_blank" rel="noopener noreferrer"><AdminButton variant="ghost"><ExternalLink size={15} /> View</AdminButton></a>}
           </div>
         )}
       </div>
@@ -635,6 +636,7 @@ export function PoojaEditor({ id, defaultType = "pooja" }: { id?: string; defaul
                 <option value="draft">Draft (hidden)</option><option value="active">Live</option><option value="paused">Paused (visible, no new bookings)</option><option value="archived">Archived (hidden)</option>
               </AdminSelectPro>
             </Field>
+            <ChannelToggles value={form.channels} onChange={(v) => set("channels", v)} noun={noun} />
             <AdminButton className="w-full" onClick={() => submit()} disabled={saving || !dirty && !!id}><Save size={15} /> {saving ? "Saving…" : "Save"}</AdminButton>
             {form.status !== "active" && <AdminButton className="w-full" variant="outline" onClick={() => submit("active")} disabled={saving || checklist.length > 0}><Send size={15} /> Save & go live</AdminButton>}
             {dirty && <p className="text-center text-xs" style={{ color: "var(--a-gold)" }}>Unsaved changes</p>}

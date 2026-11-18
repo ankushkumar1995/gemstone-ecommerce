@@ -4,6 +4,7 @@
  */
 
 import { dataSourceFor } from "@/core/config/env";
+import { normalizeChannels } from "@/core/channels";
 import { services as seed } from "@/data/services";
 import type { AstroService } from "@/types";
 import type { ServiceDoc } from "./service.model";
@@ -26,6 +27,7 @@ function fromDoc(doc: ServiceDoc): AstroService {
     status: doc.status,
     order: doc.order,
     categoryId: (doc as { categoryId?: string | null }).categoryId ?? null,
+    channels: normalizeChannels((doc as { channels?: unknown }).channels),
     createdAt: ts.createdAt?.toISOString(),
     updatedAt: ts.updatedAt?.toISOString(),
   };
@@ -44,7 +46,7 @@ export interface ServiceRepository {
   moveCategory(fromId: string, toId: string | null): Promise<number>;
 }
 
-const store: AstroService[] = seed.map((s) => ({ ...s, categoryId: s.categoryId ?? null }));
+const store: AstroService[] = seed.map((s) => ({ ...s, categoryId: s.categoryId ?? null, channels: normalizeChannels(s.channels) }));
 
 function sorted(list: AstroService[]): AstroService[] {
   return [...list].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));

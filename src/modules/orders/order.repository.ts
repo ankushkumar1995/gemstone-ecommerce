@@ -18,6 +18,16 @@ export interface OrderRepository {
   findByRazorpayOrderId(razorpayOrderId: string): Promise<Order | null>;
   create(order: Order): Promise<Order>;
   update(id: string, patch: Partial<Order>): Promise<Order | null>;
+  /**
+   * Apply `patch` ONLY while the order is in one of `statuses` (and, when
+   * given, has this payment status). Atomic: of two racing writers exactly one
+   * wins; the loser gets null and re-reads.
+   */
+  updateIf(id: string, statuses: Order["status"][], paymentStatus: Order["paymentStatus"] | null, patch: Partial<Order>): Promise<Order | null>;
+  findByRequestId(requestId: string): Promise<Order | null>;
+  findByNumber(orderNumber: string): Promise<Order | null>;
+  /** Unpaid online orders whose stock hold ended before `nowIso`. */
+  listExpiredHolds(nowIso: string, limit: number): Promise<Order[]>;
   remove(id: string): Promise<boolean>;
 }
 
@@ -47,6 +57,24 @@ const mockOrderRepository: OrderRepository = {
     if (idx === -1) return null;
     store[idx] = { ...store[idx], ...patch };
     return { ...store[idx] };
+  },
+  async updateIf(id, statuses, paymentStatus, patch) {
+    const idx = store.findIndex((x) => x.id === id);
+    const o = idx === -1 ? null : store[idx];
+    if (!o || !statuses.includes(o.status) || (paymentStatus && o.paymentStatus !== paymentStatus)) return null;
+    store[idx] = { ...o, ...patch };
+    return { ...store[idx] };
+  },
+  async findByRequestId(requestId) {
+    const o = store.find((x) => x.requestId === requestId);
+    return o ? { ...o } : null;
+  },
+  async findByNumber(orderNumber) {
+    const o = store.find((x) => x.orderNumber === orderNumber);
+    return o ? { ...o } : null;
+  },
+  async listExpiredHolds(nowIso, limit) {
+    return store.filter((o) => o.status === "pending" && o.paymentStatus === "unpaid" && typeof o.holdUntil === "string" && o.holdUntil < nowIso).slice(0, limit).map((o) => ({ ...o }));
   },
   async remove(id) {
     const idx = store.findIndex((x) => x.id === id);
@@ -134,6 +162,20 @@ function fromDoc(doc: OrderDoc): Order {
     })),
     placedAt: doc.placedAt,
     updatedAt: upd?.toISOString?.() ?? doc.placedAt,
+    ...checkoutFields(doc),
+  };
+}
+
+/** Checkout fields (only set on orders placed by customers after hardening). */
+function checkoutFields(doc: OrderDoc): Partial<Order> {
+  const d = doc as unknown as { requestId?: string | null; channel?: string | null; stockReserved?: boolean | null; holdUntil?: string | null; cancelReason?: string | null; refund?: Order["refund"] };
+  return {
+    ...(d.requestId ? { requestId: d.requestId } : {}),
+    ...(d.channel === "web" || d.channel === "app" ? { channel: d.channel } : {}),
+    stockReserved: Boolean(d.stockReserved),
+    holdUntil: d.holdUntil ?? null,
+    ...(d.cancelReason ? { cancelReason: d.cancelReason } : {}),
+    refund: d.refund ?? null,
   };
 }
 
@@ -168,6 +210,12 @@ function toDoc(p: Partial<Order>): Record<string, unknown> {
   if (p.notes !== undefined) out.notes = p.notes ?? null;
   if (p.activity !== undefined) out.activity = p.activity;
   if (p.placedAt !== undefined) out.placedAt = p.placedAt;
+  if (p.requestId !== undefined) out.requestId = p.requestId;
+  if (p.channel !== undefined) out.channel = p.channel;
+  if (p.stockReserved !== undefined) out.stockReserved = p.stockReserved;
+  if (p.holdUntil !== undefined) out.holdUntil = p.holdUntil ?? null;
+  if (p.cancelReason !== undefined) out.cancelReason = p.cancelReason;
+  if (p.refund !== undefined) out.refund = p.refund ?? null;
   return out;
 }
 
@@ -210,6 +258,31 @@ const mongoOrderRepository: OrderRepository = {
       { new: true, runValidators: true },
     ).lean<OrderDoc>();
     return doc ? fromDoc(doc) : null;
+  },
+  async updateIf(id, statuses, paymentStatus, patch) {
+    const M = await model();
+    if (!isObjectId(id)) return null;
+    const doc = await M.findOneAndUpdate(
+      { _id: id, ...notDeleted, status: { $in: statuses }, ...(paymentStatus ? { paymentStatus } : {}) },
+      { $set: toDoc(patch) },
+      { new: true, runValidators: true },
+    ).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async findByRequestId(requestId) {
+    const M = await model();
+    const doc = await M.findOne({ requestId, ...notDeleted }).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async findByNumber(orderNumber) {
+    const M = await model();
+    const doc = await M.findOne({ orderNumber, ...notDeleted }).lean<OrderDoc>();
+    return doc ? fromDoc(doc) : null;
+  },
+  async listExpiredHolds(nowIso, limit) {
+    const M = await model();
+    const docs = await M.find({ ...notDeleted, status: "pending", paymentStatus: "unpaid", holdUntil: { $type: "string", $lt: nowIso } }).limit(Math.min(limit, 200)).lean<OrderDoc[]>();
+    return docs.map(fromDoc);
   },
   async remove(id) {
     const M = await model();

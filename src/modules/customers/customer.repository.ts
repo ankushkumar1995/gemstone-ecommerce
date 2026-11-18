@@ -74,8 +74,9 @@ function isObjectId(id: string): boolean {
 function fromDoc(doc: CustomerDoc): Customer {
   return {
     id: String(doc._id),
-    name: doc.name,
-    email: doc.email,
+    // Phone-OTP accounts may have no name / email yet.
+    name: doc.name ?? "",
+    email: doc.email ?? "",
     phone: doc.phone ?? undefined,
     avatar: doc.avatar ?? undefined,
     status: (doc.status ?? "active") as Customer["status"],

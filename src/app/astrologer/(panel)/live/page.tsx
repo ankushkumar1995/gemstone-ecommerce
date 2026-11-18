@@ -1,503 +1,558 @@
 "use client";
 
 /**
- * Live (DEMO audience; your camera preview is real). Go live, talk to many
- * people at once, receive gifts, and take private calls from a call queue.
+ * Go live (partner panel).
  *
- * Rules covered:
- *   • only approved partners, not during a live session or a break
- *   • title 5–80 chars (contact details masked), up to 3 topics
- *   • private call rate within ₹5 and your max rate; caller needs balance for
- *     5 minutes; FIFO call queue; one call at a time; turning calls off clears
- *     the queue (callers are told, never charged)
- *   • comments: contact details masked, abusive words auto-hidden, slow mode,
- *     followers-only, pin, hide, mute for this live, block
- *   • "Be right back" pause (gifts and comments stop), auto-end at 3 hours
- *   • gifts: you get GIFT_SHARE_PCT %; scheduling a live notifies followers
- *   • lives are recorded for safety review and kept for 30 days
+ * Not live: start a live now or schedule one, see scheduled and past lives.
+ * Live: the console. A long-poll loop on GET /live/:id brings comments, gifts,
+ * joins and the question queue within about a second. The astrologer can
+ * reply in the comments, pin / hide / mute, turn comments or questions on and
+ * off, set slow mode, answer questions one by one, and end the live.
+ *
+ * Video is not connected yet (needs a streaming provider and the app build):
+ * viewers see the astrologer's photo with the live chat.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Camera, CameraOff, Eye, Gift, Heart, Mic, MicOff, Pause, Pin, Phone, PhoneOff, Play, Radio, Send, ShieldAlert, Trash2, UserX, Users, VolumeX, X } from "lucide-react";
-import { AdminButton, AdminInput, Badge, Card, Field, Modal, PageHeader, StatCard, StatsSkeleton, Tabs, Toggle, useAdminToast, useOnMount } from "@/app/admin/_components";
+import { Ban, CalendarClock, Check, EyeOff, Gift, Heart, IndianRupee, MessageSquare, Mic, MicOff, Pin, Radio, Send, SkipForward, Users, Video, VideoOff, VolumeX, WifiOff, X } from "lucide-react";
+import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Badge, Card, ConfirmDialog, Field, PageHeader, StatsSkeleton, Toggle, useAdminToast, useOnMount } from "@/app/admin/_components";
+import { partnerApi, type LiveEvent, type LiveQueueItem, type LiveView } from "@/lib/astrologer-api";
+import { LIVE_TAGS } from "@/modules/live/live.types";
 import { usePartner } from "../../_components/partner-context";
-import { DEMO_SESSION_KEY, DemoBanner, fmtDateTime, inr, maskContacts, nowMs } from "../../_components/demo";
-import { blockedStore, breakStore, createStore, liveStore, LIVE_MAX_MIN, useStore, type LiveState } from "../../_components/demo-store";
-import { GIFTS, GIFT_SHARE_PCT, MOCK_LIVES, MOCK_REQUEST_POOL } from "../../_components/mock-data";
+import { useConsultInbox } from "../../_components/consult-inbox";
 
-const TOPICS = ["Career", "Love", "Marriage", "Money", "Health", "Remedies", "Gochar", "Tarot"];
-const BAD_WORDS = ["idiot", "fraud", "bakwas", "chor", "pagal"];
-const MIN_CALL_MIN = 5;
-const COMMENT_LINES = [
-  "Namaste guruji 🙏", "Meri shaadi kab hogi? DOB 12-08-1996", "Job change ka yog hai kya?", "Aapki baatein sach hoti hain",
-  "Mera number 98765 43210 hai, call karo", "Shani ki sade sati kab khatam hogi?", "bakwas hai sab", "Kumbh rashi ke liye kya upay?",
-  "Thank you ji, bahut accha bataya", "Mangal dosh ka upay batao please", "pay me at riya@okaxis", "Private call lena hai",
-];
-const VIEWER_NAMES = ["Anu", "Ravi", "Sonal", "Harsh", "Meena", "Tarun", "Gauri", "Imran", "Lata", "Kunal", "Priti", "Arjun"];
-
-interface Comment { id: string; user: string; text: string; at: number; hidden?: "masked" | "filtered" | "manual"; host?: boolean }
-interface Caller { id: string; user: string; customerId: string; walletMinutes: number; joinedAt: number; question: string }
-interface GiftEvent { id: string; user: string; giftId: (typeof GIFTS)[number]["id"]; at: number }
-interface Scheduled { id: string; title: string; at: string }
-
-const scheduledStore = createStore<Scheduled[]>("astro_demo_live_scheduled", []);
-const rid = () => Math.random().toString(36).slice(2, 9);
-const clock = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); return `${h ? `${h}:` : ""}${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
-const giftOf = (id: string) => GIFTS.find((g) => g.id === id) ?? GIFTS[0];
+const inr = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+const clock = (secs: number) => {
+  const s = Math.max(0, Math.floor(secs));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return `${h ? `${h}:` : ""}${String(m).padStart(h ? 2 : 1, "0")}:${String(r).padStart(2, "0")}`;
+};
+const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "-");
+const newClientId = () => { try { return crypto.randomUUID().replace(/-/g, ""); } catch { return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`; } };
+const MAX_EVENTS = 400;
 
 export default function LivePage() {
   const { me, loading } = usePartner();
-  const live = useStore(liveStore);
-  if (loading || !me) return <StatsSkeleton count={3} />;
-  return live ? <LiveStage live={live} maxRate={me.effectiveMaxRate} pct={me.effectiveCommissionPct} /> : <LiveSetup />;
-}
+  const inbox = useConsultInbox();
+  const [data, setData] = useState<{ current: LiveView | null; scheduled: LiveView[]; past: LiveView[] } | null>(null);
+  const [ended, setEnded] = useState<LiveView | null>(null);
 
-/* ------------------------------------------------------------------ *
- * Setup
- * ------------------------------------------------------------------ */
-function LiveSetup() {
-  const { me } = usePartner();
-  const { toast } = useAdminToast();
-  const scheduled = useStore(scheduledStore);
-  const [title, setTitle] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [allowCalls, setAllowCalls] = useState(true);
-  const [callRate, setCallRate] = useState(String(me?.rates.call || 30));
-  const [slowMode, setSlowMode] = useState(false);
-  const [followersOnly, setFollowersOnly] = useState(false);
-  const [agree, setAgree] = useState(false);
-  const [when, setWhen] = useState("");
-  const [last, setLast] = useState<(typeof MOCK_LIVES)[number] | null>(null);
-  if (!me) return null;
+  const load = useCallback(async () => {
+    const r = await partnerApi.live.mine();
+    if (r.ok) setData(r.data);
+  }, []);
+  useOnMount(() => { void load(); });
 
-  const cleanTitle = maskContacts(title.trim());
-  const rate = Number(callRate);
-  const rateOk = !allowCalls || (Number.isInteger(rate) && rate >= 5 && rate <= me.effectiveMaxRate);
-  const titleOk = cleanTitle.length >= 5 && cleanTitle.length <= 80;
-  const approved = me.status === "approved";
-  const canStart = approved && titleOk && rateOk && agree;
-
-  const goLive = () => {
-    if (!canStart) return;
-    if (sessionStorage.getItem(DEMO_SESSION_KEY)) return toast("Finish your live session first.", "error");
-    const b = breakStore.get();
-    if (b.until !== null && b.until > nowMs()) return toast("End your break before going live.", "error");
-    const s: LiveState = { id: `lv_${nowMs()}`, title: cleanTitle, tags, startedAt: nowMs(), allowCalls, callRate: allowCalls ? rate : 0, slowMode, followersOnly, paused: false };
-    liveStore.set(s);
-    toast("You are live. Your followers were notified.", "success");
-  };
-
-  const schedule = () => {
-    if (!titleOk) return toast("Add a title first (5 to 80 characters)", "error");
-    const t = Date.parse(when);
-    const n = nowMs();
-    if (!Number.isFinite(t) || t < n + 30 * 60000 || t > n + 14 * 86400000) return toast("Pick a time between 30 minutes and 14 days from now", "error");
-    if (scheduled.some((x) => Math.abs(Date.parse(x.at) - t) < 60 * 60000)) return toast("You already have a live within an hour of that time", "error");
-    scheduledStore.set((l) => [...l, { id: rid(), title: cleanTitle, at: new Date(t).toISOString() }].sort((a, b) => a.at.localeCompare(b.at)));
-    setWhen("");
-    toast("Scheduled. Followers get a reminder now and 10 minutes before.", "success");
-  };
-
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Go live" subtitle="Talk to many people at once, get gifts and take private calls" />
-      <DemoBanner what="Viewers, comments and gifts on this page" />
-      {!approved && <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800">Live is available after your profile is approved.</p>}
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <Card className="space-y-4 p-5">
-          <Field label="Title" hint={`${cleanTitle.length}/80 · what will you talk about?`}>
-            <AdminInput value={title} onChange={(e) => setTitle(e.target.value.slice(0, 80))} placeholder="e.g. Shani gochar 2026: kya badlega?" />
-          </Field>
-          <Field label="Topics (up to 3)">
-            <div className="flex flex-wrap gap-1.5">
-              {TOPICS.map((t) => {
-                const on = tags.includes(t);
-                return <button key={t} type="button" aria-pressed={on} disabled={!on && tags.length >= 3} onClick={() => setTags(on ? tags.filter((x) => x !== t) : [...tags, t])} className="rounded-full border px-3 py-1 text-xs disabled:opacity-40" style={{ borderColor: on ? "var(--a-gold)" : "var(--a-border)", color: on ? "var(--a-gold)" : "var(--a-muted)" }}>{t}</button>;
-              })}
-            </div>
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Toggle checked={allowCalls} onChange={setAllowCalls} label="Allow private calls from viewers" />
-              {allowCalls && (
-                <Field label="Call rate (₹/min)" hint={`₹5 to ₹${me.effectiveMaxRate}`}>
-                  <AdminInput inputMode="numeric" value={callRate} onChange={(e) => setCallRate(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-                </Field>
-              )}
-              {!rateOk && <p className="text-xs text-rose-700">Rate must be a whole number from ₹5 to ₹{me.effectiveMaxRate}.</p>}
-            </div>
-            <div className="space-y-3">
-              <Toggle checked={slowMode} onChange={setSlowMode} label="Slow mode (1 comment per 10 s each)" />
-              <Toggle checked={followersOnly} onChange={setFollowersOnly} label="Only followers can comment" />
-            </div>
-          </div>
-          <label className="flex items-start gap-2 text-sm" style={{ color: "var(--a-fg)" }}>
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1" />
-            I will not share contact details, scare viewers, promise results or ask for money outside gifts and calls. I understand lives are recorded for safety and kept for 30 days.
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <AdminButton onClick={goLive} disabled={!canStart}><Radio size={16} /> Go live now</AdminButton>
-          </div>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="p-5">
-            <p className="mb-3 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><Camera size={16} /> Camera check</p>
-            <CameraPreview on height={170} />
-          </Card>
-          <Card className="space-y-3 p-5">
-            <p className="flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><CalendarClock size={16} /> Schedule a live</p>
-            <AdminInput type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Live date and time" />
-            <AdminButton variant="outline" onClick={schedule}>Schedule with this title</AdminButton>
-            {scheduled.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ background: "var(--a-surface-2)", color: "var(--a-fg)" }}>
-                <span>{fmtDateTime(s.at)} · {s.title}</span>
-                <button type="button" aria-label="Cancel scheduled live" onClick={() => { scheduledStore.set((l) => l.filter((x) => x.id !== s.id)); toast("Cancelled. Followers were told.", "info"); }} className="text-rose-600"><X size={15} /></button>
-              </div>
-            ))}
-          </Card>
-        </div>
-      </div>
-
-      <Card className="p-5">
-        <p className="mb-3 font-semibold" style={{ color: "var(--a-fg)" }}>Past lives</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs" style={{ color: "var(--a-muted)" }}><th className="py-2 font-medium">Live</th><th className="text-right font-medium">Minutes</th><th className="text-right font-medium">Peak</th><th className="text-right font-medium">Viewers</th><th className="text-right font-medium">New followers</th><th className="text-right font-medium">Gifts (your share)</th><th className="text-right font-medium">Calls</th></tr></thead>
-            <tbody>
-              {MOCK_LIVES.map((l) => (
-                <tr key={l.id} className="cursor-pointer border-t hover:bg-black/[0.02]" style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }} onClick={() => setLast(l)}>
-                  <td className="py-2.5"><span className="font-medium">{l.title}</span><span className="block text-xs" style={{ color: "var(--a-muted)" }}>{fmtDateTime(l.at)}</span></td>
-                  <td className="text-right">{l.minutes}</td><td className="text-right">{l.peak}</td><td className="text-right">{l.unique.toLocaleString("en-IN")}</td><td className="text-right">+{l.newFollowers}</td>
-                  <td className="text-right">{inr(Math.round((l.gifts * GIFT_SHARE_PCT) / 100))}</td><td className="text-right">{l.calls} · {inr(l.callEarning)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      <Modal open={!!last} onClose={() => setLast(null)} title={last?.title ?? ""} subtitle={last ? fmtDateTime(last.at) : undefined} size="sm">
-        {last && <p className="text-sm" style={{ color: "var(--a-muted)" }}>Recording kept until {new Date(Date.parse(last.at) + 30 * 86400000).toLocaleDateString("en-IN")} for safety review only. It is never shown publicly.</p>}
-      </Modal>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Live stage
- * ------------------------------------------------------------------ */
-function LiveStage({ live, maxRate, pct }: { live: LiveState; maxRate: number; pct: number }) {
-  const { toast } = useAdminToast();
-  const [now, setNow] = useState(0);
-  const [viewers, setViewers] = useState(0);
-  const [peak, setPeak] = useState(0);
-  const [unique, setUnique] = useState(0);
-  const [followers, setFollowers] = useState(0);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [pinned, setPinned] = useState<Comment | null>(null);
-  const [muted, setMuted] = useState<string[]>([]);
-  const [queue, setQueue] = useState<Caller[]>([]);
-  const [call, setCall] = useState<(Caller & { startedAt: number }) | null>(null);
-  const [callsDone, setCallsDone] = useState<{ user: string; minutes: number; earned: number }[]>([]);
-  const [gifts, setGifts] = useState<GiftEvent[]>([]);
-  const [burst, setBurst] = useState<GiftEvent | null>(null);
-  const [tab, setTab] = useState<"comments" | "calls" | "gifts">("comments");
-  const [hostText, setHostText] = useState("");
-  const [mic, setMic] = useState(true);
-  const [cam, setCam] = useState(true);
-  const [confirmEnd, setConfirmEnd] = useState(false);
-  const [summary, setSummary] = useState<null | { minutes: number; peak: number; unique: number; followers: number; gifts: number; giftShare: number; calls: number; callEarning: number }>(null);
-  const tick = useRef(0);
-  const mutedRef = useRef<string[]>([]);
-  const liveRef = useRef(live);
-  useEffect(() => { mutedRef.current = muted; }, [muted]);
-  useEffect(() => { liveRef.current = live; }, [live]);
-
-  useOnMount(() => setNow(nowMs()));
-
-  // Demo audience simulation + clock.
+  // The inbox poll notices a live started in another tab.
+  const liveId = inbox.live?.id ?? null;
   useEffect(() => {
-    if (summary) return;
-    const id = setInterval(() => {
-      tick.current += 1;
-      const t = nowMs();
-      setNow(t);
-      const L = liveRef.current;
-      if (L.paused) { setViewers((v) => Math.max(0, v - 2)); return; }
-      setViewers((v) => { const next = Math.max(3, v + Math.round(Math.random() * 14 - 5)); setPeak((p) => Math.max(p, next)); return next; });
-      setUnique((u) => u + Math.round(Math.random() * 4));
-      if (tick.current % 9 === 0) setFollowers((f) => f + 1);
-      // Slow mode and followers-only both thin out comments.
-      if (tick.current % ((L.slowMode ? 2 : 1) * (L.followersOnly ? 2 : 1) * 3) === 0) {
-        const user = VIEWER_NAMES[Math.floor(Math.random() * VIEWER_NAMES.length)];
-        if (!mutedRef.current.includes(user)) {
-          const raw = COMMENT_LINES[Math.floor(Math.random() * COMMENT_LINES.length)];
-          const masked = maskContacts(raw);
-          const filtered = BAD_WORDS.some((w) => raw.toLowerCase().includes(w));
-          setComments((c) => [...c.slice(-80), { id: rid(), user, text: filtered ? raw : masked, at: t, hidden: filtered ? "filtered" : masked !== raw ? "masked" : undefined }]);
-        }
-      }
-      if (tick.current % 7 === 0 && Math.random() < 0.7) {
-        const g = GIFTS[Math.random() < 0.6 ? Math.floor(Math.random() * 3) : 3 + Math.floor(Math.random() * 2)];
-        const ev = { id: rid(), user: VIEWER_NAMES[Math.floor(Math.random() * VIEWER_NAMES.length)], giftId: g.id, at: t };
-        setGifts((l) => [ev, ...l]);
-        setBurst(ev);
-      }
-      if (L.allowCalls && tick.current % 15 === 0) {
-        const r = MOCK_REQUEST_POOL[Math.floor(Math.random() * MOCK_REQUEST_POOL.length)];
-        const blocked = blockedStore.get().some((b) => b.customerId === r.customerId);
-        setQueue((q) => (blocked || q.some((x) => x.customerId === r.customerId) || q.length >= 10 ? q : [...q, { id: rid(), user: r.customer, customerId: r.customerId, walletMinutes: Math.round((r.walletMinutes * r.rate) / L.callRate), joinedAt: t, question: r.question }]));
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [summary]);
+    if (liveId && data && data.current?.id !== liveId) {
+      const t = setTimeout(() => void load(), 0);
+      return () => clearTimeout(t);
+    }
+  }, [liveId, data, load]);
 
-  // Clear the gift burst after a moment.
-  useEffect(() => { if (!burst) return; const t = setTimeout(() => setBurst(null), 2200); return () => clearTimeout(t); }, [burst]);
-
-  const elapsed = now ? now - live.startedAt : 0;
-  const leftMin = LIVE_MAX_MIN - Math.floor(elapsed / 60000);
-  const giftGross = gifts.reduce((a, g) => a + giftOf(g.giftId).price, 0);
-  const giftShare = Math.round((giftGross * GIFT_SHARE_PCT) / 100);
-  const callMin = call && now ? Math.max(1, Math.ceil((now - call.startedAt) / 60000)) : 0;
-  const callEarnNow = Math.round(callMin * live.callRate * (100 - pct)) / 100;
-  const callEarnDone = callsDone.reduce((a, c) => a + c.earned, 0);
-  const callerOutOfMoney = call ? callMin >= call.walletMinutes : false;
-
-  function endCall(reason?: string) {
-    if (!call) return;
-    setCallsDone((l) => [...l, { user: call.user, minutes: callMin, earned: callEarnNow }]);
-    setCall(null);
-    toast(reason ?? `Call with ${call.user} ended · you earned ${inr(callEarnNow)}`, "info");
-  }
-
-  function end(reason: string) {
-    if (summary) return;
-    if (call) endCall();
-    const m = Math.max(1, Math.round(elapsed / 60000));
-    setSummary({ minutes: m, peak, unique, followers, gifts: giftGross, giftShare, calls: callsDone.length + (call ? 1 : 0), callEarning: Math.round((callEarnDone + (call ? callEarnNow : 0)) * 100) / 100 });
-    if (queue.length) toast(`${queue.length} callers in the queue were told the live ended. No one was charged.`, "info");
-    setQueue([]);
-    setConfirmEnd(false);
-    toast(reason, "info");
-  }
-
-  // Auto end + call cut-off (deferred so no state is set during render).
-  const endRef = useRef(end);
-  const endCallRef = useRef(endCall);
-  useEffect(() => { endRef.current = end; endCallRef.current = endCall; });
-  useEffect(() => {
-    if (summary || !now) return;
-    if (leftMin <= 0) { const t = setTimeout(() => endRef.current(`Live ended automatically after ${LIVE_MAX_MIN / 60} hours`), 0); return () => clearTimeout(t); }
-    if (callerOutOfMoney) { const t = setTimeout(() => endCallRef.current("Caller's balance ran out. Call ended."), 0); return () => clearTimeout(t); }
-  }, [leftMin, callerOutOfMoney, summary, now]);
-
-  const takeCall = (c: Caller) => {
-    if (call) return toast("Finish the current call first", "error");
-    if (c.walletMinutes < MIN_CALL_MIN) { setQueue((q) => q.filter((x) => x.id !== c.id)); return toast(`${c.user} has balance for under ${MIN_CALL_MIN} min and was asked to recharge`, "error"); }
-    setQueue((q) => q.filter((x) => x.id !== c.id));
-    setCall({ ...c, startedAt: nowMs() });
-    setTab("comments");
-  };
-  const setLive = (patch: Partial<LiveState>) => liveStore.set((cur) => (cur ? { ...cur, ...patch } : cur));
-  const toggleCalls = (v: boolean) => {
-    if (!v && queue.length) { toast(`${queue.length} callers removed and told. No charge.`, "info"); setQueue([]); }
-    setLive({ allowCalls: v });
-  };
-  const postHost = () => {
-    const t = hostText.trim();
-    if (!t) return;
-    const clean = maskContacts(t);
-    if (clean !== t) toast("Contact details are not allowed. They were hidden.", "error");
-    setComments((c) => [...c, { id: rid(), user: "You", text: clean.slice(0, 200), at: nowMs(), host: true }]);
-    setHostText("");
-  };
-  const hide = (id: string) => setComments((c) => c.map((x) => (x.id === id ? { ...x, hidden: "manual" } : x)));
-  const muteUser = (u: string) => { setMuted((m) => [...m, u]); setComments((c) => c.map((x) => (x.user === u ? { ...x, hidden: "manual" } : x))); toast(`${u} is muted for this live`, "info"); };
-
-  if (summary) {
+  if (loading || !me || !data) return <StatsSkeleton count={3} />;
+  if (me.status !== "approved") {
     return (
       <div className="space-y-6">
-        <PageHeader title="Live ended" subtitle={live.title} />
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <StatCard icon={Radio} value={`${summary.minutes} min`} label="Duration" tone="royal" />
-          <StatCard icon={Eye} value={summary.peak} label={`Peak viewers (${summary.unique} total)`} tone="blue" />
-          <StatCard icon={Heart} value={`+${summary.followers}`} label="New followers" tone="rose" />
-          <StatCard icon={Gift} value={inr(summary.giftShare + summary.callEarning)} label="You earned" tone="green" />
-        </div>
-        <Card className="p-5">
-          <dl className="grid max-w-md grid-cols-2 gap-y-2 text-sm">
-            <dt style={{ color: "var(--a-muted)" }}>Gifts received</dt><dd className="text-right" style={{ color: "var(--a-fg)" }}>{inr(summary.gifts)}</dd>
-            <dt style={{ color: "var(--a-muted)" }}>Your gift share ({GIFT_SHARE_PCT}%)</dt><dd className="text-right" style={{ color: "var(--a-fg)" }}>{inr(summary.giftShare)}</dd>
-            <dt style={{ color: "var(--a-muted)" }}>Private calls ({summary.calls})</dt><dd className="text-right" style={{ color: "var(--a-fg)" }}>{inr(summary.callEarning)}</dd>
-            <dt className="border-t pt-2 font-semibold" style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }}>Total</dt><dd className="border-t pt-2 text-right font-semibold text-emerald-700" style={{ borderColor: "var(--a-border)" }}>{inr(summary.giftShare + summary.callEarning)}</dd>
-          </dl>
-          <p className="mt-3 text-xs" style={{ color: "var(--a-muted)" }}>Live earnings follow the same hold period as sessions. The recording is kept 30 days for safety review only.</p>
-          <div className="mt-4 flex gap-2">
-            <AdminButton onClick={() => liveStore.set(null)}>Done</AdminButton>
-            <Link href="/astrologer/earnings"><AdminButton variant="outline">See earnings</AdminButton></Link>
-          </div>
-        </Card>
+        <PageHeader title="Go live" />
+        <Card className="py-12 text-center"><p className="text-sm" style={{ color: "var(--a-muted)" }}>Lives open after your profile is approved.</p></Card>
       </div>
     );
   }
+  if (ended) return <EndedSummary s={ended} onDone={() => { setEnded(null); void load(); }} />;
+  if (data.current) return <LiveConsole key={data.current.id} first={data.current} onEnded={(s) => { setEnded(s); inbox.refresh(); }} />;
+  return <LiveSetup data={data} reload={load} onLive={() => { void load(); inbox.refresh(); }} />;
+}
 
-  const visible = comments.filter((c) => c.hidden !== "manual");
+/* ------------------------------------------------------------------ */
+
+function LiveSetup({ data, reload, onLive }: { data: { scheduled: LiveView[]; past: LiveView[] }; reload: () => Promise<void>; onLive: () => void }) {
+  const { toast } = useAdminToast();
+  const inbox = useConsultInbox();
+  const [title, setTitle] = useState("");
+  const [topic, setTopic] = useState("");
+  const [later, setLater] = useState(false);
+  const [at, setAt] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+
+  async function submit() {
+    if (title.trim().length < 3) return toast("Add a title (at least 3 characters)", "error");
+    if (inbox.active) return toast("Finish your live chat before going live.", "error");
+    let scheduledAt: string | null = null;
+    if (later) {
+      const t = Date.parse(at);
+      if (!Number.isFinite(t)) return toast("Pick a date and time", "error");
+      scheduledAt = new Date(t).toISOString();
+    }
+    const r = await partnerApi.live.create({ title: title.trim(), topic: topic.trim() || undefined, tags, scheduledAt });
+    if (!r.ok) return toast(r.message, "error");
+    setTitle(""); setTopic(""); setAt(""); setTags([]);
+    if (r.data.live.status === "live") { toast("You are live.", "success"); onLive(); }
+    else { toast(`Scheduled for ${when(r.data.live.scheduledAt)}.`, "success"); await reload(); }
+  }
+
+  async function act(s: LiveView, action: "start" | "cancel") {
+    const r = await partnerApi.live.act(s.id, action);
+    if (!r.ok) return toast(r.message, "error");
+    if (action === "start") { toast("You are live.", "success"); onLive(); }
+    else { toast("Scheduled live cancelled.", "info"); await reload(); }
+  }
 
   return (
-    <div className="space-y-4">
-      <DemoBanner what="Viewers, comments and gifts" />
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <StatCard icon={Eye} value={viewers} label={`Watching (peak ${peak})`} tone="blue" />
-        <StatCard icon={Heart} value={`+${followers}`} label="New followers" tone="rose" />
-        <StatCard icon={Gift} value={inr(giftShare)} label={`Gifts (your ${GIFT_SHARE_PCT}%)`} tone="gold" />
-        <StatCard icon={Phone} value={inr(Math.round((callEarnDone + callEarnNow) * 100) / 100)} label={`Calls (${callsDone.length + (call ? 1 : 0)})`} tone="green" />
-        <StatCard icon={Users} value={queue.length} label="In call queue" tone="royal" />
-      </div>
-      {leftMin <= 10 && <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800" role="alert">This live ends automatically in {Math.max(0, leftMin)} minutes (3 hour limit).</p>}
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
-        <Card className="p-0">
-          <div className="relative overflow-hidden rounded-t-lg bg-black">
-            <CameraPreview on={cam} height={420} />
-            <div className="absolute left-3 top-3 flex items-center gap-2">
-              <span className="flex items-center gap-1 rounded-md bg-rose-600 px-2 py-0.5 text-xs font-bold text-white"><Radio size={12} /> LIVE</span>
-              <span className="rounded-md bg-black/60 px-2 py-0.5 text-xs text-white tabular-nums">{clock(elapsed)}</span>
-              <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-0.5 text-xs text-white"><Eye size={12} /> {viewers}</span>
-              {!mic && <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-0.5 text-xs text-white"><MicOff size={12} /> Muted</span>}
-            </div>
-            <p className="absolute inset-x-3 bottom-3 truncate rounded-md bg-black/50 px-2 py-1 text-sm text-white">{live.title}</p>
-            {live.paused && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-lg font-semibold text-white">Be right back</div>}
-            {burst && <div className="absolute right-4 top-16 animate-bounce rounded-full bg-white/90 px-3 py-1.5 text-sm font-semibold text-zinc-900 shadow-lg" aria-live="polite">{giftOf(burst.giftId).emoji} {burst.user} sent {giftOf(burst.giftId).name}</div>}
-            {call && (
-              <div className="absolute inset-x-3 bottom-12 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-600/95 px-3 py-2 text-sm text-white">
-                <Phone size={15} /> On call with <b>{call.user}</b> · {clock(now - call.startedAt)} · {inr(callEarnNow)}
-                {call.walletMinutes - callMin <= 1 && <span className="rounded bg-white/20 px-1.5 text-xs">balance almost over</span>}
-                <button type="button" onClick={() => endCall()} className="ml-auto flex items-center gap-1 rounded-md bg-white/20 px-2 py-0.5 text-xs"><PhoneOff size={13} /> End call</button>
-              </div>
-            )}
+    <div className="space-y-6">
+      <PageHeader title="Go live" subtitle="Answer questions for everyone at once. Viewers can comment, ask and send gifts." />
+      <Card className="space-y-4 p-5">
+        <Field label="Title" hint="Viewers see this on the Live tab">
+          <AdminInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="For example: Saturn transit, what it means for you" />
+        </Field>
+        <Field label="Topic (optional)">
+          <AdminTextarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={2} maxLength={200} placeholder="Career, marriage, remedies…" />
+        </Field>
+        <Field label="Topics (up to 3)" hint="Viewers filter the Live tab by these">
+          <div className="flex flex-wrap gap-2">
+            {LIVE_TAGS.map((t) => {
+              const on = tags.includes(t);
+              return (
+                <button key={t} type="button" aria-pressed={on}
+                  onClick={() => setTags((cur) => (on ? cur.filter((x) => x !== t) : cur.length >= 3 ? cur : [...cur, t]))}
+                  className="rounded-full border px-3 py-1 text-xs font-medium"
+                  style={{ borderColor: on ? "var(--a-gold)" : "var(--a-border)", background: on ? "var(--a-gold-soft)" : undefined, color: "var(--a-fg)", opacity: !on && tags.length >= 3 ? 0.5 : 1 }}>
+                  {t}
+                </button>
+              );
+            })}
           </div>
-          <div className="flex flex-wrap items-center gap-2 p-3">
-            <AdminButton variant={mic ? "outline" : "danger"} onClick={() => setMic((v) => !v)} aria-pressed={!mic}>{mic ? <Mic size={16} /> : <MicOff size={16} />}{mic ? "Mute" : "Unmute"}</AdminButton>
-            <AdminButton variant={cam ? "outline" : "danger"} onClick={() => setCam((v) => !v)} aria-pressed={!cam}>{cam ? <Camera size={16} /> : <CameraOff size={16} />}{cam ? "Camera off" : "Camera on"}</AdminButton>
-            <AdminButton variant="outline" onClick={() => setLive({ paused: !live.paused })}>{live.paused ? <Play size={16} /> : <Pause size={16} />}{live.paused ? "Resume" : "Be right back"}</AdminButton>
-            <div className="ml-auto flex flex-wrap items-center gap-4 text-sm">
-              <Toggle checked={live.allowCalls} onChange={toggleCalls} label="Calls" />
-              <Toggle checked={live.slowMode} onChange={(v) => setLive({ slowMode: v })} label="Slow mode" />
-              <Toggle checked={live.followersOnly} onChange={(v) => setLive({ followersOnly: v })} label="Followers only" />
-            </div>
-            <AdminButton variant="danger" onClick={() => setConfirmEnd(true)}><X size={16} /> End live</AdminButton>
-          </div>
-        </Card>
-
-        <Card className="flex h-[560px] flex-col p-0">
-          <div className="px-2"><Tabs tabs={[{ value: "comments", label: "Comments" }, { value: "calls", label: "Call queue", count: queue.length }, { value: "gifts", label: "Gifts", count: gifts.length }]} value={tab} onChange={setTab} /></div>
-          {tab === "comments" && (
-            <>
-              {pinned && <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--a-gold-soft)", color: "var(--a-fg)" }}><Pin size={14} className="mt-0.5" /><span className="flex-1"><b>{pinned.user}:</b> {pinned.text}</span><button type="button" aria-label="Unpin" onClick={() => setPinned(null)}><X size={14} /></button></div>}
-              <ul className="flex-1 space-y-1.5 overflow-y-auto p-3 text-sm" aria-live="polite">
-                {visible.slice(-40).map((c) => (
-                  <li key={c.id} className="group flex items-start gap-2">
-                    <span className="min-w-0 flex-1" style={{ color: "var(--a-fg)" }}>
-                      <b style={{ color: c.host ? "var(--a-gold)" : undefined }}>{c.user}</b>{" "}
-                      {c.hidden === "filtered" ? <i style={{ color: "var(--a-faint)" }}>Hidden by the filter</i> : c.text}
-                      {c.hidden === "masked" && <Badge tone="gold">contact hidden</Badge>}
-                    </span>
-                    {!c.host && c.hidden !== "filtered" && (
-                      <span className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                        <button type="button" aria-label="Pin comment" onClick={() => setPinned(c)}><Pin size={13} /></button>
-                        <button type="button" aria-label="Hide comment" onClick={() => hide(c.id)}><Trash2 size={13} /></button>
-                        <button type="button" aria-label={`Mute ${c.user}`} onClick={() => muteUser(c.user)}><VolumeX size={13} /></button>
-                        <button type="button" aria-label={`Block ${c.user}`} onClick={() => { muteUser(c.user); blockedStore.set((l) => [{ customerId: `viewer_${c.user}`, name: c.user, reason: "Blocked during live", at: new Date(nowMs()).toISOString() }, ...l]); }}><UserX size={13} /></button>
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <form className="flex gap-2 border-t p-3" style={{ borderColor: "var(--a-border)" }} onSubmit={(e) => { e.preventDefault(); postHost(); }}>
-                <AdminInput value={hostText} onChange={(e) => setHostText(e.target.value.slice(0, 200))} placeholder="Say something to everyone" aria-label="Host comment" />
-                <AdminButton type="submit" disabled={!hostText.trim()} aria-label="Post"><Send size={15} /></AdminButton>
-              </form>
-              <p className="flex items-center gap-1 px-3 pb-2 text-[11px]" style={{ color: "var(--a-faint)" }}><ShieldAlert size={11} /> Contact details are hidden and abusive words filtered automatically. {muted.length ? `${muted.length} muted.` : ""}</p>
-            </>
-          )}
-          {tab === "calls" && (
-            <div className="flex-1 space-y-2 overflow-y-auto p-3">
-              {!live.allowCalls && <p className="text-sm" style={{ color: "var(--a-muted)" }}>Private calls are off.</p>}
-              {live.allowCalls && queue.length === 0 && <p className="text-sm" style={{ color: "var(--a-faint)" }}>No one in the queue. Viewers can request a call at ₹{live.callRate}/min.</p>}
-              {queue.map((q, i) => (
-                <div key={q.id} className="rounded-lg border p-3 text-sm" style={{ borderColor: i === 0 ? "var(--a-gold)" : "var(--a-border)" }}>
-                  <p className="font-medium" style={{ color: "var(--a-fg)" }}>#{i + 1} {q.user}</p>
-                  <p className="truncate text-xs" style={{ color: "var(--a-muted)" }}>&ldquo;{q.question}&rdquo;</p>
-                  <p className="text-[11px]" style={{ color: q.walletMinutes < MIN_CALL_MIN ? "#be123c" : "var(--a-faint)" }}>Balance for ~{q.walletMinutes} min at ₹{live.callRate}/min</p>
-                  <div className="mt-2 flex gap-2">
-                    {i === 0 && <AdminButton onClick={() => takeCall(q)} disabled={!!call}><Phone size={14} /> Take call</AdminButton>}
-                    <AdminButton variant="ghost" onClick={() => { setQueue((l) => l.filter((x) => x.id !== q.id)); toast(`${q.user} removed and told. No charge.`, "info"); }}>Remove</AdminButton>
-                  </div>
-                </div>
-              ))}
-              <p className="text-[11px]" style={{ color: "var(--a-faint)" }}>First come, first served. Calls are heard on the live; the caller is billed only while connected. Rate is fixed for this live (max ₹{maxRate}).</p>
-            </div>
-          )}
-          {tab === "gifts" && (
-            <div className="flex-1 overflow-y-auto p-3 text-sm">
-              <p className="mb-2 text-xs" style={{ color: "var(--a-muted)" }}>Gifts total {inr(giftGross)} · you get {GIFT_SHARE_PCT}% = {inr(giftShare)}</p>
-              <TopGifters gifts={gifts} />
-              <ul className="mt-3 space-y-1">
-                {gifts.slice(0, 40).map((g) => <li key={g.id} style={{ color: "var(--a-fg)" }}>{giftOf(g.giftId).emoji} <b>{g.user}</b> sent {giftOf(g.giftId).name} · {inr(giftOf(g.giftId).price)}</li>)}
-              </ul>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Modal open={confirmEnd} onClose={() => setConfirmEnd(false)} title="End the live?" subtitle={call ? "Your current call will also end." : queue.length ? `${queue.length} callers in the queue will be told. No one is charged.` : undefined} size="sm">
-        <div className="grid grid-cols-2 gap-2">
-          <AdminButton variant="ghost" onClick={() => setConfirmEnd(false)}>Stay live</AdminButton>
-          <AdminButton variant="danger" onClick={() => end("Live ended")}>End live</AdminButton>
+        </Field>
+        <div className="flex flex-wrap items-center gap-4">
+          <Toggle checked={later} onChange={setLater} label="Schedule for later" />
+          {later && <AdminInput type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} className="w-60" aria-label="Start time" />}
         </div>
-      </Modal>
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>
+          Video is not connected yet: viewers see your photo and the live chat, and you answer by typing. Chat requests pause while you are live.
+        </p>
+        <AdminButton onClick={submit}>{later ? <><CalendarClock size={16} /> Schedule live</> : <><Radio size={16} /> Go live now</>}</AdminButton>
+      </Card>
+
+      {data.scheduled.length > 0 && (
+        <Card className="p-5">
+          <p className="mb-3 text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Scheduled</p>
+          <ul className="divide-y" style={{ borderColor: "var(--a-border)" }}>
+            {data.scheduled.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>{s.title}</p>
+                  <p className="text-xs" style={{ color: "var(--a-muted)" }}>{when(s.scheduledAt)} · {s.stats?.reminderCount ?? 0} reminded</p>
+                </div>
+                <AdminButton variant="ghost" onClick={() => act(s, "cancel")}>Cancel</AdminButton>
+                <AdminButton onClick={() => act(s, "start")}><Radio size={15} /> Start now</AdminButton>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card className="p-5">
+        <p className="mb-3 text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Past lives</p>
+        {data.past.length === 0 ? <p className="text-sm" style={{ color: "var(--a-faint)" }}>Your lives appear here with viewers and gifts.</p> : (
+          <ul className="divide-y" style={{ borderColor: "var(--a-border)" }}>
+            {data.past.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium" style={{ color: "var(--a-fg)" }}>{s.title}</p>
+                  <p className="text-xs" style={{ color: "var(--a-muted)" }}>{when(s.startedAt)} · {s.startedAt && s.endedAt ? clock((Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 1000) : "-"}</p>
+                </div>
+                <span style={{ color: "var(--a-muted)" }}>{s.stats?.uniqueViewers ?? 0} viewers</span>
+                <span style={{ color: "var(--a-muted)" }}>{s.likes} likes</span>
+                <span className="font-semibold" style={{ color: "var(--a-fg)" }}>{inr(s.stats?.earningPaise ?? 0)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }
 
-function TopGifters({ gifts }: { gifts: GiftEvent[] }) {
-  const totals = new Map<string, number>();
-  gifts.forEach((g) => totals.set(g.user, (totals.get(g.user) ?? 0) + giftOf(g.giftId).price));
-  const top = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  if (!top.length) return <p style={{ color: "var(--a-faint)" }}>No gifts yet.</p>;
+/* ------------------------------------------------------------------ */
+
+function useLiveRoom(first: LiveView) {
+  const [live, setLive] = useState<LiveView>(first);
+  const [events, setEvents] = useState<LiveEvent[]>([]);
+  const [queue, setQueue] = useState<LiveQueueItem[]>([]);
+  const [netDown, setNetDown] = useState(false);
+  const [skew, setSkew] = useState(0);
+  const kick = useRef<() => void>(() => undefined);
+
+  const merge = useCallback((incoming: LiveEvent[]) => {
+    if (!incoming.length) return;
+    setEvents((cur) => {
+      const m = new Map(cur.map((e) => [e.seq, e]));
+      incoming.forEach((e) => m.set(e.seq, e));
+      return [...m.values()].sort((a, b) => a.seq - b.seq).slice(-MAX_EVENTS);
+    });
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    let ctrl: AbortController | null = null;
+    let wake: (() => void) | null = null;
+    let after = 0, v = -1, backoff = 1000;
+    kick.current = () => { ctrl?.abort(); wake?.(); };
+    const sleep = (ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); wake = () => { clearTimeout(t); r(); }; });
+    void (async () => {
+      while (alive) {
+        ctrl = new AbortController();
+        const r = await partnerApi.live.events(first.id, after, v, v !== -1, ctrl.signal);
+        if (!alive) return;
+        if (r.ok) {
+          backoff = 1000;
+          setNetDown(false);
+          setSkew(Date.parse(r.data.live.serverNow) - Date.now());
+          merge(r.data.events);
+          after = Math.max(after, r.data.live.seq);
+          v = r.data.live.version;
+          setLive(r.data.live);
+          setQueue(r.data.queue ?? []);
+          if (r.data.live.status !== "live") return;
+          continue;
+        }
+        if (ctrl.signal.aborted) continue;
+        setNetDown(r.status === 0 || r.status >= 500);
+        await sleep(backoff);
+        backoff = Math.min(backoff * 2, 10_000);
+      }
+    })();
+    return () => { alive = false; ctrl?.abort(); wake?.(); };
+  }, [first.id, merge]);
+
+  return { live, setLive, events, merge, queue, netDown, skew, refresh: useCallback(() => kick.current(), []) };
+}
+
+function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveView) => void }) {
+  const { toast } = useAdminToast();
+  const room = useLiveRoom(first);
+  const { live, events, queue } = room;
+  const [now, setNow] = useState(0);
+  const [text, setText] = useState("");
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [blockTarget, setBlockTarget] = useState<{ seq: number; name: string } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+
+  useEffect(() => {
+    const f = setTimeout(() => setNow(Date.now()), 0);
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => { clearTimeout(f); clearInterval(t); };
+  }, []);
+  useEffect(() => { const el = listRef.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [events.length]);
+
+  // The live ended (time limit, disconnect, admin, another tab): show the summary.
+  const endedRef = useRef(false);
+  useEffect(() => {
+    if (live.status !== "live" && !endedRef.current) { endedRef.current = true; onEnded(live); }
+  }, [live, onEnded]);
+
+  async function act(action: Parameters<typeof partnerApi.live.act>[1], body?: unknown, okMsg?: string) {
+    const r = await partnerApi.live.act(live.id, action, body);
+    if (!r.ok) { toast(r.message, "error"); return false; }
+    room.setLive(r.data.live);
+    room.refresh();
+    if (okMsg) toast(okMsg, "success");
+    return true;
+  }
+
+  async function send() {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    stick.current = true;
+    const r = await partnerApi.live.act<{ event: LiveEvent }>(live.id, "comment", { text: t, clientId: newClientId() });
+    if (!r.ok) { toast(r.message, "error"); setText(t); return; }
+    room.merge([r.data.event]);
+    room.refresh();
+  }
+
+  const serverNow = (now || Date.parse(live.serverNow) - room.skew) + room.skew;
+  const elapsed = live.startedAt ? (serverNow - Date.parse(live.startedAt)) / 1000 : 0;
+  const left = live.endsAt ? (Date.parse(live.endsAt) - serverNow) / 1000 : null;
+  const hidden = new Set(live.hiddenSeqs);
+  const shown = events.filter((e) => !hidden.has(e.seq));
+  const recentJoins = shown.filter((e) => e.kind === "join").slice(-3).map((e) => e.name);
+  const feed = shown.filter((e) => e.kind !== "join");
+  const answering = live.answering;
+  const waiting = queue.filter((q) => q.status === "waiting");
+
   return (
-    <ol className="space-y-1">
-      {top.map(([u, v], i) => <li key={u} className="flex justify-between rounded-md px-2 py-1" style={{ background: "var(--a-surface-2)", color: "var(--a-fg)" }}><span>{["🥇", "🥈", "🥉"][i]} {u}</span><span>{inr(v)}</span></li>)}
-    </ol>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-500 px-2.5 py-1 text-xs font-bold tracking-wide text-white"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />LIVE</span>
+        <h1 className="min-w-0 flex-1 truncate text-xl font-semibold" style={{ color: "var(--a-fg)" }}>{live.title}</h1>
+        <span className="text-sm tabular-nums" style={{ color: "var(--a-muted)" }}>{clock(elapsed)}{left !== null && left < 15 * 60 ? ` · ends in ${clock(left)}` : ""}</span>
+        <AdminButton variant="danger" onClick={() => setConfirmEnd(true)}>End live</AdminButton>
+      </div>
+
+      {room.netDown && <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900" role="status"><WifiOff size={16} /> Connection lost. Reconnecting… Keep this tab open, the live ends if you are away for 90 seconds.</div>}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
+        <Stat icon={Users} k="Watching" v={String(live.viewers)} />
+        <Stat icon={Users} k="Total viewers" v={String(live.stats?.uniqueViewers ?? 0)} />
+        <Stat icon={Heart} k="Likes" v={live.likes.toLocaleString("en-IN")} />
+        <Stat icon={Gift} k="Gifts" v={`${live.giftCount} · ${inr(live.stats?.giftsPaise ?? 0)}`} />
+        <Stat icon={Mic} k="Super Chats kept" v={`${live.stats?.superChatCount ?? 0} · ${inr(live.stats?.superChatPaise ?? 0)}`} />
+        <Stat icon={IndianRupee} k="Your earning" v={inr(live.stats?.earningPaise ?? 0)} />
+        <Stat icon={MessageSquare} k="Chat line from live" v={String(live.stats?.chatLeads ?? 0)} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+        <Card className="flex h-[min(68vh,620px)] flex-col p-0">
+          <div className="flex items-center gap-2 border-b px-4 py-3 text-sm" style={{ borderColor: "var(--a-border)" }}>
+            <MessageSquare size={15} /><span className="flex-1 font-medium" style={{ color: "var(--a-fg)" }}>Live comments</span>
+            {recentJoins.length > 0 && <span className="truncate text-xs" style={{ color: "var(--a-muted)" }}>{recentJoins.join(", ")} joined</span>}
+          </div>
+          {live.pinned && (
+            <div className="flex items-start gap-2 border-b px-4 py-2 text-sm" style={{ borderColor: "var(--a-border)", background: "var(--a-gold-soft)" }}>
+              <Pin size={14} className="mt-0.5 shrink-0" />
+              <p className="flex-1"><b>{live.pinned.name}:</b> {live.pinned.text}</p>
+              <button onClick={() => act("pin", { seq: null })} className="text-xs font-semibold underline" aria-label="Unpin">Unpin</button>
+            </div>
+          )}
+          <div ref={listRef} className="flex-1 space-y-1.5 overflow-y-auto px-4 py-3"
+            onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
+            {feed.length === 0 && <p className="py-10 text-center text-sm" style={{ color: "var(--a-faint)" }}>Comments from viewers appear here.</p>}
+            {feed.map((e) => e.kind === "system" ? (
+              <p key={e.seq} className="py-1 text-center text-xs" style={{ color: "var(--a-faint)" }}>{e.text}</p>
+            ) : e.kind === "superchat" ? (
+              <div key={e.seq} className="rounded-lg border-2 px-3 py-2 text-sm" style={{ borderColor: "var(--a-gold)", background: "var(--a-gold-soft)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--a-gold)" }}>Super Chat · it is at the top of your questions</p>
+                <p><b>{e.name}:</b> {e.text}</p>
+              </div>
+            ) : e.kind === "gift" ? (
+              <div key={e.seq} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm" style={{ background: "var(--a-gold-soft)" }}>
+                <span className="text-lg">{e.gift?.emoji}</span>
+                <p className="flex-1"><b>{e.name}</b> sent {e.gift?.name}{(e.gift?.count ?? 1) > 1 ? ` ×${e.gift?.count}` : ""} · ₹{(e.gift?.price ?? 0) * (e.gift?.count ?? 1)}</p>
+              </div>
+            ) : (
+              <div key={e.seq} className="group flex items-start gap-2 rounded-lg px-2 py-1 hover:bg-black/[0.03]">
+                <p className="flex-1 break-words text-sm" style={{ color: "var(--a-fg)" }}>
+                  <b style={{ color: e.by === "astrologer" ? "var(--a-gold)" : "var(--a-fg)" }}>{e.by === "astrologer" ? "You" : e.name}</b> {e.text}
+                </p>
+                {e.by === "customer" && (
+                  <span className="flex shrink-0 gap-1 opacity-60 group-hover:opacity-100">
+                    <IconBtn label="Pin" onClick={() => act("pin", { seq: e.seq })}><Pin size={13} /></IconBtn>
+                    <IconBtn label="Hide" onClick={() => act("hide", { seq: e.seq }, "Comment hidden")}><EyeOff size={13} /></IconBtn>
+                    <IconBtn label="Mute this viewer" onClick={() => act("mute", { seq: e.seq }, `${e.name} muted for this live`)}><VolumeX size={13} /></IconBtn>
+                    <IconBtn label="Block for good" onClick={() => setBlockTarget({ seq: e.seq, name: e.name })}><Ban size={13} /></IconBtn>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-end gap-2 border-t p-3" style={{ borderColor: "var(--a-border)" }}>
+            <AdminTextarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={300} className="flex-1 resize-none"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
+              placeholder="Reply to everyone. Enter sends." aria-label="Your comment" />
+            <AdminButton onClick={send} disabled={!text.trim()} aria-label="Send"><Send size={16} /></AdminButton>
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="p-4">
+            <p className="mb-2 flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}><Mic size={15} /> Questions <Badge tone={waiting.length ? "gold" : "muted"}>{waiting.length} waiting</Badge></p>
+            {answering && (
+              <div className="mb-3 rounded-lg border p-3 text-sm" style={{ borderColor: "var(--a-gold)", background: "var(--a-gold-soft)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--a-gold)" }}>Now answering</p>
+                <p className="mt-1">{(answering.paidPaise ?? 0) > 0 && <Badge tone="gold">Super Chat ₹{(answering.paidPaise ?? 0) / 100}</Badge>} <b>{answering.name}:</b> {answering.question}</p>
+                <AdminButton className="mt-2" onClick={() => act("done", { queueId: answering.queueId })}><Check size={15} /> Done</AdminButton>
+              </div>
+            )}
+            <p className="mb-2 text-[11px]" style={{ color: "var(--a-faint)" }}>Super Chats come first. Answer and press Done to keep it; Skip gives the money back to the viewer.</p>
+            {waiting.length === 0 ? <p className="text-sm" style={{ color: "var(--a-faint)" }}>{live.queueOpen ? "Viewers can ask from the app. Their questions line up here." : "Questions are closed."}</p> : (
+              <ul className="max-h-72 space-y-2 overflow-y-auto">
+                {waiting.map((q, i) => (
+                  <li key={q.id} className="rounded-lg border p-2.5 text-sm" style={{ borderColor: q.paidPaise > 0 ? "var(--a-gold)" : "var(--a-border)", background: q.paidPaise > 0 ? "var(--a-gold-soft)" : undefined }}>
+                    <p><span className="text-xs" style={{ color: "var(--a-muted)" }}>#{i + 1}</span> {q.paidPaise > 0 && <Badge tone="gold">Super Chat ₹{q.paidPaise / 100}</Badge>} <b>{q.name}:</b> {q.question}</p>
+                    <div className="mt-2 flex gap-2">
+                      <AdminButton onClick={() => act("answer", { queueId: q.id })}>Answer</AdminButton>
+                      <AdminButton variant="ghost" onClick={() => act("skip", { queueId: q.id })}><SkipForward size={14} /> Skip</AdminButton>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card className="space-y-3 p-4">
+            <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Controls</p>
+            <Toggle checked={!live.commentsOff} onChange={(v) => void act("settings", { commentsOff: !v })} label="Viewer comments" />
+            <Toggle checked={live.queueOpen} onChange={(v) => void act("settings", { queueOpen: v })} label="Accept questions" />
+            <Field label="Slow mode">
+              <AdminSelect value={String(live.slowSec)} onChange={(e) => void act("settings", { slowSec: Number(e.target.value) })} aria-label="Slow mode">
+                {[0, 3, 5, 10, 30, 60].map((s) => <option key={s} value={s}>{s ? `One comment every ${s} s` : "Off"}</option>)}
+              </AdminSelect>
+            </Field>
+            <p className="text-xs" style={{ color: "var(--a-muted)" }}>Phone numbers, emails and links are hidden automatically. Abusive comments and copy-paste spam are hidden by themselves. Muted viewers cannot comment or ask on this live. Blocked viewers cannot comment, ask, gift or chat with you again, on any live.</p>
+            <p className="text-xs" style={{ color: "var(--a-muted)" }}>Viewers can join your 1-to-1 chat line from the live. The first one gets their turn when you end the live. <Link href="/astrologer/blocked" className="font-semibold underline">Blocked people</Link></p>
+          </Card>
+
+          <CameraCard live={live} onLive={(l) => { room.setLive(l); room.refresh(); }} />
+        </div>
+      </div>
+
+      <ConfirmDialog open={!!blockTarget} onClose={() => setBlockTarget(null)} danger confirmLabel="Block" title={`Block ${blockTarget?.name ?? "this viewer"}?`}
+        message="They cannot comment, ask, send gifts or chat with you again, on this live and every future one. Their waiting question is removed and any Super Chat is refunded. You can unblock them later from Blocked people."
+        onConfirm={async () => {
+          const b = blockTarget;
+          setBlockTarget(null);
+          if (b) await act("block", { seq: b.seq }, `${b.name} blocked`);
+        }} />
+      <ConfirmDialog open={confirmEnd} onClose={() => setConfirmEnd(false)} danger confirmLabel="End live" title="End this live?"
+        message="Viewers see that the live has ended. Waiting questions are closed. The first person in your chat line gets their turn."
+        onConfirm={async () => {
+          setConfirmEnd(false);
+          const r = await partnerApi.live.act(live.id, "end");
+          if (!r.ok) return toast(r.message, "error");
+          room.setLive(r.data.live);
+        }} />
+    </div>
   );
 }
 
-/** Real local camera preview with clear errors. */
-function CameraPreview({ on, height }: { on: boolean; height: number }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    if (!on) return;
-    let stream: MediaStream | null = null;
-    let stopped = false;
-    if (!navigator.mediaDevices?.getUserMedia) { const t = setTimeout(() => setErr("This browser cannot use the camera."), 0); return () => clearTimeout(t); }
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then((s) => {
-      if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
-      stream = s;
-      setErr(null);
-      if (ref.current) ref.current.srcObject = s;
-    }).catch((e: unknown) => {
-      const n = e instanceof DOMException ? e.name : "";
-      setErr(n === "NotAllowedError" ? "Camera permission denied. Allow it from the address bar." : n === "NotFoundError" ? "No camera found." : "Could not start the camera.");
-    });
-    return () => { stopped = true; stream?.getTracks().forEach((t) => t.stop()); };
-  }, [on]);
+/**
+ * Camera: publishes the browser camera + mic to LiveKit, then asks the server to
+ * start the HLS feed that the app plays. Viewers see it a few seconds behind.
+ * Closing the tab or ending the live stops it; LiveKit also stops when the room empties.
+ */
+type LkRoom = import("livekit-client").Room;
+
+function CameraCard({ live, onLive }: { live: LiveView; onLive: (l: LiveView) => void }) {
+  const { toast } = useAdminToast();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const roomRef = useRef<LkRoom | null>(null);
+  const [state, setState] = useState<"off" | "connecting" | "on">("off");
+  const [mic, setMic] = useState(true);
+
+  // Leave the room when the console unmounts (tab closed, live ended).
+  useEffect(() => () => { void roomRef.current?.disconnect(); roomRef.current = null; }, []);
+
+  async function start() {
+    if (state !== "off") return;
+    setState("connecting");
+    try {
+      const t = await partnerApi.live.act<{ url: string; token: string }>(live.id, "video-token");
+      if (!t.ok) { toast(t.message, "error"); setState("off"); return; }
+      const { Room, RoomEvent, Track, VideoPresets } = await import("livekit-client");
+      const room = new Room({ adaptiveStream: false, dynacast: false, videoCaptureDefaults: { resolution: VideoPresets.h720.resolution } });
+      room.on(RoomEvent.Disconnected, () => { roomRef.current = null; setState("off"); });
+      await room.connect(t.data.url, t.data.token);
+      roomRef.current = room;
+      await room.localParticipant.setCameraEnabled(true);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      const cam = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track;
+      if (cam && videoRef.current) cam.attach(videoRef.current);
+      const on = await partnerApi.live.act(live.id, "video-on");
+      if (!on.ok) { toast(on.message, "error"); await room.disconnect(); setState("off"); return; }
+      onLive(on.data.live);
+      setMic(true);
+      setState("on");
+      toast("Camera is on. Viewers see you in a few seconds.", "success");
+    } catch (e) {
+      const msg = e instanceof Error && /Permission|NotAllowed/i.test(e.name + e.message) ? "Allow camera and microphone in the browser, then try again." : "Could not start the camera. Check it is not used by another app.";
+      toast(msg, "error");
+      await roomRef.current?.disconnect();
+      roomRef.current = null;
+      setState("off");
+    }
+  }
+
+  async function stop() {
+    await roomRef.current?.disconnect();
+    roomRef.current = null;
+    setState("off");
+    const r = await partnerApi.live.act(live.id, "video-off");
+    if (r.ok) onLive(r.data.live);
+  }
+
+  async function toggleMic() {
+    const room = roomRef.current;
+    if (!room) return;
+    await room.localParticipant.setMicrophoneEnabled(!mic);
+    setMic(!mic);
+  }
+
+  if (!live.videoAvailable) {
+    return (
+      <Card className="p-4">
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>
+          Live video is not set up on the server yet, so viewers see your photo with this chat. Keep this tab open: if the panel is closed for 90 seconds the live ends by itself.
+        </p>
+      </Card>
+    );
+  }
   return (
-    <div className="flex w-full items-center justify-center overflow-hidden rounded-lg bg-zinc-900 text-sm text-white/70" style={{ height }}>
-      {on && !err ? <video ref={ref} autoPlay playsInline muted className="h-full w-full -scale-x-100 object-cover" aria-label="Your camera" /> : <span className="px-4 text-center">{err ?? "Camera is off"}</span>}
+    <Card className="space-y-3 p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}><Video size={15} /> Camera
+        {state === "on" && <Badge tone="rose">On air</Badge>}
+        {state === "off" && live.stream && <Badge tone="gold">Video on in another tab</Badge>}
+      </p>
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-black">
+        <video ref={videoRef} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
+        {state !== "on" && (
+          <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/80">
+            {state === "connecting" ? "Starting camera…" : "Camera is off. Viewers see your photo."}
+          </div>
+        )}
+      </div>
+      {state === "on" ? (
+        <div className="flex gap-2">
+          <AdminButton variant="outline" onClick={toggleMic}>{mic ? <><Mic size={15} /> Mute mic</> : <><MicOff size={15} /> Unmute</>}</AdminButton>
+          <AdminButton variant="danger" onClick={stop}><VideoOff size={15} /> Camera off</AdminButton>
+        </div>
+      ) : (
+        <AdminButton onClick={start} loading={state === "connecting"}><Video size={15} /> Turn on camera</AdminButton>
+      )}
+      <p className="text-[11px]" style={{ color: "var(--a-faint)" }}>Viewers see and hear you about 5 to 10 seconds late, so give them a moment to react. Keep this tab open while live.</p>
+    </Card>
+  );
+}
+
+function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return <button onClick={onClick} title={label} aria-label={label} className="rounded p-1 hover:bg-black/[0.06]" style={{ color: "var(--a-muted)" }}>{children}</button>;
+}
+
+function Stat({ icon: Icon, k, v }: { icon: typeof Users; k: string; v: string }) {
+  return (
+    <Card className="p-3">
+      <p className="flex items-center gap-1.5 text-xs" style={{ color: "var(--a-muted)" }}><Icon size={13} /> {k}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums" style={{ color: "var(--a-fg)" }}>{v}</p>
+    </Card>
+  );
+}
+
+function EndedSummary({ s, onDone }: { s: LiveView; onDone: () => void }) {
+  const mins = s.startedAt && s.endedAt ? (Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 1000 : 0;
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Live ended" subtitle={s.endText ?? undefined} />
+      <Card className="p-5">
+        <p className="font-semibold" style={{ color: "var(--a-fg)" }}>{s.title}</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <Stat icon={Radio} k="Duration" v={clock(mins)} />
+          <Stat icon={Users} k="Viewers" v={String(s.stats?.uniqueViewers ?? 0)} />
+          <Stat icon={Users} k="Most at once" v={String(s.stats?.peakViewers ?? 0)} />
+          <Stat icon={Heart} k="Likes" v={s.likes.toLocaleString("en-IN")} />
+          <Stat icon={Mic} k="Super Chats" v={`${s.stats?.superChatCount ?? 0}`} />
+          <Stat icon={IndianRupee} k="You earned" v={inr(s.stats?.earningPaise ?? 0)} />
+          <Stat icon={MessageSquare} k="Joined your chat line" v={String(s.stats?.chatLeads ?? 0)} />
+        </div>
+        <p className="mt-3 text-xs" style={{ color: "var(--a-muted)" }}>Gift earnings are after platform commission.</p>
+        <div className="mt-4 flex gap-2">
+          <AdminButton onClick={onDone}><X size={15} /> Close</AdminButton>
+          <Link href="/astrologer/requests"><AdminButton variant="outline">Back to chat requests</AdminButton></Link>
+        </div>
+      </Card>
     </div>
   );
 }

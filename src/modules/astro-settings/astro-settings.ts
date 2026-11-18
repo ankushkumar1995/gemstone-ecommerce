@@ -57,13 +57,77 @@ export interface AstroProgramSettings {
   payoutMinAmount: number;
   payoutCycle: "weekly" | "biweekly" | "monthly";
   gst: { enabled: boolean; ratePct: number };
-  tds: { enabled: boolean; ratePct: number };
+  /** TDS deducted from payouts. `noPanRatePct` applies when the astrologer has no PAN on file. */
+  tds: { enabled: boolean; ratePct: number; noPanRatePct: number };
   rechargePacks: RechargePackSetting[];
   /** Mask phone numbers / emails / UPI IDs / links in chat messages. */
   maskContactInfo: boolean;
   /** Reviews need admin approval before they count. */
   moderateReviews: boolean;
+  /** Live sessions (astrologer goes live for everyone). */
+  live: LiveSettings;
+  /** How payouts are created and sent. */
+  payouts: PayoutSettings;
+  /** Tips customers can add after a chat. */
+  tips: TipSettings;
+  /** Waitlist when an astrologer is busy. */
+  waitlist: WaitlistSettings;
   updatedAt?: string;
+}
+export interface PayoutSettings {
+  /** "manual" = admin pays by bank transfer and enters the UTR. "razorpayx" = sent automatically. */
+  provider: "manual" | "razorpayx";
+  /** Create payout requests by itself on the cycle day for everyone above the minimum. */
+  autoCreate: boolean;
+  /** Day the weekly cycle runs (0 = Sunday … 6 = Saturday, IST). */
+  cycleWeekday: number;
+  /** Only pay to a payout account the admin marked verified. */
+  requireVerifiedAccount: boolean;
+  /** Most one astrologer can withdraw per request (₹, 0 = no limit). */
+  maxPerRequest: number;
+}
+export interface TipSettings {
+  enabled: boolean;
+  /** Quick amounts shown after a chat (₹). */
+  presets: number[];
+  /** Most one customer can tip on one chat (₹). */
+  maxPerChat: number;
+  /** Hours after a chat during which a tip can be added. */
+  windowHours: number;
+}
+export interface WaitlistSettings {
+  enabled: boolean;
+  /** Most people waiting for one astrologer. */
+  maxSize: number;
+  /** Seconds a customer has to take their turn. */
+  offerSec: number;
+}
+export interface LiveGiftSetting { id: string; name: string; emoji: string; price: number }
+export interface LiveSettings {
+  enabled: boolean;
+  /** A live ends by itself after this many minutes. */
+  maxMinutes: number;
+  /** Default seconds between two comments from one viewer. */
+  slowSec: number;
+  /** Most questions waiting in the "ask on live" queue. */
+  maxQueue: number;
+  /** Gifts viewers can send (₹, paid from the wallet; commission applies). */
+  gifts: LiveGiftSetting[];
+  /** Combo sizes a viewer can send at once (×1, ×5, ×10). */
+  giftCombos: number[];
+  /** A gift worth at least this much (₹, gift × combo) gets the full-screen animation. */
+  bigGiftAt: number;
+  /** Paid priority questions: the question jumps the line and is highlighted. */
+  superChat: SuperChatSettings;
+  /** Extra words the comment filter hides (on top of the built-in list). */
+  blockedWords: string[];
+  /** Hidden comments in one live before the viewer is muted on it (0 = never). */
+  autoMuteStrikes: number;
+}
+export interface SuperChatSettings {
+  enabled: boolean;
+  /** Price (₹) and how long (seconds) the highlight stays pinned on screen. */
+  tiers: { price: number; pinSec: number }[];
 }
 
 export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
@@ -85,7 +149,7 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
   payoutMinAmount: 500,
   payoutCycle: "weekly",
   gst: { enabled: false, ratePct: 18 },
-  tds: { enabled: false, ratePct: 10 },
+  tds: { enabled: false, ratePct: 10, noPanRatePct: 20 },
   rechargePacks: [
     { amount: 100, bonus: 10, tag: "" },
     { amount: 200, bonus: 25, tag: "" },
@@ -95,6 +159,28 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
   ],
   maskContactInfo: true,
   moderateReviews: true,
+  live: {
+    enabled: true,
+    maxMinutes: 180,
+    slowSec: 3,
+    maxQueue: 30,
+    gifts: [
+      { id: "rose", name: "Rose", emoji: "🌹", price: 11 },
+      { id: "diya", name: "Diya", emoji: "🪔", price: 21 },
+      { id: "lotus", name: "Lotus", emoji: "🪷", price: 51 },
+      { id: "shankh", name: "Shankh", emoji: "🐚", price: 101 },
+      { id: "crown", name: "Crown", emoji: "👑", price: 251 },
+      { id: "mandir", name: "Mandir", emoji: "🛕", price: 501 },
+    ],
+    giftCombos: [1, 5, 10],
+    bigGiftAt: 251,
+    superChat: { enabled: true, tiers: [{ price: 51, pinSec: 60 }, { price: 101, pinSec: 120 }, { price: 251, pinSec: 300 }] },
+    blockedWords: [],
+    autoMuteStrikes: 3,
+  },
+  payouts: { provider: "manual", autoCreate: false, cycleWeekday: 1, requireVerifiedAccount: true, maxPerRequest: 0 },
+  tips: { enabled: true, presets: [21, 51, 101, 251], maxPerChat: 5000, windowHours: 24 },
+  waitlist: { enabled: true, maxSize: 10, offerSec: 60 },
 };
 
 export const astroSettingsSchema = z.object({
@@ -116,10 +202,48 @@ export const astroSettingsSchema = z.object({
   payoutMinAmount: z.number().int().min(0).max(1000000),
   payoutCycle: z.enum(["weekly", "biweekly", "monthly"]),
   gst: z.object({ enabled: z.boolean(), ratePct: z.number().min(0).max(40) }),
-  tds: z.object({ enabled: z.boolean(), ratePct: z.number().min(0).max(40) }),
+  tds: z.object({ enabled: z.boolean(), ratePct: z.number().min(0).max(40), noPanRatePct: z.number().min(0).max(40).default(20) }),
   rechargePacks: z.array(z.object({ amount: z.number().int().min(10).max(100000), bonus: z.number().int().min(0).max(100000), tag: z.enum(["Popular", "Best value", ""]).optional() })).min(1).max(12),
   maskContactInfo: z.boolean(),
   moderateReviews: z.boolean(),
+  live: z.object({
+    enabled: z.boolean(),
+    maxMinutes: z.number().int().min(10).max(600),
+    slowSec: z.number().int().min(0).max(120),
+    maxQueue: z.number().int().min(0).max(200),
+    gifts: z.array(z.object({
+      id: z.string().trim().regex(/^[a-z0-9-]{2,30}$/, "Gift id: lowercase letters, numbers, dashes"),
+      name: z.string().trim().min(1).max(30),
+      emoji: z.string().trim().min(1).max(8),
+      price: z.number().int().min(1).max(100000),
+    })).max(12).refine((g) => new Set(g.map((x) => x.id)).size === g.length, { message: "Gift ids must be unique" }),
+    giftCombos: z.array(z.number().int().min(1).max(100)).min(1).max(4).default([1, 5, 10]),
+    bigGiftAt: z.number().int().min(1).max(1_000_000).default(251),
+    superChat: z.object({
+      enabled: z.boolean(),
+      tiers: z.array(z.object({ price: z.number().int().min(1).max(100_000), pinSec: z.number().int().min(10).max(3600) })).min(1).max(4),
+    }).default({ enabled: true, tiers: [{ price: 51, pinSec: 60 }, { price: 101, pinSec: 120 }, { price: 251, pinSec: 300 }] }),
+    blockedWords: z.array(z.string().trim().min(2).max(40)).max(300).default([]),
+    autoMuteStrikes: z.number().int().min(0).max(20).default(3),
+  }),
+  payouts: z.object({
+    provider: z.enum(["manual", "razorpayx"]),
+    autoCreate: z.boolean(),
+    cycleWeekday: z.number().int().min(0).max(6),
+    requireVerifiedAccount: z.boolean(),
+    maxPerRequest: z.number().int().min(0).max(10_000_000),
+  }),
+  tips: z.object({
+    enabled: z.boolean(),
+    presets: z.array(z.number().int().min(1).max(100_000)).min(1).max(6),
+    maxPerChat: z.number().int().min(1).max(100_000),
+    windowHours: z.number().int().min(1).max(720),
+  }),
+  waitlist: z.object({
+    enabled: z.boolean(),
+    maxSize: z.number().int().min(1).max(100),
+    offerSec: z.number().int().min(20).max(600),
+  }),
 }).partial().refine((v) => v.minRate === undefined || v.maxRate === undefined || v.minRate <= v.maxRate, { message: "minRate must be ≤ maxRate" });
 
 export type UpdateAstroSettingsDto = z.infer<typeof astroSettingsSchema>;
@@ -140,6 +264,10 @@ const merge = (stored: Partial<AstroProgramSettings> | undefined): AstroProgramS
   defaultRates: { ...DEFAULT_ASTRO_SETTINGS.defaultRates, ...(stored?.defaultRates ?? {}) },
   gst: { ...DEFAULT_ASTRO_SETTINGS.gst, ...(stored?.gst ?? {}) },
   tds: { ...DEFAULT_ASTRO_SETTINGS.tds, ...(stored?.tds ?? {}) },
+  live: { ...DEFAULT_ASTRO_SETTINGS.live, ...(stored?.live ?? {}), superChat: { ...DEFAULT_ASTRO_SETTINGS.live.superChat, ...(stored?.live?.superChat ?? {}) } },
+  payouts: { ...DEFAULT_ASTRO_SETTINGS.payouts, ...(stored?.payouts ?? {}) },
+  tips: { ...DEFAULT_ASTRO_SETTINGS.tips, ...(stored?.tips ?? {}) },
+  waitlist: { ...DEFAULT_ASTRO_SETTINGS.waitlist, ...(stored?.waitlist ?? {}) },
 });
 
 const CACHE_KEY = "astro-settings";

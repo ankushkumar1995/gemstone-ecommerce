@@ -122,4 +122,74 @@ export const walletService = {
     }
     return ok({ txn: res.txn, balance: res.balance });
   },
+
+  /**
+   * Where does this recharge stand? Used by the app after checkout, after the
+   * app was killed mid-payment, or when the callback was lost.
+   *
+   * If our record is not paid yet, ask Razorpay. A CAPTURED payment for the
+   * EXACT payable amount settles it (same exactly-once path as callback and
+   * webhook). Anything else is reported, never credited.
+   *
+   * `lookup` is injectable for tests; production uses the gateway API.
+   */
+  async rechargeStatus(
+    customerId: string,
+    razorpayOrderId: string,
+    lookup: (orderId: string) => Promise<{ id: string; status: string; amount: number; error_description?: string | null }[]>,
+  ): Promise<Result<RechargeStatusView>> {
+    const r = await getWalletRepository().rechargeByOrder(razorpayOrderId);
+    // Same answer for "not found" and "someone else's": never reveal other customers' orders.
+    if (!r || r.customerId !== customerId) return fail(AppErrors.notFound("Recharge not found"));
+    const view = async (state: RechargeStatusView["state"], extra: Partial<RechargeStatusView> = {}): Promise<RechargeStatusView> => {
+      const b = await getWalletRepository().balance(customerId);
+      return { state, rechargeId: r.id, creditedPaise: r.amountPaise + r.bonusPaise, payablePaise: r.payablePaise, balance: { cashPaise: b.cashPaise, promoPaise: b.promoPaise, totalPaise: b.cashPaise + b.promoPaise }, ...extra };
+    };
+    if (r.status === "paid") return ok(await view("paid"));
+
+    let payments;
+    try {
+      payments = await lookup(razorpayOrderId);
+    } catch {
+      // Gateway unreachable: report "pending", the client simply asks again.
+      return ok(await view("pending"));
+    }
+    const captured = payments.find((p) => p.status === "captured");
+    if (captured) {
+      if (captured.amount !== r.payablePaise) {
+        // Never credit a mismatched amount; this needs a human.
+        void auditService.record({ action: "payment", entity: "wallet", entityId: customerId, entityLabel: r.id, summary: `Recharge ${r.id}: captured ₹${captured.amount / 100} but expected ₹${r.payablePaise / 100}. Not credited.`, actor: "System" }).catch(() => undefined);
+        return ok(await view("review"));
+      }
+      const s = await walletService.settleRecharge(razorpayOrderId, captured.id);
+      if (!s.ok) return ok(await view("pending"));
+      return ok(await view("paid", { justCredited: s.value.credited }));
+    }
+    // Authorized = bank approved, capture is on its way (auto-capture).
+    if (payments.some((p) => p.status === "authorized")) return ok(await view("processing"));
+    const failed = payments.filter((p) => p.status === "failed");
+    if (failed.length && failed.length === payments.length) {
+      return ok(await view("failed", { reason: failed[0].error_description || "The payment did not go through." }));
+    }
+    return ok(await view(payments.length ? "processing" : "pending"));
+  },
 };
+
+/** What the app needs after a recharge attempt. */
+export interface RechargeStatusView {
+  /**
+   * paid       wallet credited
+   * processing bank approved / attempt in progress, check again shortly
+   * pending    no completed attempt yet (user may still pay)
+   * failed     every attempt failed (user can try again)
+   * review     paid amount did not match: support will sort it out, nothing credited
+   */
+  state: "paid" | "processing" | "pending" | "failed" | "review";
+  rechargeId: string;
+  creditedPaise: number;
+  payablePaise: number;
+  balance: { cashPaise: number; promoPaise: number; totalPaise: number };
+  reason?: string;
+  /** True only on the call that actually credited the wallet. */
+  justCredited?: boolean;
+}

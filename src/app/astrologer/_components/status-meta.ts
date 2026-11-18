@@ -5,7 +5,7 @@ type Tone = "muted" | "gold" | "green" | "blue" | "rose";
 export const STATUS_META: Record<AstrologerStatus, { label: string; tone: Tone; help: string }> = {
   applied: { label: "Application started", tone: "blue", help: "Upload your KYC documents so we can review your profile." },
   under_review: { label: "Under review", tone: "gold", help: "Our team is reviewing your profile and documents. This usually takes 1-2 working days." },
-  approved: { label: "Approved", tone: "green", help: "You are live on Astrounkle. Go online to start receiving consultations." },
+  approved: { label: "Approved", tone: "green", help: "Your profile is visible on Astrounkle. Go online to receive chats, or open Go live to start a live for everyone." },
   rejected: { label: "Changes needed", tone: "rose", help: "Fix the points below and submit your profile for review again." },
   suspended: { label: "Suspended", tone: "rose", help: "Your account is suspended. Contact support for help." },
   deactivated: { label: "Deactivated", tone: "muted", help: "Your profile is hidden. Reactivate it to start again." },

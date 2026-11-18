@@ -10,7 +10,7 @@ import "server-only";
  * Nested objects are validated by zod before they get here, so they use Mixed.
  */
 
-import { Schema, model, models, type Model } from "mongoose";
+import { Schema, deleteModel, model, models, type Model } from "mongoose";
 
 const Mixed = Schema.Types.Mixed;
 
@@ -39,6 +39,11 @@ const PoojaSchema = new Schema(
     status: { type: String, required: true, index: true },
     featured: { type: Boolean, default: false },
     sortOrder: { type: Number, default: 0 },
+    // Where it is shown (see core/channels). Missing on old rows = both on.
+    channels: {
+      web: { type: Boolean, default: true },
+      app: { type: Boolean, default: true },
+    },
     createdBy: String, updatedBy: String,
   },
   { collection: "poojas", timestamps: true, versionKey: false, minimize: false },
@@ -81,6 +86,8 @@ const BookingSchema = new Schema(
     progress: { type: Mixed, default: [] },
     customerPhone: String,
     requestId: { type: String },
+    // Pay-online seat hold (ISO). null = no hold.
+    holdUntil: { type: String, default: null },
     version: { type: Number, required: true, default: 1 },
   },
   { collection: "pooja_bookings", timestamps: true, versionKey: false, minimize: false },
@@ -89,6 +96,10 @@ BookingSchema.index({ status: 1, slotDate: 1 });
 BookingSchema.index({ slotDate: 1, panditId: 1 });
 BookingSchema.index({ prasadStatus: 1, status: 1 });
 BookingSchema.index({ customerPhone: 1 });
+// "My bookings" (website account + app): a customer's own bookings, newest first.
+BookingSchema.index({ "customer.customerId": 1, createdAt: -1 });
+// Sweep of expired pay-online holds.
+BookingSchema.index({ status: 1, holdUntil: 1 }, { partialFilterExpression: { holdUntil: { $type: "string" } } });
 BookingSchema.index({ requestId: 1 }, { unique: true, partialFilterExpression: { requestId: { $type: "string" } } });
 BookingSchema.index({ razorpayOrderId: 1 }, { unique: true, partialFilterExpression: { razorpayOrderId: { $type: "string" } } });
 
@@ -114,6 +125,10 @@ const CategorySchema = new Schema(
 const CounterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 } }, { collection: "pooja_counters", versionKey: false });
 
 type AnyDoc = Record<string, unknown>;
+// Dev: drop the cached Pooja model so schema changes (e.g. `channels`) apply on
+// hot-reload; otherwise strict mode silently drops the new field. No-op in prod.
+if (process.env.NODE_ENV !== "production" && models.Pooja) deleteModel("Pooja");
+if (process.env.NODE_ENV !== "production" && models.PoojaBooking) deleteModel("PoojaBooking");
 export const PoojaModel: Model<AnyDoc> = (models.Pooja as Model<AnyDoc>) ?? model<AnyDoc>("Pooja", PoojaSchema);
 export const PanditModel: Model<AnyDoc> = (models.Pandit as Model<AnyDoc>) ?? model<AnyDoc>("Pandit", PanditSchema);
 export const PoojaBookingModel: Model<AnyDoc> = (models.PoojaBooking as Model<AnyDoc>) ?? model<AnyDoc>("PoojaBooking", BookingSchema);

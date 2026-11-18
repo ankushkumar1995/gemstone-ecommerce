@@ -1,98 +1,137 @@
 "use client";
 
 /**
- * Schedule (DEMO). Weekly working hours, leaves, booking rules and upcoming
- * appointments. Slot rules are validated the same way the backend will:
- * start before end, no overlaps within a day, at most 4 slots per day.
+ * Schedule: weekly working hours (IST) and planned leaves, saved to the
+ * partner's profile. Customers see the hours and upcoming leave dates on the
+ * public profile (never the reason). The server re-checks every rule:
+ * start before end, no overlaps, max 4 slots a day, leaves not overlapping.
+ *
+ * Scheduled (pre-booked) appointments come with the consultation engine.
  */
 
 import { useState } from "react";
-import { CalendarDays, CalendarOff, Clock, MessageCircle, Phone, Plus, Trash2, Video, X } from "lucide-react";
-import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Badge, Card, Field, Modal, PageHeader, StatsSkeleton, Toggle, useAdminToast } from "@/app/admin/_components";
+import { CalendarClock, CalendarOff, Clock, Plus, Trash2, X } from "lucide-react";
+import { AdminButton, AdminInput, Card, PageHeader, StatsSkeleton, Toggle, useAdminToast } from "@/app/admin/_components";
+import { partnerApi } from "@/lib/astrologer-api";
+import type { AstrologerLeave, AvailabilitySlot } from "@/modules/astrologers/astrologer.types";
 import { usePartner } from "../../_components/partner-context";
-import { CHANNEL_LABEL, DemoBanner, fmtDateTime } from "../../_components/demo";
-import { MOCK_APPOINTMENTS, MOCK_LEAVES, MOCK_WEEK } from "../../_components/mock-data";
 
-type Week = typeof MOCK_WEEK;
-const ICON = { chat: MessageCircle, call: Phone, video: Video } as const;
 const MAX_SLOTS = 4;
+/** Monday first, mapped to the stored day index (0 = Sunday). */
+const DAYS: { name: string; idx: AvailabilitySlot["day"] }[] = [
+  { name: "Monday", idx: 1 }, { name: "Tuesday", idx: 2 }, { name: "Wednesday", idx: 3 }, { name: "Thursday", idx: 4 },
+  { name: "Friday", idx: 5 }, { name: "Saturday", idx: 6 }, { name: "Sunday", idx: 0 },
+];
 
-function validate(week: Week): string | null {
+type Day = { name: string; idx: AvailabilitySlot["day"]; on: boolean; slots: { start: string; end: string }[] };
+
+const toWeek = (slots: AvailabilitySlot[]): Day[] =>
+  DAYS.map((d) => {
+    const s = slots.filter((x) => x.day === d.idx).sort((a, b) => a.start.localeCompare(b.start)).map((x) => ({ start: x.start, end: x.end }));
+    return { ...d, on: s.length > 0, slots: s };
+  });
+const fromWeek = (week: Day[]): AvailabilitySlot[] => week.flatMap((d) => (d.on ? d.slots.map((s) => ({ day: d.idx, start: s.start, end: s.end })) : []));
+
+function validate(week: Day[]): string | null {
   for (const d of week) {
     if (!d.on) continue;
-    if (d.slots.length === 0) return `${d.day}: add at least one slot or turn the day off`;
-    const sorted = [...d.slots].sort((a, b) => a.from.localeCompare(b.from));
+    if (d.slots.length === 0) return `${d.name}: add a slot or turn the day off`;
+    const sorted = [...d.slots].sort((a, b) => a.start.localeCompare(b.start));
     for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].from >= sorted[i].to) return `${d.day}: a slot must end after it starts`;
-      if (i > 0 && sorted[i].from < sorted[i - 1].to) return `${d.day}: slots overlap`;
+      if (!sorted[i].start || !sorted[i].end) return `${d.name}: fill both times`;
+      if (sorted[i].start >= sorted[i].end) return `${d.name}: a slot must end after it starts`;
+      if (i > 0 && sorted[i].start < sorted[i - 1].end) return `${d.name}: slots overlap`;
     }
   }
   return null;
 }
 
-const hoursOf = (week: Week) =>
-  week.reduce((sum, d) => sum + (d.on ? d.slots.reduce((s, x) => { const [fh, fm] = x.from.split(":").map(Number); const [th, tm] = x.to.split(":").map(Number); return s + Math.max(0, th * 60 + tm - (fh * 60 + fm)); }, 0) : 0), 0) / 60;
+const minutes = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const hoursOf = (week: Day[]) => week.reduce((sum, d) => sum + (d.on ? d.slots.reduce((s, x) => s + Math.max(0, minutes(x.end) - minutes(x.start)), 0) : 0), 0) / 60;
+const fmtDate = (d: string) => new Date(`${d}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const todayIst = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
 
 export default function SchedulePage() {
-  const { me, loading } = usePartner();
+  const { me, loading, setMe } = usePartner();
   const { toast } = useAdminToast();
-  const [week, setWeek] = useState<Week>(() => MOCK_WEEK.map((d) => ({ ...d, slots: d.slots.map((s) => ({ ...s })) })));
-  const [rules, setRules] = useState({ acceptBookings: true, bufferMin: 10, maxPerDay: 8, noticeHours: 2 });
-  const [leaves, setLeaves] = useState(MOCK_LEAVES);
+  const [week, setWeek] = useState<Day[] | null>(null);
+  const [leaves, setLeaves] = useState<AstrologerLeave[] | null>(null);
   const [leaveForm, setLeaveForm] = useState({ from: "", to: "", reason: "" });
-  const [appointments, setAppointments] = useState(MOCK_APPOINTMENTS);
-  const [cancelAsk, setCancelAsk] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
+  const [dirty, setDirty] = useState(false);
 
   if (loading || !me) return <StatsSkeleton count={3} />;
-  const err = validate(week);
+  // Start from the saved profile the first time.
+  const w = week ?? toWeek(me.availability);
+  const lv = leaves ?? (me.leaves ?? []);
+  const err = validate(w);
+  const today = todayIst();
+  const onLeaveNow = lv.find((l) => l.from <= today && l.to >= today);
 
-  const setDay = (i: number, patch: Partial<Week[number]>) => setWeek((w) => w.map((d, k) => (k === i ? { ...d, ...patch } : d)));
-  const setSlot = (i: number, j: number, key: "from" | "to", v: string) => setWeek((w) => w.map((d, k) => (k === i ? { ...d, slots: d.slots.map((s, m) => (m === j ? { ...s, [key]: v } : s)) } : d)));
+  const edit = (next: Day[]) => { setWeek(next); setDirty(true); };
+  const setDay = (i: number, patch: Partial<Day>) => edit(w.map((d, k) => (k === i ? { ...d, ...patch } : d)));
+  const setSlot = (i: number, j: number, key: "start" | "end", v: string) => edit(w.map((d, k) => (k === i ? { ...d, slots: d.slots.map((s, m) => (m === j ? { ...s, [key]: v } : s)) } : d)));
+  const copyToAll = (i: number) => edit(w.map((d) => ({ ...d, on: w[i].on, slots: w[i].slots.map((s) => ({ ...s })) })));
 
-  const save = () => {
-    if (err) return toast(err, "error");
-    toast("Schedule saved. Customers see your next available time.", "success");
+  const save = async (nextLeaves = lv) => {
+    if (err) { toast(err, "error"); return; }
+    const r = await partnerApi.updateProfile({ availability: fromWeek(w), leaves: nextLeaves });
+    if (!r.ok) { toast(r.message, "error"); return; }
+    setMe(r.data);
+    setWeek(toWeek(r.data.availability));
+    setLeaves(r.data.leaves ?? []);
+    setDirty(false);
+    toast("Schedule saved. Customers see your hours on your profile.", "success");
   };
-  const addLeave = () => {
-    if (!leaveForm.from || !leaveForm.to || leaveForm.to < leaveForm.from) return toast("Pick a valid date range", "error");
-    setLeaves((l) => [...l, { id: `lv${l.length + 2}`, from: new Date(leaveForm.from).toISOString(), to: new Date(leaveForm.to).toISOString(), reason: leaveForm.reason.trim() || "Leave" }]);
+
+  const addLeave = async () => {
+    if (!leaveForm.from || !leaveForm.to) { toast("Pick both dates", "error"); return; }
+    if (leaveForm.to < leaveForm.from) { toast("The leave must end on or after the start date", "error"); return; }
+    if (leaveForm.to < today) { toast("Pick dates from today onwards", "error"); return; }
+    const next = [...lv, { id: "", from: leaveForm.from, to: leaveForm.to, reason: leaveForm.reason.trim() || undefined }];
+    await save(next);
     setLeaveForm({ from: "", to: "", reason: "" });
-    toast("Leave added. Bookings are blocked for those days.", "success");
   };
-  const cancel = () => {
-    if (!cancelAsk || cancelReason.trim().length < 5) return;
-    setAppointments((a) => a.filter((x) => x.id !== cancelAsk));
-    setCancelAsk(null);
-    setCancelReason("");
-    toast("Appointment cancelled. The customer gets a full refund and a notification.", "info");
-  };
+  const removeLeave = async (id: string) => { await save(lv.filter((x) => x.id !== id)); };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Schedule" subtitle={`${hoursOf(week).toFixed(1)} hours a week · Times are in IST`} action={<AdminButton onClick={save} disabled={!!err}>Save schedule</AdminButton>} />
-      <DemoBanner />
+      <PageHeader
+        title="Schedule"
+        subtitle={`${hoursOf(w).toFixed(1)} hours a week · Times are in IST`}
+        action={<AdminButton onClick={() => save()} disabled={!!err || !dirty}>{dirty ? "Save schedule" : "Saved"}</AdminButton>}
+      />
       {err && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-700" role="alert">{err}</p>}
+      {onLeaveNow && (
+        <p className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--a-gold-soft)", color: "var(--a-fg)" }} role="status">
+          You are on leave until {fmtDate(onLeaveNow.to)}. Customers see this on your profile.
+        </p>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <Card className="p-5">
-          <p className="mb-4 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><Clock size={16} /> Weekly hours</p>
+          <p className="mb-1 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><Clock size={16} /> Weekly hours</p>
+          <p className="mb-4 text-xs" style={{ color: "var(--a-muted)" }}>When customers can usually find you online. Up to {MAX_SLOTS} slots a day.</p>
           <ul className="divide-y" style={{ borderColor: "var(--a-border)" }}>
-            {week.map((d, i) => (
-              <li key={d.day} className="flex flex-wrap items-start gap-4 py-3">
-                <div className="w-32 pt-1.5"><Toggle checked={d.on} onChange={(v) => setDay(i, { on: v, slots: v && d.slots.length === 0 ? [{ from: "10:00", to: "14:00" }] : d.slots })} label={d.day} /></div>
+            {w.map((d, i) => (
+              <li key={d.name} className="flex flex-wrap items-start gap-4 py-3">
+                <div className="w-32 pt-1.5"><Toggle checked={d.on} onChange={(v) => setDay(i, { on: v, slots: v && d.slots.length === 0 ? [{ start: "10:00", end: "14:00" }] : d.slots })} label={d.name} /></div>
                 <div className="flex-1 space-y-2">
                   {!d.on && <p className="pt-1.5 text-sm" style={{ color: "var(--a-faint)" }}>Unavailable</p>}
                   {d.on && d.slots.map((s, j) => (
                     <div key={j} className="flex items-center gap-2">
-                      <AdminInput type="time" value={s.from} onChange={(e) => setSlot(i, j, "from", e.target.value)} aria-label={`${d.day} slot ${j + 1} start`} className="w-32" />
+                      <AdminInput type="time" value={s.start} onChange={(e) => setSlot(i, j, "start", e.target.value)} aria-label={`${d.name} slot ${j + 1} start`} className="w-32" />
                       <span style={{ color: "var(--a-muted)" }}>to</span>
-                      <AdminInput type="time" value={s.to} onChange={(e) => setSlot(i, j, "to", e.target.value)} aria-label={`${d.day} slot ${j + 1} end`} className="w-32" />
+                      <AdminInput type="time" value={s.end} onChange={(e) => setSlot(i, j, "end", e.target.value)} aria-label={`${d.name} slot ${j + 1} end`} className="w-32" />
                       <button type="button" aria-label="Remove slot" onClick={() => setDay(i, { slots: d.slots.filter((_, m) => m !== j) })} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-500/10"><Trash2 size={15} /></button>
                     </div>
                   ))}
-                  {d.on && d.slots.length < MAX_SLOTS && (
-                    <button type="button" onClick={() => setDay(i, { slots: [...d.slots, { from: "18:00", to: "20:00" }] })} className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--a-gold)" }}><Plus size={13} /> Add slot</button>
+                  {d.on && (
+                    <div className="flex gap-4">
+                      {d.slots.length < MAX_SLOTS && (
+                        <button type="button" onClick={() => setDay(i, { slots: [...d.slots, { start: "18:00", end: "20:00" }] })} className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--a-gold)" }}><Plus size={13} /> Add slot</button>
+                      )}
+                      <button type="button" onClick={() => copyToAll(i)} className="text-xs font-medium" style={{ color: "var(--a-muted)" }}>Copy to all days</button>
+                    </div>
                   )}
                 </div>
               </li>
@@ -101,67 +140,31 @@ export default function SchedulePage() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="space-y-4 p-5">
-            <p className="font-semibold" style={{ color: "var(--a-fg)" }}>Booking rules</p>
-            <Toggle checked={rules.acceptBookings} onChange={(v) => setRules({ ...rules, acceptBookings: v })} label="Accept scheduled bookings" />
-            <Field label="Gap between bookings">
-              <AdminSelect value={rules.bufferMin} onChange={(e) => setRules({ ...rules, bufferMin: Number(e.target.value) })}>{[0, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} min</option>)}</AdminSelect>
-            </Field>
-            <Field label="Max bookings per day">
-              <AdminSelect value={rules.maxPerDay} onChange={(e) => setRules({ ...rules, maxPerDay: Number(e.target.value) })}>{[2, 4, 6, 8, 10, 15].map((n) => <option key={n} value={n}>{n}</option>)}</AdminSelect>
-            </Field>
-            <Field label="Minimum notice">
-              <AdminSelect value={rules.noticeHours} onChange={(e) => setRules({ ...rules, noticeHours: Number(e.target.value) })}>{[1, 2, 4, 12, 24].map((n) => <option key={n} value={n}>{n} hour{n > 1 ? "s" : ""}</option>)}</AdminSelect>
-            </Field>
-          </Card>
-
           <Card className="space-y-3 p-5">
             <p className="flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><CalendarOff size={16} /> Leaves</p>
-            {leaves.length === 0 && <p className="text-sm" style={{ color: "var(--a-faint)" }}>No leaves planned.</p>}
-            {leaves.map((l) => (
-              <div key={l.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ background: "var(--a-surface-2)", color: "var(--a-fg)" }}>
-                <span>{new Date(l.from).toLocaleDateString("en-IN")} to {new Date(l.to).toLocaleDateString("en-IN")} · {l.reason}</span>
-                <button type="button" aria-label="Remove leave" onClick={() => setLeaves((x) => x.filter((y) => y.id !== l.id))} className="text-rose-600"><X size={15} /></button>
+            <p className="text-xs" style={{ color: "var(--a-muted)" }}>Customers see the dates. The reason is only for our team.</p>
+            {lv.length === 0 && <p className="text-sm" style={{ color: "var(--a-faint)" }}>No leaves planned.</p>}
+            {lv.map((l) => (
+              <div key={l.id} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--a-surface-2)", color: "var(--a-fg)" }}>
+                <span>{fmtDate(l.from)}{l.to !== l.from ? ` to ${fmtDate(l.to)}` : ""}{l.reason ? ` · ${l.reason}` : ""}</span>
+                <AdminButton variant="ghost" aria-label="Remove leave" onClick={() => removeLeave(l.id)} className="px-2 py-1 text-rose-600"><X size={15} /></AdminButton>
               </div>
             ))}
             <div className="grid grid-cols-2 gap-2">
-              <AdminInput type="date" value={leaveForm.from} onChange={(e) => setLeaveForm({ ...leaveForm, from: e.target.value })} aria-label="Leave from" />
-              <AdminInput type="date" value={leaveForm.to} onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })} aria-label="Leave to" />
+              <AdminInput type="date" min={today} value={leaveForm.from} onChange={(e) => setLeaveForm({ ...leaveForm, from: e.target.value, to: leaveForm.to || e.target.value })} aria-label="Leave from" />
+              <AdminInput type="date" min={leaveForm.from || today} value={leaveForm.to} onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })} aria-label="Leave to" />
             </div>
-            <AdminInput value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value.slice(0, 80) })} placeholder="Reason (only admin sees it)" />
-            <AdminButton variant="outline" onClick={addLeave}><Plus size={15} /> Add leave</AdminButton>
+            <AdminInput value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value.slice(0, 120) })} placeholder="Reason (optional, only our team sees it)" />
+            <AdminButton variant="outline" onClick={addLeave} disabled={!!err}><Plus size={15} /> Add leave</AdminButton>
+            {err && <p className="text-xs text-rose-700">Fix your weekly hours first.</p>}
+          </Card>
+
+          <Card className="p-5">
+            <p className="flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><CalendarClock size={16} /> Scheduled bookings</p>
+            <p className="mt-1 text-sm" style={{ color: "var(--a-muted)" }}>Pre-booked appointments are coming soon, together with live consultations.</p>
           </Card>
         </div>
       </div>
-
-      <Card className="p-5">
-        <p className="mb-3 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><CalendarDays size={16} /> Upcoming appointments</p>
-        {appointments.length === 0 ? <p className="text-sm" style={{ color: "var(--a-faint)" }}>No upcoming appointments.</p> : (
-          <ul className="grid gap-3 md:grid-cols-2">
-            {appointments.map((a) => {
-              const I = ICON[a.channel];
-              return (
-                <li key={a.id} className="flex items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
-                  <I size={18} style={{ color: "var(--a-gold)" }} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>{a.customer} · {a.topic}</p>
-                    <p className="text-xs" style={{ color: "var(--a-muted)" }}>{fmtDateTime(a.at)} · {a.minutes} min · {CHANNEL_LABEL[a.channel]}</p>
-                  </div>
-                  <Badge tone="blue">Prepaid</Badge>
-                  <AdminButton variant="ghost" onClick={() => setCancelAsk(a.id)}>Cancel</AdminButton>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <Modal open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Cancel this appointment?" subtitle="The customer is refunded in full. Frequent cancellations lower your ranking." size="sm">
-        <div className="space-y-4">
-          <Field label="Reason (sent to the customer)"><AdminTextarea rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value.slice(0, 300))} /></Field>
-          <AdminButton className="w-full" variant="danger" disabled={cancelReason.trim().length < 5} onClick={cancel}>Cancel appointment</AdminButton>
-        </div>
-      </Modal>
     </div>
   );
 }

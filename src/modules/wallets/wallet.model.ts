@@ -52,6 +52,8 @@ const RechargeSchema = new Schema(
   },
   { collection: "wallet_recharges", timestamps: true, versionKey: false },
 );
+// Admin Wallets page: filter by status, newest first.
+RechargeSchema.index({ status: 1, _id: -1 });
 RechargeSchema.index({ razorpayOrderId: 1 }, { unique: true, partialFilterExpression: { razorpayOrderId: { $type: "string" } } });
 RechargeSchema.index({ razorpayPaymentId: 1 }, { unique: true, partialFilterExpression: { razorpayPaymentId: { $type: "string" } } });
 

@@ -32,6 +32,13 @@ const slot = z.object({
   start: z.string().regex(TIME_RE, "Use HH:mm"),
   end: z.string().regex(TIME_RE, "Use HH:mm"),
 }).refine((s) => s.start < s.end, { message: "End time must be after start time" });
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const leave = z.object({
+  id: z.string().trim().max(40).optional(),
+  from: z.string().regex(DATE_RE, "Use YYYY-MM-DD"),
+  to: z.string().regex(DATE_RE, "Use YYYY-MM-DD"),
+  reason: z.string().trim().max(120).optional(),
+}).refine((l) => l.from <= l.to, { message: "Leave must end on or after the start date" });
 
 const profileFields = {
   displayName: name,
@@ -58,7 +65,12 @@ export const applySchema = z.object({
   email: z.string().trim().toLowerCase().email().max(180),
   password: z.string().min(8).max(72),
   rates: z.object({ chat: rate, call: rate, video: rate }).partial().optional(),
-  acceptTerms: z.literal(true, { message: "Please accept the partner terms" }),
+  acceptTerms: z.literal(true, { message: "Please confirm you have read the partner agreement" }),
+  /** The agreement version the applicant opened (required once one is published). */
+  agreementSeen: z.object({
+    agreementId: z.string().trim().min(1).max(60),
+    contentHash: z.string().trim().regex(/^[a-f0-9]{64}$/),
+  }).optional(),
 });
 export type ApplyDto = z.infer<typeof applySchema>;
 
@@ -83,6 +95,7 @@ export const selfUpdateSchema = z.object({
   ...profileFields,
   rates: z.object({ chat: rate, call: rate, video: rate }),
   availability: z.array(slot).max(42),
+  leaves: z.array(leave).max(20),
   timezone: z.string().trim().min(3).max(60),
 }).partial();
 export type SelfUpdateDto = z.infer<typeof selfUpdateSchema>;

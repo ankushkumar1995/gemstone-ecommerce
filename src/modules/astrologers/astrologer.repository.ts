@@ -154,6 +154,7 @@ function fromDoc(d: AstrologerDoc): Astrologer {
     certifications: d.certifications ?? undefined,
     rates: { chat: d.rates?.chat ?? 0, call: d.rates?.call ?? 0, video: d.rates?.video ?? 0 },
     availability: (d.availability ?? []).map((a) => ({ day: a.day as Astrologer["availability"][number]["day"], start: a.start, end: a.end })),
+    leaves: (d.leaves ?? []).map((l) => ({ id: l.id, from: l.from, to: l.to, ...(l.reason ? { reason: l.reason } : {}) })),
     timezone: d.timezone ?? "Asia/Kolkata",
     status: d.status as Astrologer["status"],
     statusReason: d.statusReason ?? undefined,
@@ -193,6 +194,9 @@ function fromDoc(d: AstrologerDoc): Astrologer {
     hidden: Boolean(d.hidden),
     pendingChanges: d.pendingChanges
       ? { displayName: d.pendingChanges.displayName ?? undefined, photo: d.pendingChanges.photo ?? undefined, shortBio: d.pendingChanges.shortBio ?? undefined, bio: d.pendingChanges.bio ?? undefined, submittedAt: d.pendingChanges.submittedAt }
+      : undefined,
+    signupConsent: d.signupConsent
+      ? { agreementId: d.signupConsent.agreementId, version: d.signupConsent.version, contentHash: d.signupConsent.contentHash, at: d.signupConsent.at, ip: d.signupConsent.ip ?? "", ipMasked: d.signupConsent.ipMasked ?? "", device: d.signupConsent.device ?? "" }
       : undefined,
     adminNotes: d.adminNotes ?? undefined,
     mustChangePassword: Boolean(d.mustChangePassword),

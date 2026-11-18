@@ -47,16 +47,19 @@ const ActivitySchema = new Schema(
 
 const CustomerSchema = new Schema(
   {
-    name: { type: String, required: [true, "name is required"], trim: true, minlength: 2, maxlength: 120 },
+    // Name is optional only for phone-OTP sign-ups (they add it in profile setup).
+    name: { type: String, trim: true, minlength: 2, maxlength: 120 },
+    // Identity: verified phone and/or email (at least one; enforced by the auth service).
     email: {
       type: String,
-      required: [true, "email is required"],
       lowercase: true,
       trim: true,
       match: [EMAIL_RE, "a valid email is required"],
       maxlength: 180,
     },
+    /** E.164 (+919876543210) once verified by OTP; free text for old admin-entered rows. */
     phone: { type: String, trim: true, maxlength: 30 },
+    phoneVerified: { type: Boolean, default: false },
     avatar: { type: String, trim: true },
     status: { type: String, enum: ["active", "vip", "blocked"], default: "active", index: true },
     tags: { type: [String], default: [], index: true },
@@ -71,7 +74,7 @@ const CustomerSchema = new Schema(
     // reads; the customer-auth service explicitly selects them when needed.
     passwordHash: { type: String, select: false },
     /** "password" | "google" — how this account authenticates. */
-    provider: { type: String, enum: ["password", "google"], default: "password" },
+    provider: { type: String, enum: ["password", "google", "phone"], default: "password" },
     emailVerified: { type: Boolean, default: false },
     emailVerifyTokenHash: { type: String, select: false, default: null },
     emailVerifyExpires: { type: Date, select: false, default: null },
@@ -120,9 +123,16 @@ const CustomerSchema = new Schema(
 );
 
 /* Indexes shaped around real queries. */
+// Unique only when present (phone-only accounts have no email).
+// Changed from { isDeleted:false } → run `npm run migrate:customer-auth` once.
 CustomerSchema.index(
   { email: 1 },
-  { unique: true, partialFilterExpression: { isDeleted: false } },
+  { name: "email_1", unique: true, partialFilterExpression: { isDeleted: false, email: { $type: "string" } } },
+);
+// One account per VERIFIED phone. Old unverified admin-entered phones don't conflict.
+CustomerSchema.index(
+  { phone: 1 },
+  { name: "phone_verified_unique", unique: true, partialFilterExpression: { isDeleted: false, phoneVerified: true, phone: { $type: "string" } } },
 );
 CustomerSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
 CustomerSchema.index({ name: "text", email: "text" });

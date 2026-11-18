@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, FileSignature } from "lucide-react";
 import { partnerApi } from "@/lib/astrologer-api";
+import type { PartnerAgreementView } from "@/modules/agreements/agreement.types";
 import { CATEGORY_OPTIONS, EXPERTISE_OPTIONS, LANGUAGE_OPTIONS } from "@/modules/astrologers/astrologer.types";
 import { PHONE_RE } from "@/modules/astrologers/astrologer.schema";
-import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Field, ProgressBar } from "@/app/admin/_components";
+import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Field, Modal, ProgressBar, useAdminToast, useOnMount } from "@/app/admin/_components";
 import { AuthFrame, FormError, fieldErrors } from "../_components/auth-frame";
 import { ChipSelect } from "../_components/chips";
 
@@ -53,7 +54,7 @@ function stepIssues(step: number, f: Form): Record<string, string> {
   }
   if (step === 3) {
     if (!(Number(f.chat) > 0)) e["rates.chat"] = "Chat rate is required";
-    if (!f.acceptTerms) e.acceptTerms = "Please accept the partner terms";
+    if (!f.acceptTerms) e.acceptTerms = "Please read the partner agreement and confirm";
   }
   return e;
 }
@@ -65,9 +66,21 @@ export function ApplyWizard() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { toast } = useAdminToast();
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
   const err = (k: string) => errors[k] ? <p className="mt-1 text-xs text-rose-600">{errors[k]}</p> : null;
   const progress = useMemo(() => ((step + 1) / STEPS.length) * 100, [step]);
+
+  // Current partner agreement (null when none is published).
+  const [agreement, setAgreement] = useState<PartnerAgreementView | null>(null);
+  const [reading, setReading] = useState(false);
+  const [readEnd, setReadEnd] = useState(false);
+  const [seen, setSeen] = useState(false);
+  const loadAgreement = async () => {
+    const r = await partnerApi.request<PartnerAgreementView | null>("/api/v1/agreements/current");
+    if (r.ok) setAgreement(r.data);
+  };
+  useOnMount(() => { void loadAgreement(); });
 
   const next = () => {
     const e = stepIssues(step, f);
@@ -89,9 +102,21 @@ export function ApplyWizard() {
       languages: f.languages, expertise: f.expertise, categories: f.categories,
       rates: { chat: Number(f.chat) || 0, call: Number(f.call) || 0, video: Number(f.video) || 0 },
       acceptTerms: true,
+      ...(agreement ? { agreementSeen: { agreementId: agreement.id, contentHash: agreement.contentHash as string } } : {}),
     });
-    setLoading(false);
     if (!res.ok) {
+      setLoading(false);
+      toast(res.message, "error");
+      // A newer version was published while applying: reload it and ask to read again.
+      const reason = (res.details as { reason?: string } | undefined)?.reason;
+      if (reason === "VERSION_CHANGED" || reason === "AGREEMENT_NOT_READ") {
+        await loadAgreement();
+        setSeen(false); setReadEnd(false); set("acceptTerms", false);
+        setErrors({ acceptTerms: res.message });
+        setError(null);
+        setStep(3);
+        return;
+      }
       const fe = fieldErrors(res.details);
       setErrors(fe);
       const first = Object.keys(fe).map((k) => FIELD_STEP[k]).filter((n) => n !== undefined).sort()[0];
@@ -99,6 +124,8 @@ export function ApplyWizard() {
       setError(res.message);
       return;
     }
+    // Spinner stays on while the KYC page loads.
+    toast("Application submitted", "success", { description: "Next: upload your KYC documents so we can review your profile." });
     router.replace("/astrologer/kyc?welcome=1");
   };
 
@@ -154,14 +181,58 @@ export function ApplyWizard() {
                 </Field>
               ))}
             </div>
-            <label className="flex items-start gap-3 text-sm" style={{ color: "var(--a-fg)" }}>
-              <input type="checkbox" className="mt-1 h-4 w-4 accent-[#c9942a]" checked={f.acceptTerms} onChange={(e) => set("acceptTerms", e.target.checked)} />
-              <span>I agree to the partner terms: I will give honest guidance, keep customer details private, not share personal contact details or take payments outside Astrounkle, and I understand the platform keeps a commission on each consultation.</span>
-            </label>
+            {agreement ? (
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--a-border)" }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <FileSignature size={18} style={{ color: "var(--a-gold)" }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>{agreement.title} · v{agreement.version}</p>
+                      <p className="text-xs" style={{ color: seen ? "#047857" : "var(--a-muted)" }}>{seen ? "Read" : "Please read it before you apply"}</p>
+                    </div>
+                  </div>
+                  <AdminButton type="button" variant="outline" onClick={() => setReading(true)}>{seen ? "Read again" : "Read agreement"}</AdminButton>
+                </div>
+                <label className={`mt-3 flex items-start gap-3 text-sm ${seen ? "" : "opacity-50"}`} style={{ color: "var(--a-fg)" }}>
+                  <input type="checkbox" className="mt-1 h-4 w-4 accent-[#c9942a]" disabled={!seen} checked={f.acceptTerms} onChange={(e) => set("acceptTerms", e.target.checked)} />
+                  <span>I have read the Partner Agreement v{agreement.version}. I understand I must sign it with an OTP in the partner panel before I can go online.</span>
+                </label>
+                <p className="mt-2 text-xs" style={{ color: "var(--a-faint)" }}>This is not your signature yet. You will sign it after you apply.</p>
+              </div>
+            ) : (
+              <label className="flex items-start gap-3 text-sm" style={{ color: "var(--a-fg)" }}>
+                <input type="checkbox" className="mt-1 h-4 w-4 accent-[#c9942a]" checked={f.acceptTerms} onChange={(e) => set("acceptTerms", e.target.checked)} />
+                <span>I understand I must sign the Astrounkle Partner Agreement in the partner panel before I can go online.</span>
+              </label>
+            )}
             {err("acceptTerms")}
           </div>
         )}
       </div>
+
+      {agreement && (
+        <Modal open={reading} onClose={() => setReading(false)} title={`${agreement.title} · v${agreement.version}`} subtitle="Scroll to the end to continue" size="lg">
+          <div
+            className="max-h-[55vh] space-y-4 overflow-y-auto pr-1 text-sm leading-relaxed focus:outline-none"
+            tabIndex={0}
+            role="document"
+            aria-label={`Partner agreement version ${agreement.version}`}
+            onScroll={(e) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight >= el.scrollHeight - 12) setReadEnd(true); }}
+            ref={(el) => { if (el && el.scrollHeight <= el.clientHeight + 12) setTimeout(() => setReadEnd(true), 0); }}
+          >
+            {agreement.clauses.map((c) => (
+              <section key={c.id}>
+                <h3 className="font-semibold" style={{ color: "var(--a-fg)" }}>{c.heading}</h3>
+                <p className="whitespace-pre-line" style={{ color: "var(--a-muted)" }}>{c.body}</p>
+              </section>
+            ))}
+            <p className="text-xs" style={{ color: "var(--a-faint)" }}>End of agreement v{agreement.version}.</p>
+          </div>
+          <AdminButton type="button" className="mt-4 w-full" disabled={!readEnd} onClick={() => { setSeen(true); setReading(false); }}>
+            {readEnd ? "I have read it" : "Scroll to the end to continue"}
+          </AdminButton>
+        </Modal>
+      )}
 
       <div className="mt-6 space-y-3">
         <FormError message={error} />
@@ -169,7 +240,7 @@ export function ApplyWizard() {
           {step > 0 ? <AdminButton type="button" variant="ghost" onClick={() => setStep((s) => s - 1)}><ArrowLeft size={16} />Back</AdminButton> : <span />}
           {step < STEPS.length - 1
             ? <AdminButton type="button" onClick={next}>Continue<ArrowRight size={16} /></AdminButton>
-            : <AdminButton type="button" onClick={submit} disabled={loading}>{loading ? "Submitting…" : "Submit application"}</AdminButton>}
+            : <AdminButton type="button" onClick={submit} loading={loading}>{loading ? "Submitting your application…" : "Submit application"}</AdminButton>}
         </div>
       </div>
     </AuthFrame>

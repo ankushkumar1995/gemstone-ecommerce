@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { partnerApi } from "@/lib/astrologer-api";
-import { AdminButton, AdminInput, Field } from "@/app/admin/_components";
+import { AdminButton, AdminInput, Field, useAdminToast } from "@/app/admin/_components";
 import { AuthFrame, FormError } from "../_components/auth-frame";
 
 /** Only allow same-area redirects after login (no open redirect). */
@@ -19,14 +19,16 @@ export function LoginForm() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { toast } = useAdminToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const res = await partnerApi.auth.login(email, password);
-    setLoading(false);
-    if (!res.ok) { setError(res.message); return; }
+    if (!res.ok) { setLoading(false); setError(res.message); toast(res.message, "error"); return; }
+    // Keep the spinner on while the panel loads.
+    toast(`Welcome back, ${res.data.astrologer.displayName.split(" ")[0]}`, "success");
     router.replace(res.data.astrologer.mustChangePassword ? "/astrologer/security?first=1" : safeFrom(params.get("from")));
   };
 
@@ -49,7 +51,7 @@ export function LoginForm() {
           </div>
         </Field>
         <FormError message={error} />
-        <AdminButton type="submit" disabled={loading || !email || !password} className="w-full">{loading ? "Signing in…" : "Sign in"}</AdminButton>
+        <AdminButton type="submit" loading={loading} disabled={!email || !password} className="w-full">{loading ? "Signing in…" : "Sign in"}</AdminButton>
         <p className="text-center text-sm"><Link href="/astrologer/forgot-password" style={{ color: "var(--a-muted)" }} className="hover:underline">Forgot password?</Link></p>
       </form>
     </AuthFrame>

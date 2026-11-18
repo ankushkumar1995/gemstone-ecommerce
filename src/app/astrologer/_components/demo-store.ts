@@ -130,9 +130,7 @@ export const LIVE_MAX_MIN = 180;
 export interface TipEntry { id: string; customer: string; amount: number; sessionId: string; note: string; at: string }
 export const tipsStore = createStore<TipEntry[]>("astro_demo_tips", []);
 
-/* ---------------- Agreement e-sign ---------------- */
-export interface AgreementAcceptance { version: string; acceptedAt: string; name: string; method: "typed_name_otp"; ipMasked: string; device: string; fingerprint: string }
-export const agreementStore = createStore<AgreementAcceptance[]>("astro_demo_agreement", []);
+/* Agreement e-sign is live: see src/modules/agreements (no browser store). */
 
 /* ---------------- Tax profile ---------------- */
 export const taxProfileStore = createStore<TaxProfile>("astro_demo_tax", {

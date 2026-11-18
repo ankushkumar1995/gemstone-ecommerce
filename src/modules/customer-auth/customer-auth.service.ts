@@ -22,11 +22,8 @@ import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
 import { hashPassword, verifyPassword, passwordIssue } from "@/core/password";
 import { sha256 } from "@/core/hash";
-import {
-  signCustomerAccessToken,
-  signCustomerRefreshToken,
-} from "@/core/customer-jwt";
 import type { Customer } from "@/modules/customers/customer.types";
+import { sessionService, type SessionCtx, type SessionTokens } from "./session.service";
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -35,19 +32,20 @@ const LOCK_MINUTES = 15;
 export interface CustomerPublic {
   id: string;
   name: string;
+  /** "" for phone-only accounts. */
   email: string;
   phone?: string;
+  phoneVerified: boolean;
+  /** True until the customer has told us their name (phone-OTP sign-ups). */
+  needsProfile: boolean;
   avatar?: string;
   emailVerified: boolean;
-  provider: "password" | "google";
+  provider: "password" | "google" | "phone";
   totalOrders: number;
   totalSpent: number;
 }
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
+export type AuthTokens = SessionTokens;
 
 export interface AuthResult {
   customer: CustomerPublic;
@@ -62,44 +60,36 @@ async function model() {
   return CustomerModel;
 }
 
-function toPublic(doc: {
+export function toPublic(doc: {
   _id: unknown;
-  name: string;
-  email: string;
+  name?: string | null;
+  email?: string | null;
   phone?: string | null;
+  phoneVerified?: boolean | null;
   avatar?: string | null;
   emailVerified?: boolean;
-  provider?: string;
+  provider?: string | null;
   totalOrders?: number;
   totalSpent?: number;
 }): CustomerPublic {
   return {
     id: String(doc._id),
-    name: doc.name,
-    email: doc.email,
+    name: doc.name ?? "",
+    email: doc.email ?? "",
     phone: doc.phone ?? undefined,
+    phoneVerified: Boolean(doc.phoneVerified),
+    needsProfile: !doc.name || doc.name.trim().length < 2,
     avatar: doc.avatar ?? undefined,
     emailVerified: Boolean(doc.emailVerified),
-    provider: (doc.provider === "google" ? "google" : "password"),
+    provider: (doc.provider === "google" ? "google" : doc.provider === "phone" ? "phone" : "password"),
     totalOrders: doc.totalOrders ?? 0,
     totalSpent: doc.totalSpent ?? 0,
   };
 }
 
-/** Mint a fresh access+refresh pair, persist the refresh hash + fingerprint. */
-async function issueTokens(
-  customerId: string,
-  tokenVersion: number,
-  fingerprint: string,
-): Promise<AuthTokens> {
-  const accessToken = await signCustomerAccessToken({ sub: customerId, ver: tokenVersion, fp: fingerprint });
-  const refreshToken = await signCustomerRefreshToken({ sub: customerId, ver: tokenVersion, fp: fingerprint });
-  const M = await model();
-  await M.updateOne(
-    { _id: customerId },
-    { $set: { refreshTokenHash: await sha256(refreshToken), lastLoginAt: new Date() } },
-  );
-  return { accessToken, refreshToken };
+/** Sign in on one device: a new customer_sessions row + token pair. */
+async function issueTokens(customerId: string, ctx: SessionCtx): Promise<AuthTokens> {
+  return sessionService.create(customerId, ctx);
 }
 
 export const customerAuthService = {
@@ -113,7 +103,7 @@ export const customerAuthService = {
     email: string;
     password: string;
     phone?: string;
-    fingerprint: string;
+    ctx: SessionCtx;
   }): Promise<Result<AuthResult>> {
     const email = input.email.trim().toLowerCase();
     const name = input.name.trim();
@@ -142,7 +132,7 @@ export const customerAuthService = {
       activity: [{ id: `cact_${Date.now()}`, at: new Date().toISOString(), type: "created", message: "Account created (self sign-up)", actor: "Customer" }],
     });
 
-    const tokens = await issueTokens(String(created._id), 0, input.fingerprint);
+    const tokens = await issueTokens(String(created._id), input.ctx);
     return ok({ customer: toPublic(created.toObject()), tokens });
   },
 
@@ -154,7 +144,7 @@ export const customerAuthService = {
   async login(input: {
     email: string;
     password: string;
-    fingerprint: string;
+    ctx: SessionCtx;
   }): Promise<Result<AuthResult>> {
     const email = input.email.trim().toLowerCase();
     const M = await model();
@@ -195,57 +185,35 @@ export const customerAuthService = {
 
     // success — clear failures, issue tokens
     await M.updateOne({ _id: doc._id }, { $set: { failedLoginCount: 0, lockedUntil: null } });
-    const ver = doc.tokenVersion ?? 0;
-    const tokens = await issueTokens(String(doc._id), ver, input.fingerprint);
+    const tokens = await issueTokens(String(doc._id), input.ctx);
     return ok({ customer: toPublic(doc.toObject()), tokens });
   },
 
-  /**
-   * Rotate a refresh token. Validates version + device, DETECTS REUSE (if the
-   * presented refresh doesn't match the stored hash, someone replayed an old
-   * one → bump tokenVersion to kill every session), then issues a new pair.
-   */
-  async refresh(input: {
-    customerId: string;
-    tokenVersion: number;
-    fingerprint: string;
-    presentedRefresh: string;
-  }): Promise<Result<AuthResult>> {
-    const M = await model();
-    const doc = await M.findOne({ _id: input.customerId, isDeleted: { $ne: true } }).select(
-      "+tokenVersion +refreshTokenHash",
-    );
-    if (!doc) return fail(AppErrors.unauthorized("Session expired"));
-
-    if ((doc.tokenVersion ?? 0) !== input.tokenVersion) {
-      return fail(AppErrors.unauthorized("Session expired"));
-    }
-    if (doc.status === "blocked") {
-      return fail(AppErrors.forbidden("This account has been disabled."));
-    }
-
-    const presentedHash = await sha256(input.presentedRefresh);
-    if (!doc.refreshTokenHash || doc.refreshTokenHash !== presentedHash) {
-      // Reuse / theft detected — nuke all sessions.
-      await M.updateOne({ _id: doc._id }, { $inc: { tokenVersion: 1 }, $set: { refreshTokenHash: null } });
-      return fail(AppErrors.unauthorized("Session invalidated. Please sign in again."));
-    }
-
-    const ver = doc.tokenVersion ?? 0;
-    const tokens = await issueTokens(String(doc._id), ver, input.fingerprint);
-    return ok({ customer: toPublic(doc.toObject()), tokens });
+  /** Rotate a refresh token (sessions handle rotation, grace window and theft). */
+  async refresh(presentedRefresh: string, ctx: SessionCtx): Promise<Result<AuthResult>> {
+    const r = await sessionService.refresh(presentedRefresh, ctx);
+    if (!r.ok) return r;
+    const me = await this.me(r.value.customerId);
+    if (!me.ok) return me;
+    const { customerId: _c, ...tokens } = r.value;
+    void _c;
+    return ok({ customer: me.value, tokens });
   },
 
-  /** Logout — clears the stored refresh hash for this account. */
-  async logout(customerId: string): Promise<void> {
-    const M = await model();
-    await M.updateOne({ _id: customerId }, { $set: { refreshTokenHash: null } });
+  /** Logout this device only. */
+  async logout(sessionId: string | undefined, customerId: string): Promise<void> {
+    if (sessionId) await sessionService.revoke(sessionId, "logout", customerId);
+    else {
+      const M = await model();
+      await M.updateOne({ _id: customerId }, { $set: { refreshTokenHash: null } });
+    }
   },
 
-  /** Logout everywhere — bump tokenVersion so every issued token dies. */
+  /** Logout everywhere — bump tokenVersion so every issued token dies, and close all sessions. */
   async logoutAll(customerId: string): Promise<void> {
     const M = await model();
     await M.updateOne({ _id: customerId }, { $inc: { tokenVersion: 1 }, $set: { refreshTokenHash: null } });
+    await sessionService.revokeAll(customerId, "logout_all");
   },
 
   /** Current customer (safe fields) by id — for /me. */
@@ -274,6 +242,7 @@ export const customerAuthService = {
       { _id: doc._id },
       { $set: { passwordHash: await hashPassword(input.newPassword), refreshTokenHash: null }, $inc: { tokenVersion: 1 } },
     );
+    await sessionService.revokeAll(String(doc._id), "password_changed");
     return ok({ id: String(doc._id) });
   },
 
@@ -321,6 +290,7 @@ export const customerAuthService = {
         $inc: { tokenVersion: 1 },
       },
     );
+    await sessionService.revokeAll(String(doc._id), "password_reset");
     return ok({ id: String(doc._id) });
   },
 };

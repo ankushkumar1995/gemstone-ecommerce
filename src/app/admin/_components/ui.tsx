@@ -6,7 +6,9 @@
  * tokens (var(--a-*)) and ship with subtle motion + hover polish.
  */
 
+import { useState } from "react";
 import { motion, type HTMLMotionProps } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Card({
@@ -75,10 +77,29 @@ export function AdminButton({
   children,
   variant = "primary",
   className,
+  loading,
+  onClick,
+  disabled,
   ...props
-}: Omit<HTMLMotionProps<"button">, "ref"> & {
+}: Omit<HTMLMotionProps<"button">, "ref" | "onClick"> & {
   variant?: "primary" | "ghost" | "outline" | "danger";
+  /** Force the busy state (spinner + disabled). */
+  loading?: boolean;
+  /** If this returns a Promise, the button shows a spinner until it settles. */
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => unknown;
 }) {
+  // Smart busy state: any async click handler gets a spinner automatically and
+  // the button can't be double-clicked while the request runs.
+  const [pending, setPending] = useState(false);
+  const busy = Boolean(loading) || pending;
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (busy) { e.preventDefault(); return; }
+    const r = onClick?.(e);
+    if (r && typeof (r as Promise<unknown>).then === "function") {
+      setPending(true);
+      (r as Promise<unknown>).finally(() => setPending(false));
+    }
+  };
   const base =
     "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
   const styles: Record<string, string> = {
@@ -90,13 +111,17 @@ export function AdminButton({
   };
   return (
     <motion.button
-      whileHover={{ scale: 1.03 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={busy ? undefined : { scale: 1.03 }}
+      whileTap={busy ? undefined : { scale: 0.97 }}
       transition={{ type: "spring", stiffness: 400, damping: 22 }}
-      className={cn(base, styles[variant], className)}
+      className={cn(base, styles[variant], busy && "cursor-wait", className)}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      onClick={handleClick}
       {...props}
     >
-      {children}
+      {busy && <Loader2 size={15} className="shrink-0 animate-spin" aria-hidden />}
+      {children as React.ReactNode}
     </motion.button>
   );
 }
@@ -104,7 +129,7 @@ export function AdminButton({
 export function AdminInput({
   className,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement>) {
+}: React.ComponentProps<"input">) {
   return (
     <input
       className={cn(

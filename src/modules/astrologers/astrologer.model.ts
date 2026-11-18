@@ -9,7 +9,7 @@ import "server-only";
  *    online + featured), login by email, slug lookup.
  */
 
-import { Schema, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
+import { Schema, deleteModel, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
 
 const KycDocSchema = new Schema(
   {
@@ -48,11 +48,21 @@ const SlotSchema = new Schema(
   { _id: false },
 );
 
+const LeaveSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    from: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    to: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    reason: { type: String, trim: true, maxlength: 120 },
+  },
+  { _id: false },
+);
+
 const ActivitySchema = new Schema(
   {
     id: { type: String, required: true },
     at: { type: String, required: true },
-    type: { type: String, enum: ["created", "status", "profile", "kyc", "presence", "note", "admin"], default: "note" },
+    type: { type: String, enum: ["created", "status", "profile", "kyc", "presence", "note", "admin", "agreement"], default: "note" },
     message: { type: String, required: true, trim: true, maxlength: 500 },
     actor: { type: String, trim: true, maxlength: 120 },
   },
@@ -86,6 +96,7 @@ const AstrologerSchema = new Schema(
       video: { type: Number, min: 0, default: 20 },
     },
     availability: { type: [SlotSchema], default: [] },
+    leaves: { type: [LeaveSchema], default: [] },
     timezone: { type: String, default: "Asia/Kolkata" },
 
     status: {
@@ -141,6 +152,21 @@ const AstrologerSchema = new Schema(
       ),
       default: undefined,
     },
+    signupConsent: {
+      type: new Schema(
+        {
+          agreementId: { type: String, required: true },
+          version: { type: String, required: true },
+          contentHash: { type: String, required: true },
+          at: { type: String, required: true },
+          ip: { type: String, default: "" },
+          ipMasked: { type: String, default: "" },
+          device: { type: String, default: "" },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     adminNotes: { type: String, trim: true, maxlength: 4000 },
     mustChangePassword: { type: Boolean, default: false },
     lastLoginAt: { type: String, default: null },
@@ -182,6 +208,10 @@ AstrologerSchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { i
 AstrologerSchema.index({ isDeleted: 1, status: 1, hidden: 1, "presence.online": -1, featured: -1, sortWeight: -1 });
 
 export type AstrologerDoc = InferSchemaType<typeof AstrologerSchema> & { _id: Types.ObjectId };
+
+// Dev hot reload: drop the cached model so schema changes (new enum values,
+// new fields) apply without restarting the server. Production compiles once.
+if (process.env.NODE_ENV !== "production" && models.Astrologer) deleteModel("Astrologer");
 
 export const AstrologerModel: Model<AstrologerDoc> =
   (models.Astrologer as Model<AstrologerDoc>) ?? model<AstrologerDoc>("Astrologer", AstrologerSchema);

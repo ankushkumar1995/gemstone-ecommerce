@@ -13,6 +13,7 @@ import { handle, jsonError, jsonOk } from "@/core/http";
 import { AppErrors } from "@/core/errors";
 import { parse } from "@/core/validation";
 import { rateLimit, clientIp } from "@/core/rate-limit";
+import { channelOf } from "@/core/channels";
 import { poojaBookingService, webBookingSchema } from "@/modules/poojas";
 import { requireCustomer } from "@/modules/customer-auth";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.ok) return jsonError(parsed.error);
 
     const session = await requireCustomer();
-    const res = await poojaBookingService.createFromWeb(parsed.value, session.ok ? session.value.customerId : null);
+    const res = await poojaBookingService.createFromWeb(parsed.value, session.ok ? session.value.customerId : null, channelOf(request.headers));
     if (!res.ok) return jsonError(res.error);
 
     // Only what the customer needs to see.

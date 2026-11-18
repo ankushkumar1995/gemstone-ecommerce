@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { channelsSchema } from "@/core/channels";
 
 /** lucide icon names allowed for a service (resolved in the storefront). */
 export const SERVICE_ICONS = [
@@ -34,6 +35,8 @@ export const createServiceSchema = z.object({
   order: z.coerce.number().int().min(0).optional(),
   /** null / omitted = Uncategorised. */
   categoryId: z.string().trim().max(40).nullable().optional(),
+  /** Website / app visibility. Omitted on create = both; omitted on update = unchanged. */
+  channels: channelsSchema.optional(),
 });
 
 export const updateServiceSchema = createServiceSchema.partial();

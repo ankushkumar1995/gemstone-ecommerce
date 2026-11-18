@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { partnerApi } from "@/lib/astrologer-api";
-import { AdminButton, AdminInput, Field } from "@/app/admin/_components";
+import { AdminButton, AdminInput, Field, useAdminToast } from "@/app/admin/_components";
 import { AuthFrame, FormError } from "../_components/auth-frame";
 
 export function ResetForm() {
@@ -14,6 +14,7 @@ export function ResetForm() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { toast } = useAdminToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +23,8 @@ export function ResetForm() {
     setError(null);
     const res = await partnerApi.auth.reset(token, pw);
     setLoading(false);
-    if (!res.ok) { setError(res.message); return; }
+    if (!res.ok) { setError(res.message); toast(res.message, "error"); return; }
+    toast("Password updated. Sign in with your new password.", "success");
     setDone(true);
   };
 
@@ -38,7 +40,7 @@ export function ResetForm() {
           <Field label="New password" hint="8+ characters, a letter and a number"><AdminInput type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
           <Field label="Confirm password"><AdminInput type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
           <FormError message={error} />
-          <AdminButton type="submit" className="w-full" disabled={loading || !pw}>{loading ? "Saving…" : "Update password"}</AdminButton>
+          <AdminButton type="submit" className="w-full" loading={loading} disabled={!pw}>{loading ? "Saving…" : "Update password"}</AdminButton>
         </form>
       )}
     </AuthFrame>

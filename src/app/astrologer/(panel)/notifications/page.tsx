@@ -1,98 +1,118 @@
 "use client";
 
 /**
- * Notifications (DEMO). Inbox with filters and read state, plus delivery
- * preferences per type. Security and payout alerts cannot be switched off.
+ * Notifications: account events (KYC, status, profile review, agreement) and
+ * admin announcements, from the server. Click to mark read; "Load more" pages
+ * back in time. Kept for 180 days.
  */
 
 import { useState } from "react";
-import { Bell, BellRing, CheckCheck, FileCheck2, IndianRupee, Megaphone, Settings2, Star } from "lucide-react";
-import { AdminButton, Card, PageHeader, StatsSkeleton, Tabs, Toggle, useAdminToast } from "@/app/admin/_components";
+import Link from "next/link";
+import { Bell, CheckCheck, FileCheck2, FileSignature, Megaphone, Settings2, UserRound, BadgeCheck, ArrowRight } from "lucide-react";
+import { AdminButton, Card, PageHeader, StatsSkeleton, Tabs, useAdminToast, useOnMount } from "@/app/admin/_components";
+import { partnerApi } from "@/lib/astrologer-api";
+import type { NoticeKind, PartnerNotification } from "@/modules/partner-notices/notice.types";
 import { usePartner } from "../../_components/partner-context";
-import { DemoBanner, timeAgo } from "../../_components/demo";
-import { MOCK_NOTIFICATIONS, type MockNotification } from "../../_components/mock-data";
+import { timeAgo } from "../../_components/demo";
 
-const KIND = {
-  request: { icon: BellRing, label: "Requests" },
-  payout: { icon: IndianRupee, label: "Payouts" },
-  review: { icon: Star, label: "Reviews" },
-  admin: { icon: Megaphone, label: "Announcements" },
-  system: { icon: Settings2, label: "System" },
+const KIND: Record<NoticeKind, { icon: typeof Bell; label: string }> = {
+  announcement: { icon: Megaphone, label: "Announcements" },
   kyc: { icon: FileCheck2, label: "KYC" },
-} as const;
-type Kind = keyof typeof KIND;
-const LOCKED: Kind[] = ["payout", "kyc", "system"];
+  status: { icon: BadgeCheck, label: "Account" },
+  profile: { icon: UserRound, label: "Profile" },
+  agreement: { icon: FileSignature, label: "Agreement" },
+  system: { icon: Settings2, label: "System" },
+};
+type TabKey = "all" | "unread" | NoticeKind;
 
 export default function NotificationsPage() {
-  const { me, loading } = usePartner();
+  const { setUnread } = usePartner();
   const { toast } = useAdminToast();
-  const [items, setItems] = useState<MockNotification[]>(MOCK_NOTIFICATIONS);
-  const [tab, setTab] = useState<"all" | "unread" | Kind>("all");
-  const [prefs, setPrefs] = useState<Record<Kind, { panel: boolean; email: boolean; whatsapp: boolean }>>({
-    request: { panel: true, email: false, whatsapp: true },
-    payout: { panel: true, email: true, whatsapp: true },
-    review: { panel: true, email: false, whatsapp: false },
-    admin: { panel: true, email: true, whatsapp: false },
-    system: { panel: true, email: true, whatsapp: false },
-    kyc: { panel: true, email: true, whatsapp: true },
-  });
+  const [items, setItems] = useState<PartnerNotification[] | null>(null);
+  const [unread, setUnreadLocal] = useState(0);
+  const [next, setNext] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("all");
 
-  if (loading || !me) return <StatsSkeleton count={2} />;
-  const unread = items.filter((n) => !n.read).length;
-  const shown = items.filter((n) => tab === "all" || (tab === "unread" ? !n.read : n.kind === tab));
+  const sync = (n: number) => { setUnreadLocal(n); setUnread(n); };
+  const load = async () => {
+    const r = await partnerApi.notices.list();
+    if (!r.ok) { toast(r.message, "error"); setItems([]); return; }
+    setItems(r.data.items); setNext(r.data.nextBefore); sync(r.data.unread);
+  };
+  useOnMount(load);
+
+  if (!items) return <StatsSkeleton count={2} />;
+  const shown = items.filter((n) => tab === "all" || (tab === "unread" ? !n.readAt : n.kind === tab));
+
+  const more = async () => {
+    if (!next) return;
+    const r = await partnerApi.notices.list(next);
+    if (!r.ok) { toast(r.message, "error"); return; }
+    setItems((l) => [...(l ?? []), ...r.data.items]); setNext(r.data.nextBefore);
+  };
+  const read = async (n: PartnerNotification) => {
+    if (n.readAt) return;
+    setItems((l) => (l ?? []).map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
+    const r = await partnerApi.notices.markRead([n.id]);
+    if (r.ok) sync(r.data.unread);
+  };
+  const readAll = async () => {
+    const r = await partnerApi.notices.markRead("all");
+    if (!r.ok) { toast(r.message, "error"); return; }
+    setItems((l) => (l ?? []).map((x) => ({ ...x, readAt: x.readAt ?? new Date().toISOString() })));
+    sync(r.data.unread);
+    toast("All marked as read", "success");
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Notifications" subtitle={unread ? `${unread} unread` : "All caught up"} action={<AdminButton variant="outline" disabled={!unread} onClick={() => setItems((l) => l.map((n) => ({ ...n, read: true })))}><CheckCheck size={15} /> Mark all read</AdminButton>} />
-      <DemoBanner />
+      <PageHeader
+        title="Notifications"
+        subtitle={unread ? `${unread} unread` : "All caught up"}
+        action={<AdminButton variant="outline" disabled={!unread} onClick={readAll}><CheckCheck size={15} /> Mark all read</AdminButton>}
+      />
 
       <Card className="p-0">
-        <div className="overflow-x-auto px-2"><Tabs tabs={[{ value: "all", label: "All" }, { value: "unread", label: "Unread", count: unread }, ...(Object.keys(KIND) as Kind[]).map((k) => ({ value: k, label: KIND[k].label }))]} value={tab} onChange={setTab} /></div>
+        <div className="overflow-x-auto px-2">
+          <Tabs<TabKey> value={tab} onChange={setTab} tabs={[
+            { value: "all", label: "All" },
+            { value: "unread", label: "Unread", count: unread || undefined },
+            ...(Object.keys(KIND) as NoticeKind[]).map((k) => ({ value: k, label: KIND[k].label })),
+          ]} />
+        </div>
         <ul className="divide-y" style={{ borderColor: "var(--a-border)" }}>
-          {shown.length === 0 && <li className="flex flex-col items-center py-12 text-sm" style={{ color: "var(--a-faint)" }}><Bell size={24} /> Nothing here.</li>}
+          {shown.length === 0 && (
+            <li className="flex flex-col items-center gap-2 py-12 text-sm" style={{ color: "var(--a-faint)" }}>
+              <Bell size={24} /> {tab === "unread" ? "No unread notifications." : "Nothing here yet. Updates about your account show up here."}
+            </li>
+          )}
           {shown.map((n) => {
-            const I = KIND[n.kind].icon;
+            const I = KIND[n.kind]?.icon ?? Bell;
+            const content = (
+              <>
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--a-surface-2)", color: "var(--a-gold)" }}><I size={16} /></span>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm ${n.readAt ? "" : "font-semibold"}`} style={{ color: "var(--a-fg)" }}>{n.title}</p>
+                  <p className="whitespace-pre-line text-sm" style={{ color: "var(--a-muted)" }}>{n.body}</p>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--a-faint)" }}>{timeAgo(n.createdAt)}</p>
+                </div>
+                {n.link && n.link !== "/astrologer" && <ArrowRight size={15} className="mt-1 shrink-0" style={{ color: "var(--a-faint)" }} />}
+                {!n.readAt && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-[#c9942a]" aria-label="Unread" />}
+              </>
+            );
+            const cls = "flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-black/[0.02]";
             return (
               <li key={n.id}>
-                <button type="button" onClick={() => setItems((l) => l.map((x) => (x.id === n.id ? { ...x, read: !x.read } : x)))} className="flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-black/[0.02]" aria-label={`${n.title}. ${n.read ? "Read" : "Unread"}. Click to toggle.`}>
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--a-surface-2)", color: "var(--a-gold)" }}><I size={16} /></span>
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm ${n.read ? "" : "font-semibold"}`} style={{ color: "var(--a-fg)" }}>{n.title}</p>
-                    <p className="text-sm" style={{ color: "var(--a-muted)" }}>{n.body}</p>
-                    <p className="mt-0.5 text-xs" style={{ color: "var(--a-faint)" }}>{timeAgo(n.at)}</p>
-                  </div>
-                  {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-[#c9942a]" aria-hidden />}
-                </button>
+                {n.link ? (
+                  <Link href={n.link} className={cls} onClick={() => void read(n)}>{content}</Link>
+                ) : (
+                  <button type="button" className={cls} onClick={() => void read(n)}>{content}</button>
+                )}
               </li>
             );
           })}
         </ul>
-      </Card>
-
-      <Card className="p-5">
-        <p className="mb-1 font-semibold" style={{ color: "var(--a-fg)" }}>How you want to be told</p>
-        <p className="mb-4 text-xs" style={{ color: "var(--a-muted)" }}>Payout, KYC and system alerts always reach you in the panel for your safety.</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs" style={{ color: "var(--a-muted)" }}><th className="py-2 font-medium">Type</th><th className="font-medium">Panel</th><th className="font-medium">Email</th><th className="font-medium">WhatsApp</th></tr></thead>
-            <tbody>
-              {(Object.keys(KIND) as Kind[]).map((k) => (
-                <tr key={k} className="border-t" style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }}>
-                  <td className="py-3">{KIND[k].label}</td>
-                  {(["panel", "email", "whatsapp"] as const).map((c) => {
-                    const locked = c === "panel" && LOCKED.includes(k);
-                    return (
-                      <td key={c} className={locked ? "pointer-events-none opacity-50" : ""}>
-                        <Toggle checked={prefs[k][c]} onChange={(v) => setPrefs({ ...prefs, [k]: { ...prefs[k], [c]: v } })} ariaLabel={`${KIND[k].label} by ${c}`} />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <AdminButton className="mt-4" onClick={() => toast("Preferences saved", "success")}>Save preferences</AdminButton>
+        {next && <div className="border-t p-3 text-center" style={{ borderColor: "var(--a-border)" }}><AdminButton variant="ghost" onClick={more}>Load more</AdminButton></div>}
       </Card>
     </div>
   );

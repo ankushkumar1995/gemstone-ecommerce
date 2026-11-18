@@ -6,6 +6,8 @@ import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { AstrologerAvatar, BADGE_TEXT, PresenceTag } from "./astrologer-card";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const day = (d: string) => new Date(`${d}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const leaveText = (from: string, to: string) => (from === to ? `Away on ${day(from)}` : `Away ${day(from)} to ${day(to)}`);
 
 export function AstrologerProfileView({ a }: { a: PublicAstrologer }) {
   const channels = [
@@ -49,6 +51,14 @@ export function AstrologerProfileView({ a }: { a: PublicAstrologer }) {
               </div>
             )}
             {a.education && <div className="rounded-2xl border border-foreground/10 p-4"><p className="text-sm font-semibold text-foreground">Training</p><p className="mt-1 text-sm text-muted">{a.education}</p></div>}
+            {a.leaves.length > 0 && (
+              <div className="rounded-2xl border border-gold-400/30 bg-gold-400/5 p-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-foreground">Planned time off</p>
+                <ul className="mt-1 space-y-0.5 text-sm text-muted">
+                  {a.leaves.map((l) => <li key={l.from}>{leaveText(l.from, l.to)}</li>)}
+                </ul>
+              </div>
+            )}
             {a.availability.length > 0 && (
               <div className="rounded-2xl border border-foreground/10 p-4">
                 <p className="text-sm font-semibold text-foreground">Usually available (IST)</p>

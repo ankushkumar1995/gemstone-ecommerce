@@ -53,7 +53,25 @@ export interface WalletRepository {
   /** Mark paid ONCE. Returns null if it was already paid (or not found). */
   markRechargePaid(razorpayOrderId: string, razorpayPaymentId: string | undefined): Promise<WalletRecharge | null>;
   rechargesFor(customerId: string, limit: number): Promise<WalletRecharge[]>;
+
+  /* ---- admin, across all customers (read only) ---- */
+  /** Newest first. `customerIds` restricts to these customers (search). */
+  allRecharges(f: { status?: WalletRecharge["status"]; customerIds?: string[]; gatewayId?: string; from?: string; to?: string; cursor?: string; limit: number }): Promise<{ items: WalletRecharge[]; nextCursor: string | null }>;
+  allTxns(f: { type?: WalletTxnType; customerIds?: string[]; from?: string; to?: string; cursor?: string; limit: number }): Promise<TxnPage>;
+  /** Paid recharge totals since each given ISO time, plus the balances customers hold. */
+  stats(since: Record<string, string>, stuckBefore: string): Promise<WalletStats>;
 }
+
+export interface RechargeTotals { count: number; amountPaise: number; bonusPaise: number; gstPaise: number; payablePaise: number }
+export interface WalletStats {
+  paid: Record<string, RechargeTotals>;
+  /** What customers hold right now (liability). */
+  held: { cashPaise: number; promoPaise: number; wallets: number };
+  /** Started but not paid, older than `stuckBefore`. */
+  unpaidOld: number;
+}
+
+const emptyTotals = (): RechargeTotals => ({ count: 0, amountPaise: 0, bonusPaise: 0, gstPaise: 0, payablePaise: 0 });
 
 /** Split a debit across buckets: promo first. */
 export function splitDebit(cash: number, promo: number, amount: number) {
@@ -115,6 +133,32 @@ const mockRepo: WalletRepository = {
     return { ...r };
   },
   async rechargesFor(customerId, limit) { return mem.recharges.filter((r) => r.customerId === customerId).slice(0, limit).map((r) => ({ ...r })); },
+  async allRecharges(f) {
+    const all = mem.recharges.filter((r) =>
+      (!f.status || r.status === f.status) && (!f.customerIds || f.customerIds.includes(r.customerId)) &&
+      (!f.gatewayId || r.razorpayOrderId === f.gatewayId || r.razorpayPaymentId === f.gatewayId) &&
+      (!f.from || r.createdAt >= f.from) && (!f.to || r.createdAt <= f.to));
+    const start = f.cursor ? all.findIndex((r) => r.id === f.cursor) + 1 : 0;
+    const items = all.slice(start, start + f.limit).map((r) => ({ ...r }));
+    return { items, nextCursor: start + f.limit < all.length ? items[items.length - 1]?.id ?? null : null };
+  },
+  async allTxns(f) {
+    const all = mem.txns.filter((t) => (!f.type || t.type === f.type) && (!f.customerIds || f.customerIds.includes(t.customerId)) && (!f.from || t.at >= f.from) && (!f.to || t.at <= f.to));
+    const start = f.cursor ? all.findIndex((t) => t.id === f.cursor) + 1 : 0;
+    const items = all.slice(start, start + f.limit).map((t) => ({ ...t }));
+    return { items, nextCursor: start + f.limit < all.length ? items[items.length - 1]?.id ?? null : null };
+  },
+  async stats(since, stuckBefore) {
+    const paid: Record<string, RechargeTotals> = {};
+    for (const [k, iso] of Object.entries(since)) {
+      const t = emptyTotals();
+      for (const r of mem.recharges) if (r.status === "paid" && (r.paidAt ?? r.createdAt) >= iso) { t.count++; t.amountPaise += r.amountPaise; t.bonusPaise += r.bonusPaise; t.gstPaise += r.gstPaise; t.payablePaise += r.payablePaise; }
+      paid[k] = t;
+    }
+    let cash = 0, promo = 0, n = 0;
+    for (const w of mem.wallets.values()) { cash += w.cashPaise; promo += w.promoPaise; if (w.cashPaise || w.promoPaise) n++; }
+    return { paid, held: { cashPaise: cash, promoPaise: promo, wallets: n }, unpaidOld: mem.recharges.filter((r) => r.status === "created" && r.createdAt < stuckBefore).length };
+  },
 };
 
 /* ------------------------------------------------------------------ *
@@ -250,6 +294,55 @@ const mongoRepo: WalletRepository = {
   async rechargesFor(customerId, limit) {
     const { WalletRechargeModel } = await models();
     return (await WalletRechargeModel.find({ customerId }).sort({ _id: -1 }).limit(limit).lean<Row[]>()).map(rechargeFrom);
+  },
+  async allRecharges(f) {
+    const { WalletRechargeModel } = await models();
+    const q: Row = {};
+    if (f.status) q.status = f.status;
+    if (f.customerIds) q.customerId = { $in: f.customerIds };
+    if (f.gatewayId) q.$or = [{ razorpayOrderId: f.gatewayId }, { razorpayPaymentId: f.gatewayId }];
+    if (f.from || f.to) q.createdAt = { ...(f.from ? { $gte: new Date(f.from) } : {}), ...(f.to ? { $lte: new Date(f.to) } : {}) };
+    if (f.cursor && /^[a-f0-9]{24}$/i.test(f.cursor)) q._id = { $lt: f.cursor };
+    const rows = await WalletRechargeModel.find(q).sort({ _id: -1 }).limit(f.limit + 1).lean<Row[]>();
+    const items = rows.slice(0, f.limit).map(rechargeFrom);
+    return { items, nextCursor: rows.length > f.limit ? items[items.length - 1].id : null };
+  },
+  async allTxns(f) {
+    const { WalletTxnModel } = await models();
+    const q: Row = {};
+    if (f.type) q.type = f.type;
+    if (f.customerIds) q.customerId = { $in: f.customerIds };
+    if (f.from || f.to) q.at = { ...(f.from ? { $gte: f.from } : {}), ...(f.to ? { $lte: f.to } : {}) };
+    if (f.cursor && /^[a-f0-9]{24}$/i.test(f.cursor)) q._id = { $lt: f.cursor };
+    const rows = await WalletTxnModel.find(q).sort({ _id: -1 }).limit(f.limit + 1).lean<Row[]>();
+    const items = rows.slice(0, f.limit).map(txnFrom);
+    return { items, nextCursor: rows.length > f.limit ? items[items.length - 1].id : null };
+  },
+  async stats(since, stuckBefore) {
+    const { WalletModel, WalletRechargeModel } = await models();
+    const sum = { count: { $sum: 1 }, amountPaise: { $sum: "$amountPaise" }, bonusPaise: { $sum: "$bonusPaise" }, gstPaise: { $sum: "$gstPaise" }, payablePaise: { $sum: "$payablePaise" } };
+    const keys = Object.keys(since);
+    const [facets, held, unpaidOld] = await Promise.all([
+      keys.length
+        ? WalletRechargeModel.aggregate<Record<string, (RechargeTotals & { _id: null })[]>>([
+            { $match: { status: "paid" } },
+            // paidAt is an ISO string; old rows without it fall back to createdAt.
+            { $addFields: { _paidAt: { $ifNull: ["$paidAt", { $dateToString: { date: "$createdAt", format: "%Y-%m-%dT%H:%M:%S.%LZ" } }] } } },
+            { $facet: Object.fromEntries(keys.map((k) => [k, [{ $match: { _paidAt: { $gte: since[k] } } }, { $group: { _id: null, ...sum } }]])) },
+          ])
+        : Promise.resolve([{}]),
+      WalletModel.aggregate<{ cashPaise: number; promoPaise: number; wallets: number }>([
+        { $group: { _id: null, cashPaise: { $sum: "$cashPaise" }, promoPaise: { $sum: "$promoPaise" }, wallets: { $sum: { $cond: [{ $gt: [{ $add: ["$cashPaise", "$promoPaise"] }, 0] }, 1, 0] } } } },
+      ]),
+      WalletRechargeModel.countDocuments({ status: "created", createdAt: { $lt: new Date(stuckBefore) } }),
+    ]);
+    const f0 = (facets[0] ?? {}) as Record<string, (RechargeTotals & { _id: null })[]>;
+    const paid = Object.fromEntries(keys.map((k) => {
+      const g = f0[k]?.[0];
+      return [k, g ? { count: g.count, amountPaise: g.amountPaise, bonusPaise: g.bonusPaise, gstPaise: g.gstPaise, payablePaise: g.payablePaise } : emptyTotals()];
+    }));
+    const h = held[0];
+    return { paid, held: { cashPaise: h?.cashPaise ?? 0, promoPaise: h?.promoPaise ?? 0, wallets: h?.wallets ?? 0 }, unpaidOld };
   },
 };
 

@@ -30,6 +30,8 @@ export interface MailMessage {
   text: string;
   /** Optional HTML body. */
   html?: string;
+  /** Optional files (e.g. a signed agreement PDF). Keep them small (< 5 MB total). */
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
 }
 
 /** One provider's attempt outcome (for logging / the admin email log later). */
@@ -142,6 +144,7 @@ async function sendViaSmtp(
       subject: msg.subject,
       text: msg.text,
       html: msg.html,
+      attachments: msg.attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
     });
     return { provider: "smtp", delivered: true };
   } catch (e) {
@@ -186,6 +189,7 @@ async function sendViaResend(from: FromInfo, msg: MailMessage): Promise<MailAtte
       subject: msg.subject,
       text: msg.text,
       html: msg.html,
+      ...(msg.attachments?.length ? { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content })) } : {}),
     });
     if (result?.error) {
       return { provider: "resend", delivered: false, error: result.error.message ?? "resend error" };

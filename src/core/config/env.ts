@@ -47,6 +47,38 @@ const schema = z.object({
   // Resend API key (email provider). Lives ONLY in env. When absent, the
   // Resend provider is skipped and the engine falls back to the next provider.
   RESEND_API_KEY: z.string().optional(),
+
+  // SMS (OTPs). All optional: with no provider set, OTPs are not sent by SMS
+  // (dev shows the code on screen; production falls back to email). Set
+  // SMS_PROVIDER once a provider + DLT template are approved.
+  SMS_PROVIDER: z.string().optional(),
+  SMS_API_KEY: z.string().optional(),
+  SMS_SENDER_ID: z.string().optional(),
+  SMS_OTP_TEMPLATE_ID: z.string().optional(),
+
+  // Demo builds only: "true" returns the OTP in the API response (shown on
+  // screen) when no SMS provider is connected, EVEN in production. Never set
+  // this on the real public launch.
+  OTP_DEMO_MODE: z.enum(["true", "false"]).optional(),
+  // Shared secret for scheduled jobs (e.g. a Render cron hitting
+  // /api/v1/internal/payments/sweep). Unset = the endpoint is disabled.
+  CRON_SECRET: z.string().min(24).optional(),
+  // LiveKit (live video). URL is wss://<project>.livekit.cloud. All optional:
+  // without them lives run without video (photo + live chat).
+  LIVEKIT_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().optional(),
+  LIVEKIT_API_SECRET: z.string().optional(),
+  // Optional separate S3 keys for LiveKit to upload HLS segments (least privilege:
+  // PutObject on live/* only). Falls back to the main S3 keys.
+  LIVE_S3_ACCESS_KEY_ID: z.string().optional(),
+  LIVE_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // RazorpayX (automatic astrologer payouts). Keys fall back to the Razorpay
+  // keys; ACCOUNT_NUMBER is the RazorpayX business account to pay from. All
+  // optional: without them payouts stay manual (admin enters the UTR).
+  RAZORPAYX_KEY_ID: z.string().optional(),
+  RAZORPAYX_KEY_SECRET: z.string().optional(),
+  RAZORPAYX_ACCOUNT_NUMBER: z.string().optional(),
+  RAZORPAYX_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const parsed = schema.safeParse({
@@ -74,6 +106,21 @@ const parsed = schema.safeParse({
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
+  SMS_PROVIDER: process.env.SMS_PROVIDER,
+  SMS_API_KEY: process.env.SMS_API_KEY,
+  SMS_SENDER_ID: process.env.SMS_SENDER_ID,
+  SMS_OTP_TEMPLATE_ID: process.env.SMS_OTP_TEMPLATE_ID,
+  OTP_DEMO_MODE: process.env.OTP_DEMO_MODE as "true" | "false" | undefined,
+  CRON_SECRET: process.env.CRON_SECRET || undefined,
+  LIVEKIT_URL: process.env.LIVEKIT_URL || undefined,
+  LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || undefined,
+  LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || undefined,
+  LIVE_S3_ACCESS_KEY_ID: process.env.LIVE_S3_ACCESS_KEY_ID || undefined,
+  LIVE_S3_SECRET_ACCESS_KEY: process.env.LIVE_S3_SECRET_ACCESS_KEY || undefined,
+  RAZORPAYX_KEY_ID: process.env.RAZORPAYX_KEY_ID || undefined,
+  RAZORPAYX_KEY_SECRET: process.env.RAZORPAYX_KEY_SECRET || undefined,
+  RAZORPAYX_ACCOUNT_NUMBER: process.env.RAZORPAYX_ACCOUNT_NUMBER || undefined,
+  RAZORPAYX_WEBHOOK_SECRET: process.env.RAZORPAYX_WEBHOOK_SECRET || undefined,
 });
 
 if (!parsed.success) {

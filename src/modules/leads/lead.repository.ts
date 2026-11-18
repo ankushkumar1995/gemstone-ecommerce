@@ -7,7 +7,7 @@
  * change in `getLeadRepository()`, with zero changes to services/controllers.
  */
 
-import { env } from "@/core/config/env";
+import { dataSourceFor } from "@/core/config/env";
 import type { Lead } from "./lead.types";
 
 export interface LeadRepository {
@@ -21,9 +21,8 @@ export interface LeadRepository {
  * Mock implementation (in-memory). Pre-seeded with a couple of leads so
  * the admin view has something to show.
  *
- * NOTE: a module-level array resets on server restart / per serverless
- * invocation. That's fine for the mock phase; real persistence arrives
- * with the Mongo implementation.
+ * NOTE: a module-level array resets on server restart. Only used when no
+ * database is configured; with MONGODB_URI set, leads go to Mongo below.
  * ------------------------------------------------------------------ */
 const store: Lead[] = [
   {
@@ -69,18 +68,98 @@ const mockLeadRepository: LeadRepository = {
   },
 };
 
-/* Mongo implementation placeholder — wired in Phase 2.
- * const mongoLeadRepository: LeadRepository = { ... }
- */
+/* ------------------------------------------------------------------ *
+ * Mongo implementation (production). The database assigns the id
+ * (ObjectId); the mock-style id the service generates is ignored.
+ * ------------------------------------------------------------------ */
 
-/** Resolve the active repository based on configured data source. */
+/** Newest leads returned to the admin list (keeps the payload bounded). */
+const LIST_LIMIT = 1000;
+
+type Row = {
+  _id: unknown;
+  source: Lead["source"];
+  name: string;
+  email: string;
+  phone?: string | null;
+  topic?: string | null;
+  message?: string | null;
+  birth?: { date?: string | null; time?: string | null; place?: string | null } | null;
+  gender?: Lead["gender"] | null;
+  maritalStatus?: Lead["maritalStatus"] | null;
+  astrologer?: string | null;
+  status: Lead["status"];
+  createdAt?: Date;
+};
+
+const isOid = (id: string) => /^[a-f0-9]{24}$/i.test(id);
+
+async function M() {
+  const { connectMongoose } = await import("@/core/db/mongoose");
+  await connectMongoose();
+  return (await import("./lead.model")).LeadModel;
+}
+
+/** Drop null/empty values so the API shape matches the mock exactly. */
+const opt = <T,>(v: T | null | undefined): T | undefined =>
+  v === null || v === undefined || (v as unknown) === "" ? undefined : v;
+
+function out(d: Row): Lead {
+  const birth = d.birth
+    ? {
+        ...(opt(d.birth.date) && { date: d.birth.date as string }),
+        ...(opt(d.birth.time) && { time: d.birth.time as string }),
+        ...(opt(d.birth.place) && { place: d.birth.place as string }),
+      }
+    : undefined;
+  return {
+    id: String(d._id),
+    source: d.source,
+    name: d.name,
+    email: d.email,
+    phone: opt(d.phone),
+    topic: opt(d.topic),
+    message: opt(d.message),
+    birth: birth && Object.keys(birth).length ? birth : undefined,
+    gender: opt(d.gender),
+    maritalStatus: opt(d.maritalStatus),
+    astrologer: opt(d.astrologer),
+    status: d.status,
+    createdAt: (d.createdAt instanceof Date ? d.createdAt : new Date()).toISOString(),
+  };
+}
+
+const mongoLeadRepository: LeadRepository = {
+  async create(lead) {
+    const m = await M();
+    const { id: _id, createdAt: _c, ...data } = lead;
+    void _id;
+    void _c;
+    const doc = await m.create(data);
+    return out(doc.toObject() as unknown as Row);
+  },
+  async findAll() {
+    const m = await M();
+    const rows = await m.find().sort({ createdAt: -1 }).limit(LIST_LIMIT).lean<Row[]>();
+    return rows.map(out);
+  },
+  async findById(id) {
+    if (!isOid(id)) return null;
+    const m = await M();
+    const d = await m.findById(id).lean<Row>();
+    return d ? out(d) : null;
+  },
+  async updateStatus(id, status) {
+    if (!isOid(id)) return null;
+    const m = await M();
+    const d = await m
+      .findByIdAndUpdate(id, { $set: { status } }, { returnDocument: "after", runValidators: true })
+      .lean<Row>();
+    return d ? out(d) : null;
+  },
+};
+
+/** Mongo when a database is configured (see dataSourceFor), else the mock. */
 export function getLeadRepository(): LeadRepository {
-  switch (env.DATA_SOURCE) {
-    case "mongo":
-      // return mongoLeadRepository; (Phase 2)
-      throw new Error("Mongo repository not implemented yet");
-    case "mock":
-    default:
-      return mockLeadRepository;
-  }
+  return dataSourceFor("leads") === "mongo" ? mongoLeadRepository : mockLeadRepository;
 }

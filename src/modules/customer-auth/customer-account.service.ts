@@ -120,14 +120,20 @@ export const customerAccountService = {
       if (name.length < 2) return fail(AppErrors.validation("Please enter your name"));
       set.name = name;
     }
+    const M = await model();
     if (input.phone !== undefined) {
-      set.phone = input.phone.trim() || null;
+      // A verified phone is a sign-in identity: it can only change through OTP.
+      const cur = await M.findOne({ _id: customerId, isDeleted: { $ne: true } }).select("phone phoneVerified").lean<{ phone?: string | null; phoneVerified?: boolean }>();
+      const next = input.phone.trim() || null;
+      if (cur?.phoneVerified && next !== (cur.phone ?? null)) {
+        return fail(AppErrors.validation("Your mobile number is used to sign in. Changing it needs OTP verification (coming soon). Contact support to change it."));
+      }
+      if (!cur?.phoneVerified) set.phone = next;
     }
     if (Object.keys(set).length === 0) {
       return fail(AppErrors.validation("Nothing to update"));
     }
 
-    const M = await model();
     const doc = await M.findOneAndUpdate(
       { _id: customerId, isDeleted: { $ne: true } },
       {
@@ -143,7 +149,7 @@ export const customerAccountService = {
       { new: true, runValidators: true },
     ).lean();
     if (!doc) return fail(AppErrors.unauthorized("Not signed in"));
-    return ok({ id: String(doc._id), name: doc.name, phone: doc.phone ?? undefined });
+    return ok({ id: String(doc._id), name: doc.name ?? "", phone: doc.phone ?? undefined });
   },
 
   /* ───────────────────────── addresses ───────────────────────── */

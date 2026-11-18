@@ -11,8 +11,9 @@ import {
   StatusPill, Tabs, Toggle, useAdminToast, useOnMount,
 } from "../../../_components";
 import { A_NEXT, A_STATUS, KYC_NAMES, KYC_TONE } from "../astro-meta";
+import { AstrologerAgreementTab } from "./agreement-tab";
 
-type Tab = "overview" | "kyc" | "edits" | "program" | "activity";
+type Tab = "overview" | "kyc" | "agreement" | "edits" | "program" | "activity";
 const BADGE_LABEL: Record<AstroBadge, string> = { vip: "VIP", trending: "Trending", topRated: "Top rated", rising: "Rising star", mostBooked: "Most booked" };
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -125,6 +126,7 @@ export function AstrologerDetailView({ id }: { id: string }) {
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[
         { value: "overview", label: "Overview" },
         { value: "kyc", label: "KYC & payout", count: a.kyc.filter((d) => d.status === "pending").length || undefined },
+        { value: "agreement", label: "Agreement" },
         { value: "edits", label: "Profile edits", count: pc ? 1 : undefined },
         { value: "program", label: "Commission & visibility" },
         { value: "activity", label: "Activity", count: a.activity.length },
@@ -168,6 +170,13 @@ export function AstrologerDetailView({ id }: { id: string }) {
                 const s = a.availability.filter((x) => x.day === i);
                 return s.length ? <p key={d} className="text-sm" style={{ color: "var(--a-fg)" }}><span className="inline-block w-10 font-medium">{d}</span>{s.map((x) => `${x.start}-${x.end}`).join(", ")}</p> : null;
               }) : <p className="text-sm" style={{ color: "var(--a-muted)" }}>Not set</p>}
+              <p className="mb-1 mt-4 text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Leaves</p>
+              {(a.leaves ?? []).length ? (a.leaves ?? []).map((l) => (
+                <p key={l.id} className="text-sm" style={{ color: "var(--a-fg)" }}>
+                  {new Date(`${l.from}T00:00:00+05:30`).toLocaleDateString("en-IN")}{l.to !== l.from ? ` to ${new Date(`${l.to}T00:00:00+05:30`).toLocaleDateString("en-IN")}` : ""}
+                  {l.reason && <span style={{ color: "var(--a-muted)" }}> · {l.reason}</span>}
+                </p>
+              )) : <p className="text-sm" style={{ color: "var(--a-muted)" }}>None planned</p>}
             </Card>
           </div>
         </div>
@@ -205,6 +214,8 @@ export function AstrologerDetailView({ id }: { id: string }) {
           </Card>
         </div>
       )}
+
+      {tab === "agreement" && <AstrologerAgreementTab id={a.id} />}
 
       {tab === "edits" && (pc ? (
         <Card className="space-y-4 p-5">

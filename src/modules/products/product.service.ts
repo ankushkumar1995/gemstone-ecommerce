@@ -7,6 +7,7 @@
 import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
 import { newId } from "@/core/id";
+import { ALL_CHANNELS, isVisibleOn, normalizeChannels } from "@/core/channels";
 import { cache } from "@/core/cache";
 import { paginate, type ListParams, type Paginated } from "@/core/query";
 import { auditService } from "@/modules/audit";
@@ -172,6 +173,18 @@ export const productService = {
     return ok(updated);
   },
 
+  /** Atomic stock hold for checkout (never oversells). See the repository for rules. */
+  async reserveStock(id: string, sku: string | undefined, qty: number): Promise<boolean> {
+    const done = await getProductRepository().reserveStock(id, sku, qty);
+    if (done) invalidate();
+    return done;
+  },
+
+  async releaseStock(id: string, sku: string | undefined, qty: number): Promise<void> {
+    await getProductRepository().releaseStock(id, sku, qty);
+    invalidate();
+  },
+
   async create(dto: CreateProductDto): Promise<Result<Product>> {
     const repo = getProductRepository();
 
@@ -258,6 +271,7 @@ export const productService = {
       collections: dto.collections ?? [],
       related: dto.related ?? [],
       featured: dto.featured ?? false,
+      channels: normalizeChannels(dto.channels ?? ALL_CHANNELS),
 
       /* production catalogue surface */
       coverImage: dto.coverImage?.trim() || dto.image?.trim() || PLACEHOLDER_IMAGE,
@@ -401,6 +415,7 @@ export const productService = {
       ...(dto.collections !== undefined && { collections: dto.collections }),
       ...(dto.related !== undefined && { related: dto.related }),
       ...(dto.featured !== undefined && { featured: dto.featured }),
+      ...(dto.channels !== undefined && { channels: normalizeChannels(dto.channels) }),
 
       /* production catalogue surface */
       ...(dto.subtitle !== undefined && { subtitle: dto.subtitle || undefined }),
@@ -611,7 +626,7 @@ export const productService = {
   async getActiveBySlug(slug: string): Promise<Result<Product>> {
     const repo = getProductRepository();
     const p = await repo.findBySlug(slug);
-    if (!p || (p.status ?? "active") !== "active") {
+    if (!p || (p.status ?? "active") !== "active" || !isVisibleOn(p.channels, "web")) {
       return fail(AppErrors.notFound("Product not found"));
     }
     return ok(p);
@@ -621,7 +636,7 @@ export const productService = {
   async listActive(): Promise<Result<Product[]>> {
     const repo = getProductRepository();
     const all = await repo.findAll();
-    return ok(all.filter((p) => (p.status ?? "active") === "active"));
+    return ok(all.filter((p) => (p.status ?? "active") === "active" && isVisibleOn(p.channels, "web")));
   },
 
   /**
@@ -630,7 +645,7 @@ export const productService = {
    */
   async relatedActive(slug: string, limit = 4): Promise<Result<Product[]>> {
     const repo = getProductRepository();
-    const all = (await repo.findAll()).filter((p) => (p.status ?? "active") === "active");
+    const all = (await repo.findAll()).filter((p) => (p.status ?? "active") === "active" && isVisibleOn(p.channels, "web"));
     const current = all.find((p) => p.slug === slug);
     if (!current) return ok(all.filter((p) => p.slug !== slug).slice(0, limit));
     const same = all.filter((p) => p.slug !== slug && p.category === current.category);
@@ -641,7 +656,7 @@ export const productService = {
   /** Featured ACTIVE products (homepage). Falls back to top-rated. */
   async listFeatured(limit = 8): Promise<Result<Product[]>> {
     const repo = getProductRepository();
-    const all = (await repo.findAll()).filter((p) => (p.status ?? "active") === "active");
+    const all = (await repo.findAll()).filter((p) => (p.status ?? "active") === "active" && isVisibleOn(p.channels, "web"));
     const featured = all.filter((p) => p.featured);
     const pool = featured.length >= limit ? featured : [...featured, ...all.filter((p) => !p.featured)];
     return ok(pool.slice(0, limit));

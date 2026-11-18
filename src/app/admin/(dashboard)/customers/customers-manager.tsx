@@ -94,16 +94,17 @@ export function CustomersManager() {
       header: "Customer",
       searchable: true,
       sortable: true,
-      accessor: (c) => c.name,
+      // Search by name, email or phone (any format: +91…, 10 digits).
+      accessor: (c) => `${c.name ?? ""} ${c.email ?? ""} ${c.phone ?? ""} ${(c.phone ?? "").replace(/\D/g, "").slice(-10)}`,
       cell: (c) => (
         <div className="flex items-center gap-3">
-          <Avatar name={c.name} src={c.avatar} size={38} />
+          <Avatar name={c.name || c.phone || "?"} src={c.avatar} size={38} />
           <div className="min-w-0">
             <p className="truncate font-medium" style={{ color: "var(--a-fg)" }}>
-              {c.name}
+              {c.name || "No name yet"}
             </p>
             <p className="truncate text-xs" style={{ color: "var(--a-faint)" }}>
-              {c.email}
+              {[c.phone, c.email].filter(Boolean).join(" · ") || "–"}
             </p>
           </div>
         </div>

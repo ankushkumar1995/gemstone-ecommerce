@@ -19,6 +19,7 @@ import { parse } from "@/core/validation";
 import { rateLimit, clientIp } from "@/core/rate-limit";
 import { createBookingSchema, bookingService } from "@/modules/bookings";
 import { requireCustomer } from "@/modules/customer-auth";
+import { channelOf } from "@/core/channels";
 import { razorpayConfigured, razorpayKeyId, createRazorpayOrder } from "@/core/razorpay";
 
 export const dynamic = "force-dynamic";
@@ -55,14 +56,16 @@ export async function POST(request: NextRequest) {
   if (!parsed.value.intake.maritalStatus) return jsonError(AppErrors.validation("Please select your marital status"));
 
   // Create the booking as PENDING + UNPAID (price resolved server-side).
+  // Signed in: the account's identity wins; the form's name / email only fill
+  // gaps (phone sign-ups have no email on the account yet).
   const created = await bookingService.create({
     ...parsed.value,
     customerId,
-    customer: guest,
+    customer: guest ?? parsed.value.customer,
     paymentMethod: "razorpay",
     paymentStatus: "unpaid",
     status: "pending",
-  });
+  }, { channel: channelOf(request.headers) });
   if (!created.ok) return jsonError(created.error);
   const booking = created.value;
 
@@ -75,6 +78,8 @@ export async function POST(request: NextRequest) {
       notes: { bookingId: booking.id, bookingNumber: booking.bookingNumber, service: booking.serviceTitle },
     });
   } catch (e) {
+    // Never leave a "pending" booking for a payment that could not start.
+    await bookingService.updateStatus(booking.id, "cancelled").catch(() => undefined);
     return jsonError(AppErrors.internal(e instanceof Error ? e.message : "Payment init failed"));
   }
 

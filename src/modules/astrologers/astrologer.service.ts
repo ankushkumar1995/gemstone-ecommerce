@@ -25,8 +25,10 @@ import { hashPassword, passwordIssue, generatePassword } from "@/core/password";
 import { auditService } from "@/modules/audit";
 import { astroSettingsService, type AstroProgramSettings } from "@/modules/astro-settings";
 import { BRAND } from "@/lib/brand";
+import { dataSourceFor } from "@/core/config/env";
 import { getAstrologerRepository } from "./astrologer.repository";
 import { emitAstrologerBlocked } from "./astrologer.events";
+import { notifyPartner } from "@/modules/partner-notices";
 import { mailApplicationReceived, mailInvite, mailKycReviewed, mailStatusChanged } from "./astrologer.emails";
 import type {
   Astrologer, AstrologerActivity, AstrologerListFilter, AstrologerStatus, KycDoc, KycDocType,
@@ -81,6 +83,50 @@ export const maskAadhaar = (n: string) => `XXXX XXXX ${n.replace(/\s/g, "").slic
 export const maskAccount = (n: string) => `${"X".repeat(Math.max(0, n.length - 4))}${n.slice(-4)}`;
 const normPhone = (p: string) => p.replace(/[\s-]/g, "").replace(/^\+91/, "").slice(-10);
 
+/** Today's date in IST as YYYY-MM-DD. */
+export const todayIst = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** Weekly hours: no overlapping slots within a day, max 4 slots a day. */
+function availabilityIssue(slots: Astrologer["availability"]): string | null {
+  for (let d = 0; d < 7; d++) {
+    const day = slots.filter((s) => s.day === d).sort((x, y) => x.start.localeCompare(y.start));
+    if (day.length > 4) return `${DAY_NAMES[d]}: at most 4 slots a day`;
+    for (let i = 1; i < day.length; i++) if (day[i].start < day[i - 1].end) return `${DAY_NAMES[d]}: slots overlap`;
+  }
+  return null;
+}
+
+/** Leaves: no overlaps, not more than a year ahead; past leaves are dropped. */
+function normalizeLeaves(list: { id?: string; from: string; to: string; reason?: string }[]): { leaves: NonNullable<Astrologer["leaves"]> } | { error: string } {
+  const today = todayIst();
+  const max = new Date(Date.now() + 366 * 86400_000).toISOString().slice(0, 10);
+  const leaves = list
+    .filter((l) => l.to >= today)
+    .map((l) => ({ id: l.id && l.id.trim() ? l.id : newId("lv"), from: l.from, to: l.to, ...(l.reason?.trim() ? { reason: l.reason.trim() } : {}) }))
+    .sort((x, y) => x.from.localeCompare(y.from));
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i].to > max) return { error: "Leaves can be planned up to one year ahead" };
+    if (i > 0 && leaves[i].from <= leaves[i - 1].to) return { error: "Two leaves overlap. Merge them into one." };
+  }
+  return { leaves };
+}
+
+/** astrologerId → liveId for everyone live right now (directory "LIVE" badge). Never fails. */
+async function liveNow(): Promise<Map<string, string>> {
+  try {
+    if (dataSourceFor("astrologers") !== "mongo") return new Map();
+    const { connectMongoose } = await import("@/core/db/mongoose");
+    await connectMongoose();
+    const { LiveSessionModel } = await import("@/modules/live/live.model");
+    const rows = await LiveSessionModel.find({ openAstro: { $type: "string" } }).select("_id openAstro").lean<{ _id: unknown; openAstro: string }[]>();
+    return new Map(rows.map((r) => [r.openAstro, String(r._id)]));
+  } catch {
+    return new Map();
+  }
+}
+
 /** Is the stored presence fresh enough to count as online? */
 export function isOnline(a: Astrologer, s: AstroProgramSettings, now = Date.now()): boolean {
   if (!a.presence.online || a.status !== "approved" || a.hidden) return false;
@@ -109,6 +155,8 @@ export function toPublic(a: Astrologer, s: AstroProgramSettings): PublicAstrolog
     id: a.id, slug: a.slug, displayName: a.displayName, gender: a.gender, photo: a.photo, shortBio: a.shortBio, bio: a.bio,
     languages: a.languages, expertise: a.expertise, categories: a.categories, experienceYears: a.experienceYears, education: a.education,
     rates: a.rates, availability: a.availability, timezone: a.timezone,
+    // Customers see only upcoming leave dates, never the reason.
+    leaves: (a.leaves ?? []).filter((l) => l.to >= todayIst()).map((l) => ({ from: l.from, to: l.to })),
     online, busy: online && Boolean(a.presence.busyWith), channels: online ? a.presence.channels : { chat: false, call: false, video: false },
     rating: a.stats.rating, reviewCount: a.stats.reviewCount, totalSessions: a.stats.totalSessions, totalMinutes: a.stats.totalMinutes,
     verified: kycComplete(a), featured: a.featured, badges: a.badges,
@@ -119,7 +167,7 @@ function toSelf(a: Astrologer, s: AstroProgramSettings): SelfAstrologer {
   const { adminNotes: _n, sortWeight: _w, hidden: _h, commissionPct: _c, maxRate: _m, ...rest } = a;
   void _n; void _w; void _h; void _c; void _m;
   // Admin notes on the timeline are internal: never send them to the partner.
-  return { ...rest, activity: a.activity.filter((e) => e.type !== "note"), presence: { ...a.presence, online: isOnline(a, s) }, effectiveCommissionPct: effectiveCommission(a, s), effectiveMaxRate: effectiveMaxRate(a, s) };
+  return { ...rest, signupConsent: a.signupConsent ? { ...a.signupConsent, ip: "" } : undefined, activity: a.activity.filter((e) => e.type !== "note"), presence: { ...a.presence, online: isOnline(a, s) }, effectiveCommissionPct: effectiveCommission(a, s), effectiveMaxRate: effectiveMaxRate(a, s) };
 }
 
 /** Admin view: presence normalised to the computed value. */
@@ -129,16 +177,36 @@ async function record(a: Astrologer, action: "create" | "update" | "status" | "d
   await auditService.record({ action, entity: "astrologer", entityId: a.id, entityLabel: a.displayName, summary, actor: actor?.kind === "admin" ? actor.name : undefined });
 }
 
+/**
+ * Partner agreement gate. Lazy import keeps the modules decoupled (agreements
+ * reads the astrologer repository). A failure here must not lock partners
+ * out: it is logged and treated as "no gate".
+ */
+async function agreementGate(a: Astrologer): Promise<{ gate: "none" | "pending" | "blocked"; reason: string | null; version: string | null }> {
+  try {
+    const { agreementService } = await import("@/modules/agreements");
+    return await agreementService.gate(a);
+  } catch (e) {
+    const { logger } = await import("@/core/logger");
+    logger.error("agreement gate failed", { astrologerId: a.id, error: e instanceof Error ? e.message : String(e) });
+    return { gate: "none", reason: null, version: null };
+  }
+}
+
 /* ---------------- service ---------------- */
 
 export const astrologerService = {
   /** Public self-signup. Creates an `applied` account; the route logs the user in. */
-  async apply(dto: ApplyDto): Promise<Result<Astrologer>> {
+  async apply(dto: ApplyDto, ctx: { ip: string; userAgent: string } = { ip: "unknown", userAgent: "" }): Promise<Result<Astrologer>> {
     const repo = getAstrologerRepository();
     const s = await astroSettingsService.get();
     const pw = passwordIssue(dto.password);
     if (pw) return fail(AppErrors.validation(pw));
     if (await repo.emailTaken(dto.email)) return fail(AppErrors.conflict("An account with this email already exists. Sign in instead."));
+    // Record which agreement version the applicant read (not a signature: that is the OTP e-sign later).
+    const { agreementService } = await import("@/modules/agreements");
+    const consent = await agreementService.signupConsent(dto.agreementSeen, ctx);
+    if (!consent.ok) return consent;
     const rates = { ...s.defaultRates, ...(dto.rates ?? {}) };
     const ri = rateIssue(rates, null, s);
     if (ri) return fail(AppErrors.validation(ri));
@@ -156,7 +224,12 @@ export const astrologerService = {
       kyc: [], presence: { online: false, channels: { chat: true, call: rates.call > 0, video: rates.video > 0 } },
       stats: { rating: 0, reviewCount: 0, totalSessions: 0, totalMinutes: 0, missedRequests: 0, missedStreak: 0, repeatCustomers: 0 },
       commissionPct: null, maxRate: null, featured: false, sortWeight: 0, badges: [], hidden: false,
-      mustChangePassword: false, activity: [entry("created", "Applied as a partner astrologer", "Astrologer")],
+      mustChangePassword: false,
+      ...(consent.value ? { signupConsent: consent.value } : {}),
+      activity: [
+        ...(consent.value ? [entry("agreement", `At signup: read partner agreement v${consent.value.version} (to be signed with OTP before going online)`, "Astrologer")] : []),
+        entry("created", "Applied as a partner astrologer", "Astrologer"),
+      ],
       createdAt: now, updatedAt: now,
     };
     const created = await repo.create(a, { passwordHash: await hashPassword(dto.password) });
@@ -260,14 +333,18 @@ export const astrologerService = {
     const pageSize = Math.min(Math.max(f.pageSize ?? 24, 1), 60);
     const page = Math.max(f.page ?? 1, 1);
     const onlineCount = items.filter(({ p }) => p.online).length;
-    return ok({ items: items.slice((page - 1) * pageSize, page * pageSize).map(({ p }) => p), total: items.length, page, pageSize, onlineCount });
+    const lives = await liveNow();
+    return ok({ items: items.slice((page - 1) * pageSize, page * pageSize).map(({ p }) => ({ ...p, liveId: lives.get(p.id) ?? null })), total: items.length, page, pageSize, onlineCount });
   },
 
   async getPublic(slug: string): Promise<Result<PublicAstrologer>> {
     const s = await astroSettingsService.get();
     const a = await getAstrologerRepository().findBySlug(slug);
     if (!a || a.status !== "approved" || a.hidden) return fail(AppErrors.notFound("Astrologer not found"));
-    return ok(toPublic(a, s));
+    const lives = await liveNow();
+    let followers = 0;
+    try { const { followService } = await import("@/modules/live"); followers = await followService.count(a.id); } catch { /* optional */ }
+    return ok({ ...toPublic(a, s), liveId: lives.get(a.id) ?? null, followers });
   },
 
   /* ---------- profile ---------- */
@@ -280,6 +357,15 @@ export const astrologerService = {
     if (a.status === "suspended") return fail(AppErrors.forbidden("Your account is suspended. Contact support."));
     const ri = rateIssue(dto.rates, a, s);
     if (ri) return fail(AppErrors.validation(ri));
+    if (dto.availability) {
+      const ai = availabilityIssue(dto.availability as Astrologer["availability"]);
+      if (ai) return fail(AppErrors.validation(ai));
+    }
+    if (dto.leaves) {
+      const nl = normalizeLeaves(dto.leaves);
+      if ("error" in nl) return fail(AppErrors.validation(nl.error));
+      dto = { ...dto, leaves: nl.leaves };
+    }
 
     const patch: Partial<Astrologer> = {};
     const held: Partial<Record<(typeof REVIEWED_FIELDS)[number], string>> = {};
@@ -325,6 +411,12 @@ export const astrologerService = {
     const updated = await repo.update(id, patch);
     if (!updated) return fail(AppErrors.notFound("Astrologer not found"));
     await record(updated, "update", `${approve ? "Approved" : "Rejected"} profile edits for ${updated.displayName}`, actor);
+    await notifyPartner(id, {
+      kind: "profile",
+      title: approve ? "Profile changes are live" : "Profile changes not approved",
+      body: approve ? "Your new name, photo or bio is now visible to customers." : `Your recent profile changes were not approved${note ? `: ${note}` : "."}`,
+      link: "/astrologer/profile",
+    });
     return ok(updated);
   },
 
@@ -395,6 +487,19 @@ export const astrologerService = {
     if (BLOCKING.includes(next)) await emitAstrologerBlocked(id, `Astrologer ${next}${reason ? `: ${reason}` : ""}`);
     await record(updated, "status", `${updated.displayName}: ${a.status} → ${next}`, actor);
     mailStatusChanged(updated.email, updated.displayName, next, reason);
+    const STATUS_TEXT: Record<string, string> = {
+      approved: "Your profile is approved. You can now go online.",
+      rejected: "Your application was not approved yet.",
+      suspended: "Your account has been suspended.",
+      under_review: "Your profile is under review.",
+      deactivated: "Your account has been deactivated.",
+    };
+    await notifyPartner(id, {
+      kind: "status",
+      title: `Account ${next.replace("_", " ")}`,
+      body: `${STATUS_TEXT[next] ?? `Your account status is now ${next}.`}${reason ? ` Reason: ${reason}` : ""}`,
+      link: "/astrologer",
+    });
     return ok(updated);
   },
 
@@ -448,6 +553,12 @@ export const astrologerService = {
     if (!updated) return fail(AppErrors.notFound("Astrologer not found"));
     await record(updated, "update", `KYC ${type} ${status} for ${updated.displayName}`, actor);
     mailKycReviewed(updated.email, updated.displayName, type.replace("_", " "), status, note);
+    await notifyPartner(id, {
+      kind: "kyc",
+      title: `${type.replace("_", " ").toUpperCase()} ${status}`,
+      body: status === "verified" ? `Your ${type.replace("_", " ")} document is verified.` : `Your ${type.replace("_", " ")} document was rejected${note ? `: ${note}` : ""}. Please upload it again.`,
+      link: "/astrologer/kyc",
+    });
     return ok(updated);
   },
 
@@ -497,6 +608,9 @@ export const astrologerService = {
       if (a.status !== "approved") return fail(AppErrors.forbidden("Your profile must be approved before you can go online"));
       if (a.hidden) return fail(AppErrors.forbidden("Your profile is hidden by the admin. Contact support."));
       if (s.requireKycForApproval && !kycComplete(a)) return fail(AppErrors.forbidden("Complete KYC verification before going online"));
+      // Partner agreement: server-side gate (cannot be bypassed from the browser).
+      const gate = await agreementGate(a);
+      if (gate.gate === "blocked") return fail(AppErrors.forbidden(gate.reason ?? "Sign the partner agreement to go online", { reason: "AGREEMENT_REQUIRED", version: gate.version }));
       if (!channels.chat && !channels.call && !channels.video) return fail(AppErrors.validation("Turn on at least one of chat, call or video"));
       const wasOnline = isOnline(a, s);
       const updated = await repo.update(id, {
@@ -508,6 +622,16 @@ export const astrologerService = {
     }
     if (dto.action === "heartbeat") {
       if (!a.presence.online || a.status !== "approved") return ok(toSelf(a, s));
+      // The signing deadline passed while online (or a signature was voided): go offline.
+      const gate = await agreementGate(a);
+      if (gate.gate === "blocked") {
+        const off = await repo.update(id, {
+          presence: { ...a.presence, online: false, channels },
+          activity: pushLog(a, entry("presence", `Set offline: partner agreement v${gate.version} not signed`, "System")),
+        });
+        try { const { endLiveOf } = await import("@/modules/live"); await endLiveOf(id, "System"); } catch { /* best effort */ }
+        return off ? ok(toSelf(off, s)) : fail(AppErrors.notFound("Account not found"));
+      }
       // A heartbeat after the stale window is a fresh "online" (the UI was asleep).
       const updated = await repo.update(id, { presence: { ...a.presence, channels, lastHeartbeatAt: now } });
       return updated ? ok(toSelf(updated, s)) : fail(AppErrors.notFound("Account not found"));
@@ -516,6 +640,9 @@ export const astrologerService = {
       presence: { ...a.presence, online: false, channels },
       activity: a.presence.online ? pushLog(a, entry("presence", "Went offline", "Astrologer")) : a.activity,
     });
+    // Going offline also ends a live (viewers see "the live has ended") and closes the waitlist.
+    try { const { endLiveOf } = await import("@/modules/live"); await endLiveOf(id); } catch { /* never block going offline */ }
+    try { const { waitlistService } = await import("@/modules/consultations/consult.waitlist"); await waitlistService.closeAll(id, "The astrologer went offline"); } catch { /* best effort */ }
     return updated ? ok(toSelf(updated, s)) : fail(AppErrors.notFound("Account not found"));
   },
 
@@ -525,6 +652,7 @@ export const astrologerService = {
     if (!a) return fail(AppErrors.notFound("Astrologer not found"));
     const updated = await repo.update(id, { presence: { ...a.presence, online: false }, activity: pushLog(a, entry("presence", `Set offline: ${reason}`, actor)) });
     if (!updated) return fail(AppErrors.notFound("Astrologer not found"));
+    try { const { endLiveOf } = await import("@/modules/live"); await endLiveOf(id, actor.name); } catch { /* best effort */ }
     if (actor.kind === "admin") await record(updated, "update", `Forced ${updated.displayName} offline: ${reason}`, actor);
     return ok(updated);
   },

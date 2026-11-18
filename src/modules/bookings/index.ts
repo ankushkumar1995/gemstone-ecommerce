@@ -1,6 +1,7 @@
 /** Bookings module — public API. */
 export { bookingController } from "./booking.controller";
-export { bookingService } from "./booking.service";
+export { bookingService, serviceCancelPolicy } from "./booking.service";
+export type { RefundDestination, BookingRefundInfo } from "./booking.types";
 export { getBookingRepository } from "./booking.repository";
 export {
   createBookingSchema,

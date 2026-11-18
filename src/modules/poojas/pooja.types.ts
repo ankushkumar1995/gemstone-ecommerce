@@ -11,6 +11,8 @@
  * Money is whole rupees (integers). Dates are IST: "YYYY-MM-DD" + "HH:MM".
  */
 
+import type { Channels } from "@/core/channels";
+
 /** Categories seeded on first use. After that they are managed by the admin. */
 export const DEFAULT_CATEGORY_KEYS = [
   "dosh_nivaran", "graha_shanti", "wealth", "health", "marriage", "career",
@@ -224,6 +226,8 @@ export interface Pooja {
   status: PoojaStatus;
   featured: boolean;
   sortOrder: number;
+  /** Where it is shown: website and/or mobile app (see core/channels). */
+  channels: Channels;
   createdBy: string;
   updatedBy: string;
   createdAt: string;
@@ -306,7 +310,8 @@ export interface BookingRefund {
   requestId: string;
   amount: number;
   reason: string;
-  method: "razorpay" | "manual";
+  /** wallet = AstroUnkle wallet cash (instant). */
+  method: "razorpay" | "manual" | "wallet";
   reference: string;
   status: "pending" | "processed" | "failed";
   error?: string;
@@ -370,6 +375,12 @@ export interface PoojaBooking {
   /** Policy at the time of booking: refunds and SLAs follow what the customer agreed to. */
   policy: PoojaPolicy;
   rescheduleCount: number;
+  /**
+   * Pay-online bookings only: the seat is held until this time (ISO). If the
+   * payment is not done by then the booking is cancelled and the seat freed.
+   * null / missing = no hold (pay-later requests and admin bookings).
+   */
+  holdUntil?: string | null;
   source: BookingSource;
   linkedOrderId: string | null;
   cancelReason: string;

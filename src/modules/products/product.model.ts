@@ -22,7 +22,7 @@ import "server-only";
  *    filtered + ordered catalogue listings.
  */
 
-import { Schema, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
+import { Schema, deleteModel, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -234,6 +234,11 @@ const ProductSchema = new Schema(
 
     // ── Merchandising ────────────────────────────────────────────
     featured: { type: Boolean, default: false, index: true },
+    // Where it is sold (see core/channels). Missing on old rows = both on.
+    channels: {
+      web: { type: Boolean, default: true },
+      app: { type: Boolean, default: true },
+    },
     badge: {
       type: String,
       enum: ["Bestseller", "New", "Limited", "Certified", null],
@@ -294,11 +299,15 @@ ProductSchema.index(
 ProductSchema.index({ name: "text", shortDescription: "text", tags: "text" });
 ProductSchema.index({ isDeleted: 1, status: 1, categoryId: 1, displayOrder: 1 });
 ProductSchema.index({ isDeleted: 1, status: 1, featured: 1 });
+ProductSchema.index({ isDeleted: 1, status: 1, "channels.app": 1 });
 ProductSchema.index({ isDeleted: 1, status: 1, price: 1 });
 ProductSchema.index({ "variants.sku": 1 });
 
 export type ProductDoc = InferSchemaType<typeof ProductSchema> & { _id: Types.ObjectId };
 
 /** Reuse across hot reloads (Next dev) to avoid OverwriteModelError. */
+// Dev: drop the cached model so new fields (e.g. `channels`) apply on hot reload.
+if (process.env.NODE_ENV !== "production" && models.Product) deleteModel("Product");
+
 export const ProductModel: Model<ProductDoc> =
   (models.Product as Model<ProductDoc>) ?? model<ProductDoc>("Product", ProductSchema);

@@ -125,6 +125,38 @@ export function verifyWebhookSignature(rawBody: string, signature: string): bool
   return safeEqualHex(expected, signature);
 }
 
+export interface RazorpayPayment {
+  id: string;
+  order_id: string;
+  /** paise */
+  amount: number;
+  currency: string;
+  /** created | authorized | captured | refunded | failed */
+  status: string;
+  method?: string;
+  error_description?: string | null;
+  created_at?: number;
+}
+
+/**
+ * All payment attempts on one of our gateway orders (newest first on Razorpay's side).
+ * Used to reconcile when the checkout callback and the webhook were both lost.
+ */
+export async function fetchOrderPayments(razorpayOrderId: string): Promise<RazorpayPayment[]> {
+  if (!razorpayConfigured()) throw new Error("Razorpay is not configured");
+  if (!/^order_[A-Za-z0-9]{6,40}$/.test(razorpayOrderId)) throw new Error("Invalid gateway order id");
+  const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(razorpayOrderId)}/payments`, {
+    headers: { Authorization: authHeader() },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Razorpay payments lookup failed (${res.status}): ${detail.slice(0, 200)}`);
+  }
+  const body = (await res.json()) as { items?: RazorpayPayment[] };
+  return body.items ?? [];
+}
+
 /**
  * Refund (part of) a captured payment. `receipt` makes the request idempotent
  * on Razorpay's side too: the same receipt is never refunded twice.

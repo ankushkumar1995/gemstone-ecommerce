@@ -13,6 +13,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SelfAstrologer } from "@/modules/astrologers/astrologer.types";
+import type { AgreementGateInfo } from "@/modules/agreements/agreement.types";
 import { partnerApi } from "@/lib/astrologer-api";
 import { useOnMount } from "@/app/admin/_components";
 
@@ -22,6 +23,12 @@ interface Ctx {
   me: SelfAstrologer | null;
   loading: boolean;
   reload: () => Promise<void>;
+  /** Partner agreement gate (server-computed). Null until loaded. */
+  agreement: AgreementGateInfo | null;
+  reloadAgreement: () => Promise<void>;
+  /** Unread notifications (header bell). */
+  unread: number;
+  setUnread: (n: number) => void;
   setMe: (a: SelfAstrologer) => void;
   goOnline: (channels?: Partial<Record<"chat" | "call" | "video", boolean>>) => Promise<string | null>;
   goOffline: () => Promise<void>;
@@ -40,13 +47,36 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
   const onlineRef = useRef(online);
   useEffect(() => { onlineRef.current = online; }, [online]);
 
+  const [agreement, setAgreement] = useState<AgreementGateInfo | null>(null);
+
   const reload = useCallback(async () => {
     const res = await partnerApi.me();
     if (res.ok) setMe(res.data);
     setLoading(false);
   }, []);
 
-  useOnMount(() => { void reload(); });
+  const reloadAgreement = useCallback(async () => {
+    const res = await partnerApi.agreement.state();
+    if (res.ok) {
+      const { gate, version, agreementId, deadline, extendedUntil, signed, reason } = res.data;
+      setAgreement({ gate, version, agreementId, deadline, extendedUntil, signed, reason });
+    }
+  }, []);
+
+  useOnMount(() => { void reload(); void reloadAgreement(); });
+
+  // Bell count: on every page change and every 60 s while the tab is visible.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void partnerApi.notices.count().then((r) => { if (alive && r.ok) setUnread(r.data.unread); });
+    };
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 60_000);
+    return () => { alive = false; clearTimeout(first); clearInterval(t); };
+  }, [pathname]);
 
   // Invited partners must set their own password first.
   useEffect(() => {
@@ -72,8 +102,10 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
     const res = await partnerApi.presence("online", channels);
     setBusy(false);
     if (res.ok) { setMe(res.data); return null; }
+    // Refused because of the agreement: refresh the banner state too.
+    if ((res.details as { reason?: string } | undefined)?.reason === "AGREEMENT_REQUIRED") void reloadAgreement();
     return res.message;
-  }, []);
+  }, [reloadAgreement]);
 
   const goOffline = useCallback(async () => {
     setBusy(true);
@@ -82,7 +114,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
     if (res.ok) setMe(res.data);
   }, []);
 
-  return <PartnerCtx.Provider value={{ me, loading, reload, setMe, goOnline, goOffline, busy }}>{children}</PartnerCtx.Provider>;
+  return <PartnerCtx.Provider value={{ me, loading, reload, agreement, reloadAgreement, unread, setUnread, setMe, goOnline, goOffline, busy }}>{children}</PartnerCtx.Provider>;
 }
 
 export function usePartner(): Ctx {

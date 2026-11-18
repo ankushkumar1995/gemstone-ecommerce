@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { channelsSchema } from "@/core/channels";
 import { ADDON_KINDS, BOOKING_STATUSES, CATEGORY_ICONS, HAVAN_MODES, LOCATION_MODES, PACKAGE_KINDS, POOJA_STATUSES, PRASAD_STATUSES, RITUAL_TYPES, SCHEDULE_MODES, blankHavan } from "./pooja.types";
 import { isDate, isTime } from "./pooja.rules";
 
@@ -95,6 +96,8 @@ export const poojaInputSchema = z.object({
   }),
   seo: z.object({ title: str(70), description: str(170) }),
   status: z.enum(POOJA_STATUSES), featured: z.boolean(), sortOrder: z.number().int().min(-1000).max(100_000),
+  /** Website / app visibility. Omitted on create = both; omitted on update = unchanged. */
+  channels: channelsSchema.optional(),
 }).superRefine((p, ctx) => {
   const pk = p.packages.map((x) => x.id);
   if (new Set(pk).size !== pk.length) ctx.addIssue({ code: "custom", message: "Package ids must be unique", path: ["packages"] });
@@ -183,8 +186,8 @@ export const bookingActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("sankalp"), members: z.array(memberSchema).min(1).max(25), wish: str(2000) }),
   z.object({ action: z.literal("address"), address: addressSchema }),
   z.object({ action: z.literal("prasad"), status: z.enum(PRASAD_STATUSES), courier: str(60), trackingNo: str(60), trackingUrl: url, note: str(300) }),
-  z.object({ action: z.literal("cancel"), reason, refundAmount: money, refundMethod: z.enum(["razorpay", "manual"]), reference: str(120), requestId }),
-  z.object({ action: z.literal("refund"), amount: money.min(1, "Enter an amount"), reason, method: z.enum(["razorpay", "manual"]), reference: str(120), requestId }),
+  z.object({ action: z.literal("cancel"), reason, refundAmount: money, refundMethod: z.enum(["razorpay", "manual", "wallet"]), reference: str(120), requestId }),
+  z.object({ action: z.literal("refund"), amount: money.min(1, "Enter an amount"), reason, method: z.enum(["razorpay", "manual", "wallet"]), reference: str(120), requestId }),
   z.object({ action: z.literal("note"), text: str(1000).min(2) }),
   z.object({ action: z.literal("notes"), adminNotes: str(4000) }),
   // Havan anushthan: one update per day (re-posting a day replaces it).

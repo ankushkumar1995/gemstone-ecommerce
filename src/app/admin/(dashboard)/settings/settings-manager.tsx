@@ -429,6 +429,18 @@ function CheckoutTab({ settings, saving, onSave }: TabProps) {
           <AdminInput type="number" value={String(c.minOrderValue)} onChange={(e) => setC({ ...c, minOrderValue: Number(e.target.value) })} className="max-w-xs" />
         </Field>
       </div>
+      <div className="mt-4 flex items-center justify-between rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
+        <div>
+          <p className="text-sm font-medium">Cash on Delivery</p>
+          <p className="text-xs" style={{ color: "var(--a-faint)" }}>Offer COD on the website and the app</p>
+        </div>
+        <Toggle checked={c.codEnabled !== false} onChange={(v) => setC({ ...c, codEnabled: v })} />
+      </div>
+      <div className="mt-4">
+        <Field label="COD up to order total (₹)" hint="0 = no limit. Above this, only online payment is offered.">
+          <AdminInput type="number" value={String(c.codMaxOrderValue ?? 0)} onChange={(e) => setC({ ...c, codMaxOrderValue: Number(e.target.value) })} className="max-w-xs" />
+        </Field>
+      </div>
       <div className="mt-4">
         <Field label="Terms & conditions text">
           <AdminTextarea rows={3} value={c.termsText ?? ""} onChange={(e) => setC({ ...c, termsText: e.target.value })} />

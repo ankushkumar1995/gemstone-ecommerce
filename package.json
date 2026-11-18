@@ -9,7 +9,10 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed-mongo.ts",
     "seed:poojas": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-poojas.ts",
-    "seed:havans": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-havans.ts"
+    "seed:havans": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-havans.ts",
+    "seed:agreement": "tsx --require ./scripts/server-only-shim.cjs scripts/seed-agreement.ts",
+    "migrate:customer-auth": "tsx --require ./scripts/server-only-shim.cjs scripts/migrate-customer-auth.ts",
+    "migrate:channels": "tsx --require ./scripts/server-only-shim.cjs scripts/migrate-channels.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
@@ -24,11 +27,14 @@
     "clsx": "^2.1.1",
     "framer-motion": "^14.0.0",
     "jose": "^6.2.12",
+    "livekit-client": "^2.24.1",
+    "livekit-server-sdk": "^2.20.0",
     "lucide-react": "^1.52.0",
     "mongodb": "^7.7.0",
     "mongoose": "^9.11.2",
     "next": "16.3.8",
     "nodemailer": "^10.3.0",
+    "pdf-lib": "1.17.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "resend": "^6.35.0",

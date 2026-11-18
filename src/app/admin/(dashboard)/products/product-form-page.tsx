@@ -126,6 +126,8 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
   const [collectionIds, setCollectionIds] = useState<string[]>(editing?.collections ?? []);
   const [related, setRelated] = useState<string[]>(editing?.related ?? []);
   const [featured, setFeatured] = useState(editing?.featured ?? false);
+  // Where it is sold. Missing on old products = both on.
+  const [channels, setChannels] = useState({ web: editing?.channels?.web !== false, app: editing?.channels?.app !== false });
 
   /* workflow */
   const [publishAt, setPublishAt] = useState(toLocalInput(editing?.publishAt));
@@ -220,6 +222,7 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
       collections: collectionIds,
       related,
       featured,
+      channels,
       publishAt: publishAt ? new Date(publishAt).toISOString() : "",
       attributes: {
         stone,
@@ -585,6 +588,20 @@ export function ProductFormPage({ editing }: { editing?: Product | null }) {
                     <p className="text-xs" style={{ color: "var(--a-faint)" }}>Pin to the homepage</p>
                   </div>
                   <Toggle checked={featured} onChange={setFeatured} />
+                </div>
+                <div className="mt-3 flex items-center justify-between rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>Show on website</p>
+                    <p className="text-xs" style={{ color: "var(--a-faint)" }}>Listed and sold on the website shop</p>
+                  </div>
+                  <Toggle checked={channels.web} onChange={(v) => setChannels((x) => ({ ...x, web: v }))} />
+                </div>
+                <div className="mt-3 flex items-center justify-between rounded-lg border p-3" style={{ borderColor: "var(--a-border)" }}>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>Show in the mobile app</p>
+                    <p className="text-xs" style={{ color: "var(--a-faint)" }}>Listed and sold in the AstroUnkle app</p>
+                  </div>
+                  <Toggle checked={channels.app} onChange={(v) => setChannels((x) => ({ ...x, app: v }))} />
                 </div>
               </Card>
             </div>

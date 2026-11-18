@@ -76,6 +76,14 @@ export interface AvailabilitySlot {
   end: string; // HH:mm
 }
 
+/** Planned time off (dates in IST, inclusive). Reason is never shown to customers. */
+export interface AstrologerLeave {
+  id: string;
+  from: string; // YYYY-MM-DD
+  to: string; // YYYY-MM-DD
+  reason?: string;
+}
+
 export interface AstrologerRates {
   chat: number; // ₹ per minute (whole rupees)
   call: number;
@@ -105,7 +113,7 @@ export interface AstrologerStats {
 export interface AstrologerActivity {
   id: string;
   at: string;
-  type: "created" | "status" | "profile" | "kyc" | "presence" | "note" | "admin";
+  type: "created" | "status" | "profile" | "kyc" | "presence" | "note" | "admin" | "agreement";
   message: string;
   actor?: string;
 }
@@ -142,6 +150,7 @@ export interface Astrologer {
   certifications?: string;
   rates: AstrologerRates;
   availability: AvailabilitySlot[];
+  leaves?: AstrologerLeave[];
   timezone: string;
 
   status: AstrologerStatus;
@@ -168,6 +177,12 @@ export interface Astrologer {
   hidden: boolean;
 
   pendingChanges?: PendingProfileChanges;
+  /**
+   * At signup the applicant opened this agreement version and confirmed they
+   * read it. A "read and understood" record only: the binding signature is
+   * the OTP e-sign in the partner panel.
+   */
+  signupConsent?: { agreementId: string; version: string; contentHash: string; at: string; ip: string; ipMasked: string; device: string };
   adminNotes?: string;
   mustChangePassword: boolean;
   lastLoginAt?: string;
@@ -193,6 +208,8 @@ export interface PublicAstrologer {
   education?: string;
   rates: AstrologerRates;
   availability: AvailabilitySlot[];
+  /** Upcoming leave dates only (no reason). */
+  leaves: { from: string; to: string }[];
   timezone: string;
   online: boolean;
   busy: boolean;
@@ -204,6 +221,10 @@ export interface PublicAstrologer {
   verified: boolean;
   featured: boolean;
   badges: AstroBadge[];
+  /** Set while this astrologer is live for everyone. */
+  liveId?: string | null;
+  /** Profile only. */
+  followers?: number;
 }
 
 /** The astrologer's own view of their account (no admin-only fields). */

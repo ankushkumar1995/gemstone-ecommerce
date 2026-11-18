@@ -37,6 +37,11 @@ const ServiceSchema = new Schema(
     order: { type: Number, default: 0, index: true },
     // Optional: older services have no category (shown as Uncategorised).
     categoryId: { type: String, default: null, index: true },
+    // Where it is shown (see core/channels). Missing on old rows = both on.
+    channels: {
+      web: { type: Boolean, default: true },
+      app: { type: Boolean, default: true },
+    },
   },
   {
     collection: "services",

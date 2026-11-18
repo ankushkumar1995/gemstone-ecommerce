@@ -10,6 +10,7 @@ import "server-only";
 
 import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
+import { ALL_CHANNELS, channelsDiff, isVisibleOn, normalizeChannels, type Channel } from "@/core/channels";
 import { auditService } from "@/modules/audit";
 import { getPoojaRepository } from "./pooja.repository";
 import { buildSlots, istToday, publishIssues } from "./pooja.rules";
@@ -51,7 +52,7 @@ export const poojaService = {
     if (input.slug && (await repo.slugTaken(input.slug))) return fail(AppErrors.conflict("This URL is already used by another pooja"));
     if (!(await categoryExists(input.category))) return fail(AppErrors.validation("This category no longer exists. Choose another one.", [{ field: "category", message: "Choose a category" }]));
     const now = new Date().toISOString();
-    const draft: Omit<Pooja, "id"> = { ...input, slug: input.slug || (await uniqueSlug(input.title)), createdBy: actor.name, updatedBy: actor.name, createdAt: now, updatedAt: now };
+    const draft: Omit<Pooja, "id"> = { ...input, channels: normalizeChannels(input.channels ?? ALL_CHANNELS), slug: input.slug || (await uniqueSlug(input.title)), createdBy: actor.name, updatedBy: actor.name, createdAt: now, updatedAt: now };
     if (draft.status === "active") {
       const issues = publishIssues({ ...draft, id: "new" });
       if (issues.length) return fail(AppErrors.validation(`Cannot publish yet: ${issues.join("; ")}`, { issues }));
@@ -72,7 +73,8 @@ export const poojaService = {
     if (input.type !== cur.type && (await repo.hasBookings(id))) {
       return fail(AppErrors.conflict(`This ${cur.type === "havan" ? "havan" : "pooja"} already has bookings, so its type cannot change. Create a new one instead.`, [{ field: "type", message: "Type cannot change after bookings" }]));
     }
-    const next: Pooja = { ...cur, ...input, slug, updatedBy: actor.name, updatedAt: new Date().toISOString() };
+    // Older admin screens may not send `channels`: keep what is saved.
+    const next: Pooja = { ...cur, ...input, channels: normalizeChannels(input.channels ?? cur.channels), slug, updatedBy: actor.name, updatedAt: new Date().toISOString() };
     if (next.status === "active") {
       const issues = publishIssues(next);
       if (issues.length) return fail(AppErrors.validation(`Cannot publish yet: ${issues.join("; ")}`, { issues }));
@@ -85,6 +87,7 @@ export const poojaService = {
       JSON.stringify(cur.schedule) !== JSON.stringify(updated.schedule) ? "schedule" : "",
       JSON.stringify(cur.policy) !== JSON.stringify(updated.policy) ? "policy" : "",
       cur.slug !== updated.slug ? `URL /${cur.slug} → /${updated.slug}` : "",
+      channelsDiff(cur.channels, updated.channels),
     ].filter(Boolean);
     await audit(cur.status !== updated.status ? "status" : "update", updated, `Updated pooja "${updated.title}"${changes.length ? `: ${changes.join(", ")}` : ""}`, actor);
     return ok(updated);
@@ -135,28 +138,31 @@ export const poojaService = {
     return ok(buildSlots(p, Date.now(), await repo.slotUsage(id), { from, days: Math.min(Math.max(days, 1), 120) }));
   },
 
-  /* ---------------- storefront (read only) ---------------- */
-  async listPublic(): Promise<Pooja[]> {
-    return (await getPoojaRepository().listPoojas()).filter((p) => p.status === "active");
+  /* ---------------- storefront (read only) ----------------
+   * `channel` = who is asking (website or app). Defaults to "web" so every
+   * existing website caller keeps working unchanged.
+   */
+  async listPublic(channel: Channel = "web"): Promise<Pooja[]> {
+    return (await getPoojaRepository().listPoojas()).filter((p) => p.status === "active" && isVisibleOn(p.channels, channel));
   },
-  async getPublic(slug: string): Promise<Result<Pooja>> {
+  async getPublic(slug: string, channel: Channel = "web"): Promise<Result<Pooja>> {
     const p = await getPoojaRepository().getPoojaBySlug(slug);
-    return p && p.status === "active" ? ok(p) : fail(AppErrors.notFound("Pooja not found"));
+    return p && p.status === "active" && isVisibleOn(p.channels, channel) ? ok(p) : fail(AppErrors.notFound("Pooja not found"));
   },
 
   /**
    * Active poojas that customers can actually book (at least one active
    * package), in display order, without admin-only fields.
    */
-  async listStorefront(type: RitualType = "pooja"): Promise<PublicPooja[]> {
-    const rows = (await this.listPublic()).filter((p) => p.type === type);
+  async listStorefront(type: RitualType = "pooja", channel: Channel = "web"): Promise<PublicPooja[]> {
+    const rows = (await this.listPublic(channel)).filter((p) => p.type === type);
     return rows
       .map(toPublic)
       .filter((p) => p.packages.length > 0)
       .sort((a, b) => Number(b.featured) - Number(a.featured) || a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
   },
-  async getStorefront(slug: string): Promise<Result<PublicPooja>> {
-    const r = await this.getPublic(slug);
+  async getStorefront(slug: string, channel: Channel = "web"): Promise<Result<PublicPooja>> {
+    const r = await this.getPublic(slug, channel);
     if (!r.ok) return r;
     const p = toPublic(r.value);
     return p.packages.length ? ok(p) : fail(AppErrors.notFound("Pooja not found"));
@@ -166,9 +172,11 @@ export const poojaService = {
    * Cards + category chips for storefront pages. Never throws: on any
    * database problem it returns empty lists so the page still renders.
    */
-  async storefrontCards(type: RitualType = "pooja"): Promise<{ poojas: (PublicPooja & { next: { date: string; time: string; label: string } | null })[]; categories: PublicPoojaCategory[] }> {
+  async storefrontCards(type: RitualType = "pooja", channel: Channel = "web"): Promise<{ poojas: (PublicPooja & { next: { date: string; time: string; label: string } | null })[]; categories: PublicPoojaCategory[] }> {
     try {
-      const poojas = await this.listStorefront(type);
+      // Categories are built from these poojas, so a category with nothing
+      // on this channel disappears from this channel automatically.
+      const poojas = await this.listStorefront(type, channel);
       if (!poojas.length) return { poojas: [], categories: [] };
       const [next, categories] = await Promise.all([this.nextOpen(poojas), poojaCategoryService.listStorefront(poojas)]);
       return {
@@ -199,10 +207,10 @@ export const poojaService = {
   },
 
   /** Open dates customers can pick: not past the cutoff and not full. */
-  async openSlots(slug: string, days = 60): Promise<Result<SlotView[]>> {
+  async openSlots(slug: string, days = 60, channel: Channel = "web"): Promise<Result<SlotView[]>> {
     const repo = getPoojaRepository();
     const p = await repo.getPoojaBySlug(slug);
-    if (!p || p.status !== "active") return fail(AppErrors.notFound("Pooja not found"));
+    if (!p || p.status !== "active" || !isVisibleOn(p.channels, channel)) return fail(AppErrors.notFound("Pooja not found"));
     const all = buildSlots(p, Date.now(), await repo.slotUsage(p.id), { days: Math.min(Math.max(days, 1), 120) });
     return ok(all.filter((s) => !s.closed && s.left > 0).slice(0, 120));
   },

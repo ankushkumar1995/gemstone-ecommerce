@@ -10,7 +10,8 @@ import { CalendarDays, Copy, Flame, IndianRupee, Pause, Pencil, Play, Plus, Tags
 import { poojaAdminApi, type BookingCounts } from "@/lib/admin-pooja-api";
 import { PACKAGE_LABEL, type PoojaListItem, type PoojaStatus } from "@/modules/poojas/pooja.types";
 import { CategoryDrawer, useCategories } from "./pooja-categories";
-import { AdminButton, ConfirmDialog, DataTable, PageHeader, StatCard, StatsSkeleton, StatusPill, Tabs, useAdminToast, useOnMount, type Column } from "../../_components";
+import { AdminButton, ChannelBadge, ConfirmDialog, DataTable, PageHeader, StatCard, StatsSkeleton, StatusPill, Tabs, useAdminToast, useOnMount, type Column } from "../../_components";
+import { channelsLabel } from "@/core/channels";
 import { POOJA_STATUS, inr } from "./pooja-meta";
 
 type TabKey = "all" | PoojaStatus;
@@ -86,6 +87,7 @@ export function PoojasManager() {
     { key: "upcoming", header: "Upcoming", sortable: true, align: "right", accessor: (p) => p.upcoming },
     { key: "bookings", header: "Bookings", sortable: true, align: "right", accessor: (p) => p.bookings },
     { key: "revenue", header: "Revenue", sortable: true, align: "right", accessor: (p) => p.revenue, cell: (p) => <span className="text-sm">{inr(p.revenue)}</span> },
+    { key: "channels", header: "Shown on", filterable: true, filterOptions: ["Web + App", "Web only", "App only", "Not shown"], accessor: (p) => channelsLabel(p.channels), cell: (p) => <ChannelBadge value={p.channels} /> },
     { key: "status", header: "Status", sortable: true, filterable: true, filterOptions: Object.keys(POOJA_STATUS), accessor: (p) => p.status, cell: (p) => <StatusPill tone={POOJA_STATUS[p.status].tone}>{POOJA_STATUS[p.status].label}</StatusPill> },
   ];
 

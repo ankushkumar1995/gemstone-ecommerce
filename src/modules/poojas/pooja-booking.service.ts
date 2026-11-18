@@ -19,6 +19,7 @@ import "server-only";
 import { ok, fail, type Result } from "@/core/result";
 import { AppErrors, type AppError } from "@/core/errors";
 import { newId } from "@/core/id";
+import { isVisibleOn, type Channel } from "@/core/channels";
 import { auditService } from "@/modules/audit";
 import { createRazorpayRefund, razorpayConfigured } from "@/core/razorpay";
 import { getPoojaRepository } from "./pooja.repository";
@@ -28,6 +29,10 @@ import type { BookingFilter, BookingRefund, Pooja, PoojaBooking, PoojaBookingSta
 import type { Actor } from "./pooja.service";
 
 const RELOAD = "This booking was changed by someone else. Reload and try again.";
+/** Pay-online bookings hold the seat this long before they are released. */
+export const ONLINE_HOLD_MS = 15 * 60_000;
+/** cancelReason written by the hold sweep (lets a late payment revive the booking). */
+export const HOLD_EXPIRED_REASON = "Payment not completed within 15 minutes";
 const entry = (type: TimelineEntry["type"], message: string, actor: string): TimelineEntry => ({ id: newId("tl"), at: new Date().toISOString(), type, message, actor });
 const STATUS_LABEL: Record<PoojaBookingStatus, string> = { pending_payment: "Payment pending", confirmed: "Confirmed", assigned: "Pandit assigned", in_progress: "In progress", performed: "Performed", completed: "Completed", cancelled: "Cancelled" };
 
@@ -88,8 +93,20 @@ async function settleRefund(id: string, refundId: string, result: { ok: true; re
 }
 
 /** Phases 2 + 3 for a refund already recorded as pending. */
-async function executeRefund(b: PoojaBooking, r: BookingRefund, actor: Actor): Promise<Result<PoojaBooking>> {
+export async function executeRefund(b: PoojaBooking, r: BookingRefund, actor: Actor): Promise<Result<PoojaBooking>> {
   if (r.method === "manual") return settleRefund(b.id, r.id, { ok: true, reference: r.reference }, actor);
+  if (r.method === "wallet") {
+    // Wallet credit is idempotent on the refund id: a retry never credits twice.
+    try {
+      const { walletService } = await import("@/modules/wallets");
+      const w = await walletService.refund(b.customer.customerId ?? "", `pjrefund_${r.id}`, { cashPaise: Math.round(r.amount * 100), promoPaise: 0 }, b.bookingNumber, `Refund for ${b.pooja.title} (${b.bookingNumber})`, actor.name);
+      if (w.status === "insufficient") throw new Error("wallet refused the credit");
+      return settleRefund(b.id, r.id, { ok: true, reference: w.txn?.id ? `wallet ${w.txn.id}` : "wallet" }, actor);
+    } catch (e) {
+      const settled = await settleRefund(b.id, r.id, { ok: false, error: e instanceof Error ? e.message.slice(0, 200) : "Wallet credit failed" }, actor);
+      return settled.ok ? fail(AppErrors.internal("The wallet credit failed. Nothing was refunded; see the timeline.")) : settled;
+    }
+  }
   try {
     const rz = await createRazorpayRefund({ paymentId: b.payment.razorpayPaymentId ?? "", amountInRupees: r.amount, receipt: r.id, notes: { bookingNumber: b.bookingNumber } });
     return settleRefund(b.id, r.id, { ok: true, reference: rz.id }, actor);
@@ -99,7 +116,7 @@ async function executeRefund(b: PoojaBooking, r: BookingRefund, actor: Actor): P
   }
 }
 
-function refundGuard(b: PoojaBooking, amount: number, method: "razorpay" | "manual", reference: string): AppError | null {
+function refundGuard(b: PoojaBooking, amount: number, method: BookingRefund["method"], reference: string): AppError | null {
   if (b.payment.status === "unpaid") return AppErrors.validation("This booking is not paid, so there is nothing to refund");
   const refundable = b.pricing.total - b.payment.refunded;
   if (amount > refundable) return AppErrors.validation(`At most ₹${refundable} can still be refunded`);
@@ -108,7 +125,50 @@ function refundGuard(b: PoojaBooking, amount: number, method: "razorpay" | "manu
     if (!razorpayConfigured()) return AppErrors.validation("Online refunds are not available right now. Use a manual refund.");
   }
   if (method === "manual" && reference.trim().length < 3) return AppErrors.validation("Add the bank or UPI reference for a manual refund");
+  if (method === "wallet" && !b.customer.customerId) return AppErrors.validation("This booking is not linked to a customer account, so it cannot be refunded to a wallet.");
   return null;
+}
+
+/* ---------------- customer self-service (app / website) ---------------- */
+
+export type RefundTo = "source" | "wallet";
+const CUSTOMER: Actor = { name: "Customer" } as Actor;
+
+/**
+ * Can the customer cancel now, and how much comes back? Uses the refund tiers
+ * snapshotted on the booking (the admin's policy at booking time).
+ */
+export function customerCancelPolicy(b: PoojaBooking, now = Date.now()): { allowed: boolean; refundAmount: number; refundPct: number; refundTo: RefundTo[]; why: string } {
+  const refundTo: RefundTo[] = [];
+  if (b.payment.method === "razorpay" && b.payment.razorpayPaymentId) refundTo.push("source");
+  if (b.customer.customerId) refundTo.push("wallet");
+  if (b.status === "pending_payment" && b.payment.status === "unpaid") return { allowed: true, refundAmount: 0, refundPct: 0, refundTo: [], why: "" };
+  if (b.status !== "confirmed" && b.status !== "assigned") {
+    const why = b.status === "in_progress" ? `The ${b.pooja.type === "havan" ? "havan" : "pooja"} has already started, so it cannot be cancelled.` : "";
+    return { allowed: false, refundAmount: 0, refundPct: 0, refundTo, why };
+  }
+  const refundable = b.payment.status === "unpaid" ? 0 : b.pricing.total - b.payment.refunded;
+  const { pct, amount } = policyRefund(b.policy, slotInstant(b.slot.date, b.slot.time), now, refundable);
+  if (slotInstant(b.slot.date, b.slot.time) <= now) return { allowed: false, refundAmount: 0, refundPct: 0, refundTo, why: "The pooja time has passed. Please contact support." };
+  if (amount > 0 && !refundTo.length) return { allowed: false, refundAmount: amount, refundPct: pct, refundTo, why: "This booking was paid to our team. Please contact support to cancel it." };
+  return { allowed: true, refundAmount: amount, refundPct: pct, refundTo: amount > 0 ? refundTo : [], why: "" };
+}
+
+/** Can the customer move it to another date (free reschedule window + limit)? */
+export function customerReschedulePolicy(b: PoojaBooking, now = Date.now()): { allowed: boolean; until: string | null; left: number; why: string } {
+  const startAt = slotInstant(b.slot.date, b.slot.time);
+  const until = new Date(startAt - b.policy.freeRescheduleHours * 3_600_000).toISOString();
+  const left = Math.max(0, b.policy.maxReschedules - b.rescheduleCount);
+  if (b.status !== "confirmed" && b.status !== "assigned") return { allowed: false, until: null, left, why: "" };
+  if (b.policy.freeRescheduleHours <= 0 && b.policy.maxReschedules <= 0) return { allowed: false, until: null, left: 0, why: "This booking cannot be rescheduled." };
+  if (left <= 0) return { allowed: false, until, left, why: "You have already changed the date the maximum number of times. Please contact support." };
+  if (Date.parse(until) <= now) return { allowed: false, until, left, why: `Date changes close ${b.policy.freeRescheduleHours} hours before the ${b.pooja.type === "havan" ? "havan" : "pooja"}. Please contact support.` };
+  return { allowed: true, until, left, why: "" };
+}
+
+async function ownBooking(customerId: string, bookingNumber: string): Promise<PoojaBooking | null> {
+  const b = await getPoojaRepository().findBookingByNumber(bookingNumber);
+  return b && b.customer.customerId === customerId ? b : null;
 }
 
 export const poojaBookingService = {
@@ -149,23 +209,34 @@ export const poojaBookingService = {
    * but never allows overbooking, booking after cutoff, discounts or a slot
    * outside the pooja's booking window.
    */
-  async createFromWeb(input: WebBookingInput, customerId: string | null): Promise<Result<PoojaBooking>> {
+  /**
+   * Customer booking. `online` = the customer pays now with Razorpay: the seat
+   * is held for ONLINE_HOLD_MS and released if the payment does not arrive.
+   * Without it, this is the original "request, team calls to collect" flow.
+   */
+  async createFromWeb(input: WebBookingInput, customerId: string | null, channel: Channel = "web", online = false): Promise<Result<PoojaBooking>> {
     return this.createByAdmin(
       { ...input, payment: { method: "manual", paid: false, reference: "" }, discount: 0, allowOverbook: false, ignoreCutoff: false },
-      { name: "Website" },
-      { customerId },
+      { name: channel === "app" ? "Mobile app" : "Website" },
+      { customerId, channel, online },
     );
   },
 
-  /** Phone / walk-in / complimentary booking by an admin. Retry-safe via requestId. */
-  async createByAdmin(input: AdminBookingInput, actor: Actor, web?: { customerId: string | null }): Promise<Result<PoojaBooking>> {
+  /**
+   * Phone / walk-in / complimentary booking by an admin. Retry-safe via requestId.
+   * Customer bookings (`web` set) must also be shown on the caller's channel;
+   * admin bookings ignore channels (the team can book anything by phone).
+   */
+  async createByAdmin(input: AdminBookingInput, actor: Actor, web?: { customerId: string | null; channel?: Channel; online?: boolean }): Promise<Result<PoojaBooking>> {
     const repo = getPoojaRepository();
     const again = await repo.findBookingByRequest(input.requestId);
     if (again) return ok(again);
 
+    const online = Boolean(web?.online);
     const p = await repo.getPooja(input.poojaId);
     if (!p) return fail(AppErrors.notFound("Pooja not found"));
     if (web && p.status !== "active") return fail(AppErrors.validation("This pooja is not taking bookings right now"));
+    if (web && !isVisibleOn(p.channels, web.channel ?? "web")) return fail(AppErrors.validation("This pooja is not available here right now"));
     if (p.status !== "active" && p.status !== "paused") return fail(AppErrors.validation("Only active or paused poojas can be booked"));
     const pkg = p.packages.find((x) => x.id === input.packageId);
     if (!pkg || !pkg.active) return fail(AppErrors.validation("This package is not available"));
@@ -232,14 +303,15 @@ export const poojaBookingService = {
         members: sk.value.members, wish: sk.value.wish,
         address: needsAddress ? input.address : null,
         pricing: { packagePrice, slotDelta: slot.priceDelta, addOnsTotal, discount, total },
-        payment: { method: free ? "free" : "manual", status: paid ? "paid" : "unpaid", razorpayOrderId: null, razorpayPaymentId: null, reference: input.payment.reference.trim(), paidAt: paid ? at : null, refunded: 0, refunds: [] },
+        payment: { method: free ? "free" : online ? "razorpay" : "manual", status: paid ? "paid" : "unpaid", razorpayOrderId: null, razorpayPaymentId: null, reference: input.payment.reference.trim(), paidAt: paid ? at : null, refunded: 0, refunds: [] },
+        holdUntil: online && !paid ? new Date(now + ONLINE_HOLD_MS).toISOString() : null,
         status, panditId: null, panditName: "",
         proof: { videoUrl: "", liveUrl: "", photos: [], note: "", uploadedAt: null, uploadedBy: "" },
         prasad: { status: needsAddress ? "pending" : "not_required", courier: "", trackingNo: "", trackingUrl: "", shippedAt: null, deliveredAt: null, note: "" },
         policy: structuredClone(p.policy),
-        rescheduleCount: 0, source: web ? "web" : "admin", linkedOrderId: null, cancelReason: "", adminNotes: "",
+        rescheduleCount: 0, source: web ? (web.channel === "app" ? "app" : "web") : "admin", linkedOrderId: null, cancelReason: "", adminNotes: "",
         timeline: [web
-          ? entry("created", `Requested on the website for ${slot.date}${slot.time === "any" ? "" : ` ${slot.time}`} (payment pending, call to confirm)`, actor.name)
+          ? entry("created", `${online ? "Booked" : "Requested"} ${web.channel === "app" ? "in the mobile app" : "on the website"} for ${slot.date}${slot.time === "any" ? "" : ` ${slot.time}`} ${online ? `(paying online, seat held ${ONLINE_HOLD_MS / 60000} min)` : "(payment pending, call to confirm)"}`, actor.name)
           : entry("created", `Booked by admin for ${slot.date}${slot.time === "any" ? "" : ` ${slot.time}`}${free ? " (complimentary)" : paid ? " (paid offline)" : " (payment pending)"}${input.allowOverbook && slot.left <= 0 ? " · overbooked" : ""}${input.ignoreCutoff && slot.closed ? " · after cutoff" : ""}`, actor.name)],
         version: 1, createdAt: at, updatedAt: at,
       }, input.requestId);
@@ -427,6 +499,60 @@ export const poojaBookingService = {
         return save(b, { progress }, entry("proof", `Day ${a.day} of ${days} update${a.jaapDone !== null ? ` · ${a.jaapDone.toLocaleString("en-IN")} jaap done` : ""}`, actor.name));
       }
     }
+  },
+
+  /**
+   * Customer cancels their own booking. The policy is re-checked on the server,
+   * the refund follows the booking's refund tiers, and it goes through the same
+   * two-phase refund as admin refunds (never twice; `requestId` makes a retried
+   * tap a no-op). If the gateway refuses, the booking stays cancelled and the
+   * failed refund is visible to the team and the customer.
+   */
+  async customerCancel(customerId: string, bookingNumber: string, refundTo: RefundTo, requestId: string): Promise<Result<PoojaBooking>> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const b = await ownBooking(customerId, bookingNumber);
+      if (!b) return fail(AppErrors.notFound("Booking not found"));
+      if (b.status === "cancelled") return ok(b);
+      const pol = customerCancelPolicy(b);
+      if (!pol.allowed) return fail(AppErrors.validation(pol.why || "This booking can no longer be cancelled in the app. Please contact support."));
+      if (pol.refundAmount > 0 && !pol.refundTo.includes(refundTo)) return fail(AppErrors.validation("Please choose where the refund should go."));
+      const r = await this.act(b.id, {
+        action: "cancel",
+        reason: "Cancelled by the customer",
+        refundAmount: pol.refundAmount,
+        refundMethod: refundTo === "wallet" ? "wallet" : "razorpay",
+        reference: "",
+        requestId,
+      }, CUSTOMER);
+      if (r.ok) return r;
+      if (r.error.code === "CONFLICT" && /changed by someone/i.test(r.error.message)) continue;
+      // Cancelled, but the refund call failed: report the booking as it now stands.
+      const now = await ownBooking(customerId, bookingNumber);
+      if (now?.status === "cancelled") return ok(now);
+      return r;
+    }
+    return fail(AppErrors.conflict("This booking was just updated by our team. Please refresh and try again."));
+  },
+
+  /** Customer moves the booking to another open date inside the free reschedule window. */
+  async customerReschedule(customerId: string, bookingNumber: string, date: string, time: string): Promise<Result<PoojaBooking>> {
+    const repo = getPoojaRepository();
+    const b = await ownBooking(customerId, bookingNumber);
+    if (!b) return fail(AppErrors.notFound("Booking not found"));
+    const pol = customerReschedulePolicy(b);
+    if (!pol.allowed) return fail(AppErrors.validation(pol.why || "This booking cannot be rescheduled in the app."));
+    const p = await repo.getPooja(b.poojaId);
+    if (!p) return fail(AppErrors.notFound("This pooja is no longer available. Please contact support."));
+    const now = Date.now();
+    const slot = buildSlots(p, now, await repo.slotUsage(p.id), { from: date, days: 0 }).find((s) => s.date === date && s.time === time);
+    if (!slot) return fail(AppErrors.validation("That date is not open for booking. Please pick another date."));
+    if (slot.key === b.slot.key) return fail(AppErrors.validation("This is already your booked date."));
+    if (slot.closed) return fail(AppErrors.validation("Booking for that date has closed. Please pick another date."));
+    if (slot.left <= 0) return fail(AppErrors.conflict("That date is fully booked. Please pick another date."));
+    if (slot.priceDelta !== (b.pricing.slotDelta ?? 0)) return fail(AppErrors.validation("That date has a different price. Please pick a date with the same price, or contact support."));
+    const r = await this.act(b.id, { action: "reschedule", date: slot.date, time: slot.time, reason: "Date changed by the customer", allowOverbook: false, ignoreCutoff: false }, CUSTOMER);
+    if (!r.ok && r.error.code === "CONFLICT" && /changed by someone/i.test(r.error.message)) return fail(AppErrors.conflict("This booking was just updated by our team. Please refresh and try again."));
+    return r;
   },
 
   /** What the cancellation policy suggests refunding right now. */

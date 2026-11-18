@@ -6,6 +6,7 @@
 import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
 import { newId } from "@/core/id";
+import { ALL_CHANNELS, channelsDiff, channelsLabel, isVisibleOn, normalizeChannels, type Channel } from "@/core/channels";
 import { auditService } from "@/modules/audit";
 import type { AstroService } from "@/types";
 import { getServiceRepository } from "./service.repository";
@@ -59,6 +60,7 @@ export const serviceService = {
       status: dto.status ?? "active",
       order: dto.order ?? maxOrder + 1,
       categoryId: dto.categoryId || null,
+      channels: normalizeChannels(dto.channels ?? ALL_CHANNELS),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -68,7 +70,7 @@ export const serviceService = {
       entity: "settings",
       entityId: created.id,
       entityLabel: created.title,
-      summary: `Created service "${created.title}"`,
+      summary: `Created service "${created.title}" (${channelsLabel(created.channels)})`,
     });
     return ok(created);
   },
@@ -94,17 +96,19 @@ export const serviceService = {
       ...(dto.features !== undefined && { features: dto.features.filter((f) => f.trim()) }),
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.order !== undefined && { order: dto.order }),
+      ...(dto.channels !== undefined && { channels: normalizeChannels(dto.channels) }),
       updatedAt: new Date().toISOString(),
     };
 
     const updated = await repo.update(id, patch);
     if (!updated) return fail(AppErrors.notFound("Service not found"));
+    const shown = channelsDiff(existing.channels, updated.channels);
     await auditService.record({
       action: "update",
       entity: "settings",
       entityId: updated.id,
       entityLabel: updated.title,
-      summary: `Updated service "${updated.title}"`,
+      summary: `Updated service "${updated.title}"${shown ? ` (${shown})` : ""}`,
     });
     return ok(updated);
   },
@@ -124,17 +128,20 @@ export const serviceService = {
     return ok({ id });
   },
 
-  /* ---------------- storefront ---------------- */
-  async listActive(): Promise<Result<AstroService[]>> {
+  /* ---------------- storefront ----------------
+   * `channel` = who is asking (website or app). Defaults to "web" so every
+   * existing website caller keeps working unchanged.
+   */
+  async listActive(channel: Channel = "web"): Promise<Result<AstroService[]>> {
     const repo = getServiceRepository();
     const all = await repo.findAll();
-    return ok(all.filter((s) => s.status === "active"));
+    return ok(all.filter((s) => s.status === "active" && isVisibleOn(s.channels, channel)));
   },
 
-  async getActiveBySlug(slug: string): Promise<Result<AstroService>> {
+  async getActiveBySlug(slug: string, channel: Channel = "web"): Promise<Result<AstroService>> {
     const repo = getServiceRepository();
     const s = await repo.findBySlug(slug);
-    if (!s || s.status !== "active") return fail(AppErrors.notFound("Service not found"));
+    if (!s || s.status !== "active" || !isVisibleOn(s.channels, channel)) return fail(AppErrors.notFound("Service not found"));
     return ok(s);
   },
 };

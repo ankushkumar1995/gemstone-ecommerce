@@ -6,10 +6,10 @@
  */
 
 import Link from "next/link";
-import { BellRing, CalendarDays, Clock, IndianRupee, Landmark, Megaphone, MessageCircle, Star } from "lucide-react";
+import { BellRing, CalendarDays, Clock, IndianRupee, Landmark, MessageCircle, Star } from "lucide-react";
 import { Card, LineChart, StatCard } from "@/app/admin/_components";
-import { CHANNEL_LABEL, DemoBanner, Stars, fmtDateTime, inr, timeAgo } from "./demo";
-import { MOCK_ANNOUNCEMENTS, MOCK_APPOINTMENTS, MOCK_EARNINGS_30D, MOCK_REVIEWS } from "./mock-data";
+import { CHANNEL_LABEL, DemoBanner, Stars, fmtDateTime, inr } from "./demo";
+import { MOCK_APPOINTMENTS, MOCK_EARNINGS_30D, MOCK_REVIEWS } from "./mock-data";
 
 export function DashboardToday() {
   const today = MOCK_EARNINGS_30D[MOCK_EARNINGS_30D.length - 1];
@@ -45,11 +45,7 @@ export function DashboardToday() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="p-5">
-          <p className="mb-3 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><Megaphone size={16} /> From Astrounkle</p>
-          <ul className="space-y-3">{MOCK_ANNOUNCEMENTS.map((a) => <li key={a.id} className="text-sm"><p className="font-medium" style={{ color: "var(--a-fg)" }}>{a.title}</p><p style={{ color: "var(--a-muted)" }}>{a.body}</p><p className="text-xs" style={{ color: "var(--a-faint)" }}>{timeAgo(a.at)}</p></li>)}</ul>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <p className="mb-3 flex items-center gap-2 font-semibold" style={{ color: "var(--a-fg)" }}><CalendarDays size={16} /> Next appointments</p>
           <ul className="space-y-2">{MOCK_APPOINTMENTS.slice(0, 3).map((a) => <li key={a.id} className="text-sm"><p style={{ color: "var(--a-fg)" }}>{a.customer} · {CHANNEL_LABEL[a.channel]}</p><p className="text-xs" style={{ color: "var(--a-muted)" }}>{fmtDateTime(a.at)} · {a.minutes} min</p></li>)}</ul>

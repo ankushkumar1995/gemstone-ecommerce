@@ -374,10 +374,17 @@ export const orderService = {
 
     const wasCommitted = isCommitted(current);
     const willCommit = isCommitted(next);
+    // Customer checkout orders reserve stock at placement (atomic); older and
+    // admin orders take it on the first confirm.
+    const reserved = Boolean(order.stockReserved);
 
     // commit stock when entering committed state the first time
     if (!wasCommitted && willCommit) {
-      await this.commitStock(order, -1);
+      if (reserved) {
+        for (const item of order.items) await productService.incrementCounter(item.productId, "sold", item.qty);
+      } else {
+        await this.commitStock(order, -1);
+      }
       if (order.customerId) {
         await customerService.recordOrder(
           order.customerId,
@@ -393,10 +400,16 @@ export const orderService = {
         });
       }
     }
-    // release stock when leaving a committed state into cancel/refund
-    if (wasCommitted && STOCK_RELEASED.includes(next)) {
-      await this.commitStock(order, +1);
-      if (order.customerId) {
+    // release stock when leaving a stock-holding state into cancel/refund
+    let releasedReserved = false;
+    if ((wasCommitted || reserved) && STOCK_RELEASED.includes(next)) {
+      if (reserved) {
+        for (const item of order.items) await productService.releaseStock(item.productId, item.variantId, item.qty);
+        releasedReserved = true;
+      } else {
+        await this.commitStock(order, +1);
+      }
+      if (wasCommitted && order.customerId) {
         await customerService.revertOrder(order.customerId, order.pricing.grandTotal, order.orderNumber);
       }
     }
@@ -405,6 +418,7 @@ export const orderService = {
       status: next,
       updatedAt: new Date().toISOString(),
       activity: [logEntry("status", `Status changed from "${current}" to "${next}"`), ...order.activity].slice(0, 50),
+      ...(releasedReserved ? { stockReserved: false, holdUntil: null } : {}),
     };
     if (next === "delivered") {
       patch.fulfillment = { ...order.fulfillment, deliveredAt: new Date().toISOString() };

@@ -18,25 +18,27 @@ import { SERVICE_ICONS, createServiceSchema, type CreateServiceDto } from "@/mod
 import { adminApi } from "@/lib/admin-api";
 import {
   AdminBreadcrumb, AdminButton, AdminDropdown, AdminInput, Card, ConfirmDialog, EmptyState, Field, ImagePickerField,
-  RichTextEditor, StatsSkeleton, StatusPill, Toggle, useAdminToast, useOnMount,
+  ChannelToggles, RichTextEditor, StatsSkeleton, StatusPill, Toggle, useAdminToast, useOnMount,
 } from "../../_components";
+import { ALL_CHANNELS, normalizeChannels, type Channels } from "@/core/channels";
 import { CatIcon, ServiceCategoryField } from "./service-categories";
 
 type Icon = (typeof SERVICE_ICONS)[number];
 type Form = {
   title: string; tagline: string; description: string; icon: Icon; image: string;
   priceFrom: string; duration: string; popular: boolean; status: "active" | "inactive";
-  categoryId: string | null; features: string[];
+  categoryId: string | null; features: string[]; channels: Channels;
 };
 type Issue = { field: string; message: string };
 
-const blank = (): Form => ({ title: "", tagline: "", description: "", icon: "Sparkles", image: "", priceFrom: "", duration: "", popular: false, status: "active", categoryId: null, features: [""] });
+const blank = (): Form => ({ title: "", tagline: "", description: "", icon: "Sparkles", image: "", priceFrom: "", duration: "", popular: false, status: "active", categoryId: null, features: [""], channels: { ...ALL_CHANNELS } });
 const toForm = (s: AstroService): Form => ({
   title: s.title ?? "", tagline: s.tagline ?? "", description: s.description ?? "",
   icon: (SERVICE_ICONS as readonly string[]).includes(s.icon) ? (s.icon as Icon) : "Sparkles",
   image: s.image ?? "", priceFrom: String(s.priceFrom ?? 0), duration: s.duration ?? "", popular: Boolean(s.popular),
   status: s.status === "inactive" ? "inactive" : "active", categoryId: s.categoryId ?? null,
   features: s.features?.length ? [...s.features] : [""],
+  channels: normalizeChannels(s.channels),
 });
 /** Comparable snapshot: an emptied rich-text box ("<p></p>") counts as empty. */
 const snap = (f: Form) => JSON.stringify({ ...f, description: f.description.replace(/^<p><\/p>$/, ""), features: f.features.map((x) => x.trim()).filter(Boolean) });
@@ -44,7 +46,7 @@ const snap = (f: Form) => JSON.stringify({ ...f, description: f.description.repl
 const toDto = (f: Form): CreateServiceDto => ({
   title: f.title, tagline: f.tagline, description: f.description.replace(/^<p><\/p>$/, ""), icon: f.icon, image: f.image,
   priceFrom: f.priceFrom.trim() === "" ? 0 : Number(f.priceFrom), duration: f.duration, popular: f.popular, status: f.status,
-  features: f.features.map((x) => x.trim()).filter(Boolean), categoryId: f.categoryId,
+  features: f.features.map((x) => x.trim()).filter(Boolean), categoryId: f.categoryId, channels: f.channels,
 });
 
 const SECTIONS = [
@@ -173,7 +175,7 @@ export function ServiceEditor({ id }: { id?: string }) {
           </h1>
           {meta?.updatedAt && <p className="text-xs" style={{ color: "var(--a-muted)" }}>Last saved {new Date(meta.updatedAt).toLocaleString("en-IN")}</p>}
         </div>
-        {id && meta?.status === "active" && (
+        {id && meta?.status === "active" && normalizeChannels(meta.channels).web && (
           <a href={`/services/${meta.slug}`} target="_blank" rel="noopener noreferrer"><AdminButton variant="outline"><ExternalLink size={15} /> View on site</AdminButton></a>
         )}
       </div>
@@ -269,6 +271,7 @@ export function ServiceEditor({ id }: { id?: string }) {
               <span className="text-sm font-medium" style={{ color: "var(--a-fg)" }}>Mark popular</span>
               <Toggle checked={form.popular} onChange={(v) => set("popular", v)} />
             </div>
+            <ChannelToggles value={form.channels} onChange={(v) => set("channels", v)} noun="service" />
             <AdminButton className="w-full" onClick={submit} disabled={saving || (!dirty && !!id)}>
               <Save size={15} /> {saving ? "Saving…" : id ? "Save changes" : "Create service"}
             </AdminButton>

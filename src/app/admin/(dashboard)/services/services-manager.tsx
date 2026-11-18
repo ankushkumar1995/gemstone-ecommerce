@@ -14,10 +14,12 @@ import {
   DataTable,
   StatusPill,
   ActionMenu,
+  ChannelBadge,
   ConfirmDialog,
   useAdminToast,
   type Column,
 } from "../../_components";
+import { channelsLabel } from "@/core/channels";
 import { useRouter } from "next/navigation";
 import { ServiceCategoryDrawer, useServiceCategories } from "./service-categories";
 
@@ -141,6 +143,14 @@ export function ServicesManager() {
       },
     },
     {
+      key: "channels",
+      header: "Shown on",
+      filterable: true,
+      filterOptions: ["Web + App", "Web only", "App only", "Not shown"],
+      accessor: (s) => channelsLabel(s.channels),
+      cell: (s) => <ChannelBadge value={s.channels} />,
+    },
+    {
       key: "status",
       header: "Status",
       sortable: true,
@@ -155,7 +165,7 @@ export function ServicesManager() {
     <div>
       <PageHeader
         title="Services"
-        subtitle="Astrology services shown on the storefront /services page."
+        subtitle="Astrology services shown on the website /services page and the mobile app."
         action={
           <div className="flex gap-2">
             <AdminButton variant="outline" onClick={() => setManageCats(true)}>

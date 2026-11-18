@@ -41,13 +41,15 @@ export interface CustomerTokenClaims {
   sub: string;
   /** token version — must equal the customer's tokenVersion or the token is dead */
   ver: number;
-  /** device fingerprint (hash of ip + user-agent) — anti-theft binding */
+  /** legacy device fingerprint (ip + user-agent). New session tokens leave it empty. */
   fp: string;
+  /** session id (customer_sessions). Present on every token issued by the session system. */
+  sid?: string;
   kind: CustomerTokenKind;
 }
 
 async function sign(claims: CustomerTokenClaims, ttlSeconds: number): Promise<string> {
-  return new SignJWT({ ver: claims.ver, fp: claims.fp, kind: claims.kind })
+  return new SignJWT({ ver: claims.ver, fp: claims.fp, kind: claims.kind, ...(claims.sid ? { sid: claims.sid } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     // Unique per token, so a rotated refresh token is never identical to the new one.
     .setJti(crypto.randomUUID())
@@ -75,12 +77,13 @@ export async function verifyCustomerToken(
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secretKey(), { issuer: ISSUER, audience: AUDIENCE });
-    const p = payload as JWTPayload & { ver?: number; fp?: string; kind?: CustomerTokenKind };
+    const p = payload as JWTPayload & { ver?: number; fp?: string; sid?: string; kind?: CustomerTokenKind };
     if (!p.sub || p.kind !== expectedKind) return null;
     return {
       sub: p.sub,
       ver: typeof p.ver === "number" ? p.ver : 0,
       fp: p.fp ?? "",
+      ...(p.sid ? { sid: p.sid } : {}),
       kind: p.kind,
     };
   } catch {

@@ -12,7 +12,7 @@ import "server-only";
  *  • Indexes shaped around real queries: by number, status, customer, date.
  */
 
-import { Schema, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
+import { Schema, deleteModel, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
 
 const ItemSchema = new Schema(
   {
@@ -138,6 +138,14 @@ const OrderSchema = new Schema(
 
     placedAt: { type: String, required: true },
 
+    // ── Customer checkout (absent on older / admin orders) ──
+    requestId: { type: String, trim: true, maxlength: 64 },
+    channel: { type: String, enum: ["web", "app"] },
+    stockReserved: { type: Boolean, default: false },
+    holdUntil: { type: String, default: null },
+    cancelReason: { type: String, trim: true, maxlength: 300 },
+    refund: { type: Schema.Types.Mixed, default: null },
+
     // ── Soft delete ──
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
@@ -165,8 +173,16 @@ OrderSchema.index(
 OrderSchema.index({ isDeleted: 1, status: 1, placedAt: -1 });
 OrderSchema.index({ isDeleted: 1, customerId: 1, placedAt: -1 });
 OrderSchema.index({ isDeleted: 1, paymentStatus: 1 });
+// Retry-safe checkout: one order per client request id.
+OrderSchema.index({ requestId: 1 }, { unique: true, partialFilterExpression: { requestId: { $type: "string" } } });
+// Hold sweep: unpaid online orders whose stock hold ran out.
+OrderSchema.index({ status: 1, holdUntil: 1 }, { partialFilterExpression: { holdUntil: { $type: "string" } } });
 
 export type OrderDoc = InferSchemaType<typeof OrderSchema> & { _id: Types.ObjectId };
+
+// Dev: drop the cached model so new fields apply on hot reload (strict mode
+// would silently drop them otherwise). No-op in production.
+if (process.env.NODE_ENV !== "production" && models.Order) deleteModel("Order");
 
 export const OrderModel: Model<OrderDoc> =
   (models.Order as Model<OrderDoc>) ?? model<OrderDoc>("Order", OrderSchema);

@@ -2,6 +2,7 @@
  * Core domain types for the gemstone / astrology ecommerce store.
  * These are shared across the data layer, UI components and (future) API client.
  */
+import type { Channels } from "@/core/channels";
 
 export type ZodiacSign =
   | "aries"
@@ -162,6 +163,8 @@ export interface Collection {
   description?: string;
   image?: string;
   featured?: boolean; // pin to homepage
+  /** Where it is sold: website / app (see core/channels). Missing = both. */
+  channels?: import("@/core/channels").Channels;
   createdAt: string;
 }
 
@@ -208,6 +211,8 @@ export interface Product {
   collections?: string[]; // Collection ids this product belongs to
   related?: string[]; // related / "frequently bought with" product ids
   featured?: boolean; // pin to homepage
+  /** Where it is sold: website / app (see core/channels). Missing = both. */
+  channels?: import("@/core/channels").Channels;
 
   /* ---------------------------------------------------------------- *
    * Production catalogue surface (optional — populated by the Mongo
@@ -373,6 +378,8 @@ export interface AstroService {
   order: number; // display order (lower = first)
   /** Service category id. null/undefined = Uncategorised (older services). */
   categoryId?: string | null;
+  /** Where it is shown: website and/or mobile app. Missing = both (older services). */
+  channels?: Channels;
   createdAt?: string;
   updatedAt?: string;
 }

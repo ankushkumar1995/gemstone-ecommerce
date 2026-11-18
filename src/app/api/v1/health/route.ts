@@ -31,10 +31,13 @@ const KNOWN_MODULES = [
   "astro_settings",
   "wallets",
   "poojas",
+  "leads",
+  "agreements",
+  "partner_notices",
 ] as const;
 
 /** Modules that only have an in-memory repository so far (always mock). */
-const MOCK_ONLY_MODULES = ["collections", "pages", "leads", "reviews", "returns", "audit"] as const;
+const MOCK_ONLY_MODULES = ["collections", "pages", "reviews", "returns", "audit"] as const;
 
 interface HealthReport {
   status: "ok" | "degraded";

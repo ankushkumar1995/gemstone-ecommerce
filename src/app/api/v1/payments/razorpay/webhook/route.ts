@@ -15,8 +15,11 @@ import type { NextRequest } from "next/server";
 import { jsonError, jsonOk } from "@/core/http";
 import { AppErrors } from "@/core/errors";
 import { orderService } from "@/modules/orders";
+import { settlePayment } from "@/modules/orders/order-checkout.service";
 import { bookingService } from "@/modules/bookings";
 import { walletService } from "@/modules/wallets";
+import { poojaPaymentService } from "@/modules/poojas";
+import { getPoojaRepository } from "@/modules/poojas/pooja.repository";
 import { verifyWebhookSignature } from "@/core/razorpay";
 
 export const dynamic = "force-dynamic";
@@ -40,8 +43,8 @@ export async function POST(request: NextRequest) {
   const e = event as {
     event?: string;
     payload?: {
-      payment?: { entity?: { id?: string; order_id?: string } };
-      order?: { entity?: { id?: string } };
+      payment?: { entity?: { id?: string; order_id?: string; amount?: number; status?: string } };
+      order?: { entity?: { id?: string; amount_paid?: number } };
     };
   };
 
@@ -49,6 +52,8 @@ export async function POST(request: NextRequest) {
   const razorpayOrderId =
     e.payload?.payment?.entity?.order_id ?? e.payload?.order?.entity?.id;
   const razorpayPaymentId = e.payload?.payment?.entity?.id;
+  // Amount actually paid (paise), when the event carries it.
+  const amountPaise = e.payload?.payment?.entity?.amount ?? e.payload?.order?.entity?.amount_paid;
 
   const settleEvents = new Set(["payment.captured", "order.paid"]);
   if (!e.event || !settleEvents.has(e.event) || !razorpayOrderId) {
@@ -56,24 +61,34 @@ export async function POST(request: NextRequest) {
     return jsonOk({ received: true });
   }
 
-  // The gateway order id belongs to EITHER a product order or a service
-  // booking — settle whichever it maps to (markPaid is idempotent on both).
+  // A real failure while settling → 500, so Razorpay retries (every path below
+  // is idempotent, so a retry can never double-apply).
+  const retryLater = (msg: string) => jsonError(AppErrors.internal(msg));
+
+  // The gateway order id belongs to ONE of: product order, service booking,
+  // pooja booking, wallet recharge. Settle whichever it maps to.
   const order = await orderService.findByRazorpayOrderId(razorpayOrderId);
   if (order) {
-    await orderService.markPaid(order.id, {
-      razorpayOrderId,
-      razorpayPaymentId: razorpayPaymentId ?? "webhook",
-    });
-    return jsonOk({ received: true });
+    if (!razorpayPaymentId) return jsonOk({ received: true }); // order.paid without a payment: wait for payment.captured
+    // Exact amount, exactly once; a mismatch is recorded for review (200, retrying cannot fix it).
+    const r = await settlePayment(razorpayOrderId, razorpayPaymentId, amountPaise);
+    return r.ok ? jsonOk({ received: true }) : retryLater("Could not settle the order");
   }
 
   const booking = await bookingService.findByRazorpayOrderId(razorpayOrderId);
   if (booking) {
-    await bookingService.markPaid(booking.id, {
-      razorpayOrderId,
-      razorpayPaymentId: razorpayPaymentId ?? "webhook",
-    });
+    if (!razorpayPaymentId) return jsonOk({ received: true }); // order.paid without a payment: wait for payment.captured
+    const r = await bookingService.markPaid(booking.id, { razorpayOrderId, razorpayPaymentId }, { amountPaise });
+    // A mismatched amount is recorded for review; retrying would not change it.
+    if (!r.ok && !/match/i.test(r.error.message)) return retryLater("Could not settle the booking");
     return jsonOk({ received: true });
+  }
+
+  const pooja = await getPoojaRepository().findBookingByRazorpayOrder(razorpayOrderId);
+  if (pooja) {
+    if (!razorpayPaymentId) return jsonOk({ received: true });
+    const r = await poojaPaymentService.settle(razorpayOrderId, razorpayPaymentId, amountPaise);
+    return r.ok ? jsonOk({ received: true }) : retryLater("Could not settle the pooja booking");
   }
 
   // Wallet recharge: credit exactly once (idempotent on the recharge id).

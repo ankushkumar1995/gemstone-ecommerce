@@ -45,6 +45,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
     guestCheckout: true,
     requirePhone: true,
     minOrderValue: 0,
+    codEnabled: true,
+    codMaxOrderValue: 0,
     termsText: "By placing this order you agree to our terms & conditions and refund policy.",
   },
   notifications: {

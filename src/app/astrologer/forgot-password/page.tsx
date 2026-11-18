@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { partnerApi } from "@/lib/astrologer-api";
-import { AdminButton, AdminInput, Field } from "@/app/admin/_components";
+import { AdminButton, AdminInput, Field, useAdminToast } from "@/app/admin/_components";
 import { AuthFrame, FormError } from "../_components/auth-frame";
 
 export default function ForgotPasswordPage() {
@@ -12,6 +12,7 @@ export default function ForgotPasswordPage() {
   const [devToken, setDevToken] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { toast } = useAdminToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +20,8 @@ export default function ForgotPasswordPage() {
     setError(null);
     const res = await partnerApi.auth.forgot(email);
     setLoading(false);
-    if (!res.ok) { setError(res.message); return; }
+    if (!res.ok) { setError(res.message); toast(res.message, "error"); return; }
+    toast("Reset link sent. Check your email.", "success");
     setSent(true);
     setDevToken(res.data.devToken);
   };
@@ -40,7 +42,7 @@ export default function ForgotPasswordPage() {
         <form onSubmit={submit} className="space-y-4">
           <Field label="Email"><AdminInput type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <FormError message={error} />
-          <AdminButton type="submit" className="w-full" disabled={loading || !email}>{loading ? "Sending…" : "Send reset link"}</AdminButton>
+          <AdminButton type="submit" className="w-full" loading={loading} disabled={!email}>{loading ? "Sending…" : "Send reset link"}</AdminButton>
         </form>
       )}
     </AuthFrame>

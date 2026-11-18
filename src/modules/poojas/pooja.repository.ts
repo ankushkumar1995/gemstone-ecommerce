@@ -9,6 +9,7 @@
  */
 
 import { dataSourceFor } from "@/core/config/env";
+import { normalizeChannels } from "@/core/channels";
 import { newId } from "@/core/id";
 import { CATEGORY_LABEL, DEFAULT_CATEGORY_ICON, DEFAULT_CATEGORY_KEYS, RITUAL_TYPES, blankHavan, type RitualType, type BookingFilter, type Pandit, type Pooja, type PoojaBooking, type PoojaCategoryItem } from "./pooja.types";
 
@@ -64,6 +65,15 @@ export interface PoojaRepository {
   getBooking(id: string): Promise<PoojaBooking | null>;
   findBookingByRequest(requestId: string): Promise<PoojaBooking | null>;
   listBookings(f: BookingFilter): Promise<PoojaBooking[]>;
+  /**
+   * A customer's own bookings, newest first: linked to their account, plus guest
+   * bookings made with their verified 10-digit phone (`phone10`, or null).
+   */
+  listCustomerBookings(customerId: string, phone10: string | null, limit?: number): Promise<PoojaBooking[]>;
+  findBookingByRazorpayOrder(razorpayOrderId: string): Promise<PoojaBooking | null>;
+  findBookingByNumber(bookingNumber: string): Promise<PoojaBooking | null>;
+  /** Pay-online bookings still waiting for payment whose seat hold ended before `nowIso`. */
+  listExpiredHolds(nowIso: string, limit: number): Promise<PoojaBooking[]>;
   updateBooking(id: string, patch: Partial<PoojaBooking>, expectedVersion: number): Promise<PoojaBooking | null | "conflict">;
   stats(today: string): Promise<Record<string, PoojaStats>>;
   hasBookings(poojaId: string): Promise<boolean>;
@@ -97,7 +107,8 @@ function matches(b: PoojaBooking, f: BookingFilter) {
  */
 function withDefaults(p: Pooja): Pooja {
   const type: RitualType = (RITUAL_TYPES as readonly string[]).includes(p.type as string) ? p.type : "pooja";
-  return { ...p, type, havan: { ...blankHavan(), ...(p.havan ?? {}) } };
+  // Old rows have no `channels`: they stay visible on both website and app.
+  return { ...p, type, havan: { ...blankHavan(), ...(p.havan ?? {}) }, channels: normalizeChannels(p.channels) };
 }
 const one = (p: Pooja | null) => (p ? withDefaults(p) : null);
 
@@ -183,6 +194,15 @@ const mockRepo: PoojaRepository = {
   async getBooking(id) { const b = mem.bookings.find((x) => x.id === id); return b ? clone(b) : null; },
   async findBookingByRequest(requestId) { const b = mem.bookings.find((x) => x.requestId === requestId); return b ? clone(b) : null; },
   async listBookings(f) { return clone(mem.bookings.filter((b) => matches(b, f)).sort((a, b) => a.slot.key.localeCompare(b.slot.key)).slice(0, f.limit ?? 500)); },
+  async listCustomerBookings(customerId, phone10, limit = 100) {
+    const mine = mem.bookings.filter((b) => b.customer.customerId === customerId || (!!phone10 && !b.customer.customerId && b.customer.phone === phone10));
+    return clone(mine.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit));
+  },
+  async findBookingByRazorpayOrder(orderId) { const b = mem.bookings.find((x) => x.payment.razorpayOrderId === orderId); return b ? clone(b) : null; },
+  async findBookingByNumber(n) { const b = mem.bookings.find((x) => x.bookingNumber === n); return b ? clone(b) : null; },
+  async listExpiredHolds(nowIso, limit) {
+    return clone(mem.bookings.filter((b) => b.status === "pending_payment" && typeof b.holdUntil === "string" && b.holdUntil < nowIso).slice(0, limit));
+  },
   async updateBooking(id, patch, expectedVersion) {
     const i = mem.bookings.findIndex((x) => x.id === id);
     if (i < 0) return null;
@@ -346,6 +366,28 @@ const mongoRepo: PoojaRepository = {
     if (f.from || f.to) q.slotDate = { ...(f.from ? { $gte: f.from } : {}), ...(f.to ? { $lte: f.to } : {}) };
     if (f.q) { const re = new RegExp(escapeRe(f.q), "i"); q.$or = [{ bookingNumber: re }, { "customer.name": re }, { customerPhone: re }, { "customer.email": re }, { "pooja.title": re }]; }
     const rows = await PoojaBookingModel.find(q).sort({ slotDate: 1, "slot.time": 1 }).limit(Math.min(f.limit ?? 500, 1000)).lean<Row[]>();
+    return rows.map((d) => out<PoojaBooking>(d));
+  },
+  async listCustomerBookings(customerId, phone10, limit = 100) {
+    const { PoojaBookingModel } = await M();
+    const or: Record<string, unknown>[] = [{ "customer.customerId": customerId }];
+    if (phone10) or.push({ customerPhone: phone10, "customer.customerId": null });
+    const rows = await PoojaBookingModel.find({ $or: or }).sort({ createdAt: -1 }).limit(Math.min(limit, 200)).lean<Row[]>();
+    return rows.map((d) => out<PoojaBooking>(d));
+  },
+  async findBookingByRazorpayOrder(orderId) {
+    const { PoojaBookingModel } = await M();
+    const d = await PoojaBookingModel.findOne({ razorpayOrderId: orderId }).lean<Row>();
+    return d ? out<PoojaBooking>(d) : null;
+  },
+  async findBookingByNumber(bookingNumber) {
+    const { PoojaBookingModel } = await M();
+    const d = await PoojaBookingModel.findOne({ bookingNumber }).lean<Row>();
+    return d ? out<PoojaBooking>(d) : null;
+  },
+  async listExpiredHolds(nowIso, limit) {
+    const { PoojaBookingModel } = await M();
+    const rows = await PoojaBookingModel.find({ status: "pending_payment", holdUntil: { $type: "string", $lt: nowIso } }).limit(Math.min(limit, 200)).lean<Row[]>();
     return rows.map((d) => out<PoojaBooking>(d));
   },
   async updateBooking(id, patch, expectedVersion) {

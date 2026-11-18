@@ -16,9 +16,11 @@ import { newId, newReference } from "@/core/id";
 import { serviceService } from "@/modules/services";
 import { customerService } from "@/modules/customers";
 import { auditService } from "@/modules/audit";
+import { createRazorpayRefund } from "@/core/razorpay";
+import { isVisibleOn, type Channel } from "@/core/channels";
 import { getBookingRepository } from "./booking.repository";
 import { sendBookingConfirmed, sendBookingScheduled, sendBookingCompleted } from "./booking.emails";
-import type { Booking, BookingStatus, BookingPaymentStatus } from "./booking.types";
+import type { Booking, BookingStatus, BookingPaymentStatus, RefundDestination } from "./booking.types";
 import type { CreateBookingDto } from "./booking.schema";
 
 /** Allowed status transitions — guards against illegal jumps. */
@@ -35,7 +37,97 @@ function logEntry(type: Booking["activity"][number]["type"], message: string, ac
   return { id: newId("bact"), at: new Date().toISOString(), type, message, actor };
 }
 
+/**
+ * Can the CUSTOMER cancel this service booking now, and what comes back?
+ *   unpaid + pending                       → yes, nothing to refund
+ *   paid + confirmed, not scheduled yet    → yes, 100 % refund
+ *   scheduled / in progress / delivered    → no, the astrologer is already on it: support
+ */
+export function serviceCancelPolicy(b: Booking): { allowed: boolean; refundAmount: number; refundTo: RefundDestination[]; why: string } {
+  const refundTo: RefundDestination[] = [];
+  if (b.paymentMethod === "razorpay" && b.payment?.razorpayPaymentId) refundTo.push("source");
+  if (b.customerId) refundTo.push("wallet");
+  if (b.status === "pending" && b.paymentStatus === "unpaid") return { allowed: true, refundAmount: 0, refundTo: [], why: "" };
+  if (b.status === "confirmed" && b.paymentStatus === "paid" && !b.scheduledAt) {
+    if (!refundTo.length) return { allowed: false, refundAmount: 0, refundTo, why: "This booking was paid offline. Please contact support to cancel it." };
+    return { allowed: true, refundAmount: b.amount, refundTo, why: "" };
+  }
+  if (b.status === "confirmed" && b.scheduledAt) return { allowed: false, refundAmount: 0, refundTo, why: "Your session is already scheduled with the astrologer. Please contact support to cancel." };
+  if (b.status === "in_progress") return { allowed: false, refundAmount: 0, refundTo, why: "The astrologer has started working on this. Please contact support." };
+  return { allowed: false, refundAmount: 0, refundTo, why: "" };
+}
+
 export const bookingService = {
+  /**
+   * Customer cancels their own booking (app / website). Re-checks the policy on
+   * the server, flips the status atomically (a double tap or the team scheduling
+   * it at the same moment cannot both win), then refunds exactly once:
+   *   source → Razorpay refund to the card / UPI / bank (5-7 working days)
+   *   wallet → AstroUnkle wallet cash, instant (idempotent wallet key)
+   * A failed gateway refund leaves a clear note for the team; the booking stays cancelled.
+   */
+  async customerCancel(customerId: string, bookingNumber: string, refundTo: RefundDestination): Promise<Result<Booking>> {
+    const repo = getBookingRepository();
+    const b = await repo.findByNumber(bookingNumber);
+    if (!b || b.customerId !== customerId) return fail(AppErrors.notFound("Booking not found"));
+    if (b.status === "cancelled") return ok(b); // retried tap
+    const pol = serviceCancelPolicy(b);
+    if (!pol.allowed) return fail(AppErrors.validation(pol.why || "This booking can no longer be cancelled in the app. Please contact support."));
+    if (pol.refundAmount > 0 && !pol.refundTo.includes(refundTo)) return fail(AppErrors.validation("Please choose where the refund should go."));
+
+    const now = new Date().toISOString();
+    const paid = pol.refundAmount > 0;
+    const cancelled = await repo.updateIfUnscheduled(b.id, [b.status], b.paymentStatus, {
+      status: "cancelled",
+      updatedAt: now,
+      activity: [logEntry("status", `Cancelled by the customer${paid ? ` · refund ₹${pol.refundAmount} to ${refundTo === "wallet" ? "wallet" : "original payment method"}` : ""}`, "Customer"), ...b.activity].slice(0, 50),
+    });
+    if (!cancelled) {
+      const fresh = await repo.findById(b.id);
+      if (fresh?.status === "cancelled") return ok(fresh);
+      return fail(AppErrors.conflict("This booking was just updated by our team. Please refresh and check again."));
+    }
+    await auditService.record({ action: "status", entity: "order", entityId: b.id, entityLabel: b.bookingNumber, summary: `Customer cancelled ${b.bookingNumber}${paid ? ` (refund ₹${pol.refundAmount} to ${refundTo})` : ""}`, actor: "Customer" }).catch(() => undefined);
+    if (!paid) return ok(cancelled);
+    return this.refundCancelled(cancelled, refundTo);
+  },
+
+  /** Send the money back for a booking the customer just cancelled. Never twice: the refund field is the guard. */
+  async refundCancelled(b: Booking, to: RefundDestination): Promise<Result<Booking>> {
+    const repo = getBookingRepository();
+    if (b.refund?.status === "processed") return ok(b);
+    const at = new Date().toISOString();
+    let refund: NonNullable<Booking["refund"]>;
+    if (to === "wallet") {
+      try {
+        const { walletService } = await import("@/modules/wallets");
+        const r = await walletService.refund(b.customerId ?? "", `bkcancel_${b.id}`, { cashPaise: Math.round(b.amount * 100), promoPaise: 0 }, b.bookingNumber, `Refund for cancelled booking ${b.bookingNumber} (${b.serviceTitle})`, "System");
+        if (r.status === "insufficient") throw new Error("wallet refused the credit");
+        refund = { amount: b.amount, to, status: "processed", reference: r.txn?.id ?? "", at };
+      } catch (e) {
+        refund = { amount: b.amount, to, status: "failed", reference: "", at, error: e instanceof Error ? e.message.slice(0, 160) : "wallet error" };
+      }
+    } else {
+      try {
+        const rz = await createRazorpayRefund({ paymentId: b.payment?.razorpayPaymentId ?? "", amountInRupees: b.amount, receipt: `cxl_${b.bookingNumber}`, notes: { bookingNumber: b.bookingNumber, reason: "cancelled by customer" } });
+        refund = { amount: b.amount, to, status: "processed", reference: rz.id, at };
+      } catch (e) {
+        refund = { amount: b.amount, to, status: "failed", reference: "", at, error: e instanceof Error ? e.message.slice(0, 160) : "gateway error" };
+      }
+    }
+    const done = refund.status === "processed";
+    const updated = await repo.update(b.id, {
+      refund,
+      ...(done ? { paymentStatus: "refunded" as const } : {}),
+      updatedAt: at,
+      activity: [logEntry("payment", done
+        ? `Refunded ₹${b.amount} to ${to === "wallet" ? "the AstroUnkle wallet" : "the original payment method"} (${refund.reference})`
+        : `Refund of ₹${b.amount} FAILED, refund it manually: ${refund.error}`, "System"), ...b.activity].slice(0, 50),
+    });
+    await auditService.record({ action: "refund", entity: "order", entityId: b.id, entityLabel: b.bookingNumber, summary: done ? `Refunded ₹${b.amount} for ${b.bookingNumber} to ${to}` : `Refund FAILED for ${b.bookingNumber}: refund ₹${b.amount} manually`, actor: "System" }).catch(() => undefined);
+    return ok(updated ?? b);
+  },
+
   async list(): Promise<Result<Booking[]>> {
     const repo = getBookingRepository();
     return ok(await repo.findAll());
@@ -72,7 +164,7 @@ export const bookingService = {
    * customer identity. The charged amount is ALWAYS the server-side service
    * price — never trusted from the client.
    */
-  async create(dto: CreateBookingDto): Promise<Result<Booking>> {
+  async create(dto: CreateBookingDto, opts: { channel?: Channel } = {}): Promise<Result<Booking>> {
     const repo = getBookingRepository();
 
     // resolve + snapshot the service
@@ -80,6 +172,8 @@ export const bookingService = {
     if (!svcRes.ok) return fail(AppErrors.validation("Selected service not found"));
     const svc = svcRes.value;
     if (svc.status !== "active") return fail(AppErrors.validation("This service isn't available right now"));
+    // Customer bookings respect the admin's Website / App switch.
+    if (opts.channel && !isVisibleOn(svc.channels, opts.channel)) return fail(AppErrors.validation("This service is not available here right now"));
 
     const amount = svc.priceFrom ?? 0;
     if (amount <= 0) {
@@ -92,10 +186,17 @@ export const bookingService = {
     if (dto.customerId) {
       const cRes = await customerService.getById(dto.customerId);
       if (cRes.ok) {
-        customerSnap = { name: cRes.value.name, email: cRes.value.email, phone: cRes.value.phone };
+        // Phone sign-ups may have no email / name on the account yet: use what
+        // they typed in the form for this booking (the account stays as is).
+        customerSnap = {
+          name: cRes.value.name || dto.customer?.name || dto.intake.fullName,
+          email: cRes.value.email || dto.customer?.email || "",
+          phone: cRes.value.phone || dto.customer?.phone || dto.intake.phone,
+        };
       }
     }
     if (!customerSnap) return fail(AppErrors.validation("Sign in to book a service"));
+    if (!customerSnap.email) return fail(AppErrors.validation("Please add your email so we can send the booking confirmation."));
 
     const now = new Date().toISOString();
     const status = dto.status ?? "pending";
@@ -165,12 +266,20 @@ export const bookingService = {
   async markPaid(
     bookingId: string,
     refs: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature?: string },
+    opts: { amountPaise?: number } = {},
   ): Promise<Result<Booking>> {
     const repo = getBookingRepository();
     const b = await repo.findById(bookingId);
     if (!b) return fail(AppErrors.notFound("Booking not found"));
-    if (b.paymentStatus === "paid") return ok(b);
+    if (b.paymentStatus !== "unpaid") return ok(b);
+    // Known amount (webhook / gateway lookup) must match what we charged.
+    if (opts.amountPaise !== undefined && opts.amountPaise !== Math.round(b.amount * 100)) {
+      await auditService.record({ action: "payment", entity: "order", entityId: b.id, entityLabel: b.bookingNumber, summary: `Razorpay ${refs.razorpayPaymentId} paid ₹${opts.amountPaise / 100} but ${b.bookingNumber} costs ₹${b.amount}. Not applied.`, actor: "System" }).catch(() => undefined);
+      return fail(AppErrors.conflict("Paid amount does not match the booking"));
+    }
 
+    const at = new Date().toISOString();
+    const lateAfterCancel = b.status === "cancelled";
     const patch: Partial<Booking> = {
       paymentStatus: "paid",
       payment: {
@@ -178,21 +287,83 @@ export const bookingService = {
         razorpayOrderId: refs.razorpayOrderId,
         razorpayPaymentId: refs.razorpayPaymentId,
         razorpaySignature: refs.razorpaySignature,
-        paidAt: new Date().toISOString(),
+        paidAt: at,
       },
-      activity: [logEntry("payment", "Payment captured via Razorpay", "Customer"), ...b.activity].slice(0, 50),
+      activity: [logEntry("payment", lateAfterCancel ? "Payment captured via Razorpay AFTER the booking was cancelled" : "Payment captured via Razorpay", "Customer"), ...b.activity].slice(0, 50),
+      updatedAt: at,
     };
     if (b.status === "pending") {
       patch.status = "confirmed";
       patch.activity = [logEntry("status", "Confirmed after payment"), ...(patch.activity ?? b.activity)].slice(0, 50);
     }
-    patch.updatedAt = new Date().toISOString();
 
-    const updated = await repo.update(bookingId, patch);
-    if (!updated) return fail(AppErrors.notFound("Booking not found"));
-    // Notify the customer their booking is confirmed (fire-and-forget).
+    // Atomic: only ONE caller (callback, webhook, status poll) gets past here.
+    const updated = await repo.markPaidOnce(bookingId, patch);
+    if (!updated) {
+      const now = await repo.findById(bookingId);
+      return now ? ok(now) : fail(AppErrors.notFound("Booking not found"));
+    }
+
+    if (lateAfterCancel) {
+      // Cancel means cancel: send every rupee back, automatically.
+      return this.autoRefundLate(updated, refs.razorpayPaymentId);
+    }
+    // Notify the customer their booking is confirmed (fire-and-forget), winner only.
     void sendBookingConfirmed(updated).catch(() => {});
     return ok(updated);
+  },
+
+  /** Full Razorpay refund for a payment that arrived after the booking was cancelled. */
+  async autoRefundLate(b: Booking, razorpayPaymentId: string): Promise<Result<Booking>> {
+    const repo = getBookingRepository();
+    try {
+      const rz = await createRazorpayRefund({ paymentId: razorpayPaymentId, amountInRupees: b.amount, receipt: `late_${b.bookingNumber}`, notes: { bookingNumber: b.bookingNumber, reason: "paid after cancellation" } });
+      const r = await repo.update(b.id, {
+        paymentStatus: "refunded",
+        refund: { amount: b.amount, to: "source", status: "processed", reference: rz.id, at: new Date().toISOString() },
+        activity: [logEntry("payment", `Refunded ₹${b.amount} automatically (paid after cancellation, refund ${rz.id})`, "System"), ...b.activity].slice(0, 50),
+        updatedAt: new Date().toISOString(),
+      });
+      await auditService.record({ action: "refund", entity: "order", entityId: b.id, entityLabel: b.bookingNumber, summary: `Auto refund ₹${b.amount} for ${b.bookingNumber} (paid after cancellation)`, actor: "System" }).catch(() => undefined);
+      return ok(r ?? b);
+    } catch (e) {
+      const r = await repo.update(b.id, {
+        activity: [logEntry("payment", `Automatic refund FAILED, refund ₹${b.amount} manually: ${e instanceof Error ? e.message.slice(0, 160) : "gateway error"}`, "System"), ...b.activity].slice(0, 50),
+        updatedAt: new Date().toISOString(),
+      });
+      await auditService.record({ action: "refund", entity: "order", entityId: b.id, entityLabel: b.bookingNumber, summary: `Auto refund FAILED for ${b.bookingNumber}: refund ₹${b.amount} manually`, actor: "System" }).catch(() => undefined);
+      return ok(r ?? b);
+    }
+  },
+
+  /**
+   * App / website: where does this paid booking stand? Not paid yet → ask
+   * Razorpay and settle a captured payment for the exact amount. Own bookings only.
+   */
+  async onlineStatus(
+    customerId: string,
+    razorpayOrderId: string,
+    lookup: (orderId: string) => Promise<{ id: string; status: string; amount: number; error_description?: string | null }[]>,
+  ): Promise<Result<{ state: "paid" | "processing" | "pending" | "failed" | "refunded" | "review"; bookingNumber: string; status: Booking["status"]; amount: number; reason?: string }>> {
+    const repo = getBookingRepository();
+    let b = await repo.findByRazorpayOrderId(razorpayOrderId);
+    if (!b || b.customerId !== customerId) return fail(AppErrors.notFound("Booking not found"));
+    const view = (state: "paid" | "processing" | "pending" | "failed" | "refunded" | "review", bk: Booking, reason?: string) => ({ state, bookingNumber: bk.bookingNumber, status: bk.status, amount: bk.amount, ...(reason ? { reason } : {}) });
+    if (b.paymentStatus === "refunded") return ok(view("refunded", b));
+    if (b.paymentStatus === "paid") return ok(view(b.status === "cancelled" ? "refunded" : "paid", b));
+    let payments;
+    try { payments = await lookup(razorpayOrderId); } catch { return ok(view("pending", b)); }
+    const captured = payments.find((p) => p.status === "captured");
+    if (captured) {
+      const s = await this.markPaid(b.id, { razorpayOrderId, razorpayPaymentId: captured.id }, { amountPaise: captured.amount });
+      if (!s.ok) return ok(view(/match/i.test(s.error.message) ? "review" : "pending", b));
+      b = s.value;
+      return ok(view(b.paymentStatus === "refunded" || b.status === "cancelled" ? "refunded" : "paid", b));
+    }
+    if (payments.some((p) => p.status === "authorized")) return ok(view("processing", b));
+    const failed = payments.filter((p) => p.status === "failed");
+    if (failed.length && failed.length === payments.length) return ok(view("failed", b, failed[0].error_description || "The payment did not go through."));
+    return ok(view(payments.length ? "processing" : "pending", b));
   },
 
   /** Change booking status with transition validation. */

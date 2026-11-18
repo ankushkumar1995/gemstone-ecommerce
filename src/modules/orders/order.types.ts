@@ -118,6 +118,31 @@ export interface Order {
   activity: OrderActivity[];
   placedAt: string; // ISO
   updatedAt: string; // ISO
+
+  /* ---- customer checkout (app + website); absent on older / admin orders ---- */
+  /** Client retry key: the same id returns the same order (never a duplicate). */
+  requestId?: string;
+  channel?: "web" | "app";
+  /**
+   * Stock was reserved when the order was placed (atomic, never oversold).
+   * When true, confirming does not take stock again and cancelling gives it back.
+   */
+  stockReserved?: boolean;
+  /** Pay-online order still unpaid: the reserved stock is held until this time. */
+  holdUntil?: string | null;
+  cancelReason?: string;
+  refund?: OrderRefundInfo | null;
+}
+
+export interface OrderRefundInfo {
+  amount: number; // rupees
+  /** source = original card / UPI / bank; wallet = AstroUnkle wallet (instant). */
+  to: "source" | "wallet";
+  /** processed = sent; failed = the team must refund by hand. */
+  status: "processed" | "failed";
+  reference: string;
+  at: string;
+  error?: string;
 }
 
 /** A line item as submitted when creating an order. */

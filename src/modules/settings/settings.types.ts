@@ -68,6 +68,10 @@ export interface CheckoutSettings {
   guestCheckout: boolean;
   requirePhone: boolean;
   minOrderValue: number; // 0 = no minimum
+  /** Cash on Delivery offered at checkout (missing = on). */
+  codEnabled?: boolean;
+  /** COD only up to this order total (₹). 0 / missing = no limit. */
+  codMaxOrderValue?: number;
   termsText?: string;
 }
 

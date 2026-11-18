@@ -1,53 +1,35 @@
 /**
- * /api/v1/account/refresh  (public — uses the refresh cookie)
- *   POST → verify the refresh token (version + device + reuse-detection),
- *          rotate it and set fresh cookies.
+ * /api/v1/account/refresh  (public)
+ *   POST → rotate the refresh token, return a new pair.
+ *   Web: refresh token from the httpOnly cookie, new tokens set as cookies.
+ *   App: { refreshToken } in the body, new tokens in the body.
+ * Old (pre-session) web cookies are migrated into a session here.
  */
 
-import { cookies, headers } from "next/headers";
-import { jsonError, jsonOk } from "@/core/http";
+import type { NextRequest } from "next/server";
+import { jsonError } from "@/core/http";
 import { AppErrors } from "@/core/errors";
-import { clientIp } from "@/core/rate-limit";
-import {
-  verifyCustomerToken,
-  customerDeviceFingerprint,
-  CUSTOMER_REFRESH_COOKIE,
-} from "@/core/customer-jwt";
+import { rateLimit } from "@/core/rate-limit";
+import { CUSTOMER_REFRESH_COOKIE } from "@/core/customer-jwt";
 import { customerAuthService } from "@/modules/customer-auth";
-import { setCustomerCookies, clearCustomerCookies } from "@/modules/customer-auth/cookies";
+import { clearCustomerCookies } from "@/modules/customer-auth/cookies";
+import { authResponse, readCtx } from "@/modules/customer-auth/client-ctx";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
-  const [store, hdrs] = await Promise.all([cookies(), headers()]);
-  const raw = store.get(CUSTOMER_REFRESH_COOKIE)?.value;
-  const claims = await verifyCustomerToken(raw, "refresh");
-  if (!claims || !raw) {
-    const out = jsonError(AppErrors.unauthorized("Session expired"));
-    clearCustomerCookies(out);
-    return out;
-  }
+export async function POST(request: NextRequest) {
+  const ctx = readCtx(request);
+  const rl = rateLimit(`account:refresh:${ctx.ip}`, { limit: 120, windowSeconds: 60 });
+  if (!rl.allowed) return jsonError(AppErrors.rateLimited("Too many requests. Please slow down."));
 
-  const fingerprint = await customerDeviceFingerprint(clientIp(hdrs), hdrs.get("user-agent") ?? "");
-  if (claims.fp && claims.fp !== fingerprint) {
-    const out = jsonError(AppErrors.unauthorized("Session not valid on this device"));
-    clearCustomerCookies(out);
-    return out;
-  }
+  const body = ctx.client === "web" ? null : ((await request.json().catch(() => null)) as { refreshToken?: string } | null);
+  const presented = ctx.client === "web" ? request.cookies.get(CUSTOMER_REFRESH_COOKIE)?.value : body?.refreshToken;
 
-  const res = await customerAuthService.refresh({
-    customerId: claims.sub,
-    tokenVersion: claims.ver,
-    fingerprint,
-    presentedRefresh: raw,
-  });
+  const res = await customerAuthService.refresh(presented ?? "", ctx);
   if (!res.ok) {
     const out = jsonError(res.error);
-    clearCustomerCookies(out);
+    if (ctx.client === "web") clearCustomerCookies(out);
     return out;
   }
-
-  const out = jsonOk({ customer: res.value.customer });
-  setCustomerCookies(out, res.value.tokens);
-  return out;
+  return authResponse(ctx, { customer: res.value.customer }, res.value.tokens);
 }

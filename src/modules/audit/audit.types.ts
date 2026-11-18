@@ -22,9 +22,11 @@ export type AuditEntity =
   | "user"
   | "astrologer"
   | "consultation"
+  | "live"
   | "wallet"
   | "payout"
-  | "pooja";
+  | "pooja"
+  | "agreement";
 
 export type AuditAction =
   | "create"

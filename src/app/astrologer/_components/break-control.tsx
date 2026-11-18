@@ -16,7 +16,8 @@ import { Coffee, Play, Plus } from "lucide-react";
 import { AdminButton, Modal, Toggle, useAdminToast } from "@/app/admin/_components";
 import { usePartner } from "./partner-context";
 import { DEMO_SESSION_KEY, nowMs } from "./demo";
-import { BREAK_DAILY_COUNT, BREAK_DAILY_MIN, breakStore, liveStore, todayKey, useStore, type BreakState } from "./demo-store";
+import { BREAK_DAILY_COUNT, BREAK_DAILY_MIN, breakStore, todayKey, useStore, type BreakState } from "./demo-store";
+import { useConsultInbox } from "./consult-inbox";
 
 const OPTIONS = [5, 10, 15, 30];
 
@@ -35,6 +36,7 @@ const clockOf = (t: number) => new Date(t).toLocaleTimeString("en-IN", { hour: "
 export function BreakButton() {
   const { me } = usePartner();
   const { toast } = useAdminToast();
+  const inbox = useConsultInbox();
   const raw = useStore(breakStore);
   const [open, setOpen] = useState(false);
   const [mins, setMins] = useState(10);
@@ -45,8 +47,8 @@ export function BreakButton() {
   const leftCount = BREAK_DAILY_COUNT - s.count;
 
   const start = () => {
-    if (sessionStorage.getItem(DEMO_SESSION_KEY)) return toast("Finish your live session before taking a break.", "error");
-    if (liveStore.get()) return toast("You are live. Use “Be right back” on the live instead.", "error");
+    if (inbox.active || sessionStorage.getItem(DEMO_SESSION_KEY)) return toast("Finish your live chat before taking a break.", "error");
+    if (inbox.live) return toast("You are live. End the live before taking a break.", "error");
     if (leftCount <= 0) return toast(`You have used all ${BREAK_DAILY_COUNT} breaks for today. Go offline instead.`, "error");
     if (mins > leftMin) return toast(`Only ${leftMin} break minutes left today.`, "error");
     const t = nowMs();

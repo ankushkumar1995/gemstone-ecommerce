@@ -16,6 +16,7 @@ import { products as seed } from "@/data/products";
 import type { Product } from "@/types";
 import type { ProductDoc } from "./product.model";
 import type { ProductSearchFilters } from "./product.types";
+import { normalizeChannels } from "@/core/channels";
 
 /** A single production variant (one entry of `Product.fullVariants`). */
 export type FullVariant = NonNullable<Product["fullVariants"]>[number];
@@ -72,6 +73,16 @@ export interface ProductRepository {
    * single `$inc` on Mongo (no read-modify-write race). Returns updated product.
    */
   incCounter(id: string, counter: "view" | "sold", by: number): Promise<Product | null>;
+
+  /**
+   * Take `qty` units for an order in ONE atomic write: succeeds only if that
+   * much stock is left (products that do not track inventory, or allow
+   * backorders, always succeed). `sku` targets a variant. Never oversells,
+   * even with many checkouts at the same moment.
+   */
+  reserveStock(id: string, sku: string | undefined, qty: number): Promise<boolean>;
+  /** Give units back (cancel / expired hold / failed checkout). */
+  releaseStock(id: string, sku: string | undefined, qty: number): Promise<void>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -213,6 +224,29 @@ const mockProductRepository: ProductRepository = {
     store[idx] = { ...store[idx], [field]: (store[idx][field] ?? 0) + by };
     return { ...store[idx] };
   },
+  async reserveStock(id, sku, qty) {
+    const idx = store.findIndex((x) => x.id === id);
+    if (idx === -1 || qty <= 0) return false;
+    const p = store[idx];
+    const loose = p.trackInventory === false || p.allowBackorder === true;
+    if (sku) {
+      const v = (p.fullVariants ?? []).find((x) => x.sku === sku);
+      if (!v || (!loose && v.stockQty < qty)) return false;
+      store[idx] = { ...p, fullVariants: (p.fullVariants ?? []).map((x) => (x.sku === sku ? { ...x, stockQty: x.stockQty - qty } : x)), stockQty: (p.stockQty ?? 0) - qty };
+      return true;
+    }
+    if (!loose && (p.stockQty ?? 0) < qty) return false;
+    store[idx] = { ...p, stockQty: (p.stockQty ?? 0) - qty };
+    return true;
+  },
+  async releaseStock(id, sku, qty) {
+    const idx = store.findIndex((x) => x.id === id);
+    if (idx === -1 || qty <= 0) return;
+    const p = store[idx];
+    store[idx] = sku
+      ? { ...p, fullVariants: (p.fullVariants ?? []).map((x) => (x.sku === sku ? { ...x, stockQty: x.stockQty + qty } : x)), stockQty: (p.stockQty ?? 0) + qty }
+      : { ...p, stockQty: (p.stockQty ?? 0) + qty };
+  },
 };
 
 /* ------------------------------------------------------------------ *
@@ -291,6 +325,7 @@ function fromDoc(doc: ProductDoc): Product {
     images: doc.images ?? [],
     imageAlts: (doc.imageAlts ?? {}) as Record<string, string>,
     featured: Boolean(doc.featured),
+    channels: normalizeChannels((doc as unknown as { channels?: unknown }).channels),
     publishAt: doc.publishAt instanceof Date ? doc.publishAt.toISOString() : undefined,
     seo: doc.seo
       ? {
@@ -416,6 +451,7 @@ function toDoc(p: Partial<Product>): Record<string, unknown> {
   set("faqs");
   set("seo");
   set("featured");
+  set("channels");
   set("bestseller");
   set("displayOrder");
   set("ratingAvg");
@@ -625,6 +661,31 @@ const mongoProductRepository: ProductRepository = {
       { new: true },
     ).lean<ProductDoc>();
     return doc ? fromDoc(doc) : null;
+  },
+  async reserveStock(id, sku, qty) {
+    const M = await model();
+    if (!isObjectId(id) || qty <= 0) return false;
+    const base = { _id: id, ...notDeleted };
+    // Untracked stock / backorders: always available (still counted).
+    const loose = await M.findOne({ ...base, $or: [{ trackInventory: false }, { allowBackorder: true }] }).select("_id").lean();
+    if (sku) {
+      const filter = loose
+        ? { ...base, "variants.sku": sku }
+        : { ...base, variants: { $elemMatch: { sku, stockQty: { $gte: qty } } } };
+      const r = await M.updateOne(filter, { $inc: { "variants.$.stockQty": -qty, stockQty: -qty } });
+      return r.modifiedCount === 1;
+    }
+    const r = await M.updateOne(loose ? base : { ...base, stockQty: { $gte: qty } }, { $inc: { stockQty: -qty } });
+    return r.modifiedCount === 1;
+  },
+  async releaseStock(id, sku, qty) {
+    const M = await model();
+    if (!isObjectId(id) || qty <= 0) return;
+    if (sku) {
+      await M.updateOne({ _id: id, "variants.sku": sku }, { $inc: { "variants.$.stockQty": qty, stockQty: qty } });
+      return;
+    }
+    await M.updateOne({ _id: id }, { $inc: { stockQty: qty } });
   },
 };
 

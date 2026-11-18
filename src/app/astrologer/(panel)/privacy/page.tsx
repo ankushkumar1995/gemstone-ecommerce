@@ -18,7 +18,8 @@ import { Database, Download, FileArchive, Loader2, ShieldCheck, Trash2, UserCog 
 import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Badge, Card, Field, Modal, PageHeader, StatsSkeleton, Toggle, useAdminToast, useOnMount } from "@/app/admin/_components";
 import { usePartner } from "../../_components/partner-context";
 import { DEMO_SESSION_KEY, fmtDateTime, inr, nowMs } from "../../_components/demo";
-import { agreementStore, blockedStore, consentStore, deletionStore, exportsStore, followUpsStore, liveStore, reportsStore, taxProfileStore, twoStepStore, useStore } from "../../_components/demo-store";
+import { blockedStore, consentStore, deletionStore, exportsStore, followUpsStore, liveStore, reportsStore, taxProfileStore, twoStepStore, useStore } from "../../_components/demo-store";
+import { partnerApi } from "@/lib/astrologer-api";
 
 const D = 86400000;
 const GRACE_DAYS = 30;
@@ -52,16 +53,19 @@ export default function PrivacyPage() {
   const fullAllowed = !lastFull || now - Date.parse(lastFull.at) > 7 * D;
   const payable = 6240.5;
 
-  const quickDownload = () => {
+  const quickDownload = async () => {
     setBusy(true);
     // Strip storage keys and internal fields before handing data out.
     const { kyc, ...rest } = me;
+    // Agreement signatures come from the server (the legal record).
+    const agr = await partnerApi.agreement.state();
     const data = {
       exportedAt: new Date(nowMs()).toISOString(),
       notice: "Your Astrounkle partner data. Fields marked demo come from this browser while those features are in preview.",
       account: { ...rest, kyc: kyc.map(({ fileKey: _k, ...d }) => { void _k; return d; }) },
+      agreementSignatures: agr.ok ? agr.data.history : [],
       demo: {
-        agreementSignatures: agreementStore.get(), taxProfile: taxProfileStore.get(), twoStepLogin: { method: twoStepStore.get().method, enabledAt: twoStepStore.get().enabledAt },
+        taxProfile: taxProfileStore.get(), twoStepLogin: { method: twoStepStore.get().method, enabledAt: twoStepStore.get().enabledAt },
         consents: consent, blockedCustomers: blockedStore.get(), reportsFiled: reportsStore.get(), followUps: followUpsStore.get() ?? [],
       },
     };

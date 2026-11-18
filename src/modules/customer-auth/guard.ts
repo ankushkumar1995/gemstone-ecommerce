@@ -1,51 +1,56 @@
 import "server-only";
 
 /**
- * Server-side CUSTOMER guard — the security boundary for storefront account
- * APIs (/api/v1/account/*). Reads the customer access cookie, verifies the
- * JWT, re-checks the token version + device fingerprint against the DB (so a
- * revoked/blocked account or a stolen token is rejected immediately), and
- * returns the customer id.
+ * Server-side CUSTOMER guard — the security boundary for every customer API
+ * (/api/v1/account/*, checkout, bookings, wallet…). Works for both clients:
+ *
+ *  • Mobile app → `Authorization: Bearer <access token>`
+ *  • Website    → httpOnly access cookie
+ *
+ * Session tokens (with `sid`) are checked against their customer_sessions row
+ * (revoked / expired / tokenVersion / blocked), cached ~30 s. Tokens issued
+ * before sessions existed still work until they expire (≤ 15 min), using the
+ * old device-fingerprint check.
  *
  *   const guard = await requireCustomer();
  *   if (!guard.ok) return jsonError(guard.error);
- *   const { customerId } = guard.value;
+ *   const { customerId, sessionId } = guard.value;
  */
 
 import { cookies, headers } from "next/headers";
 import { ok, fail, type Result } from "@/core/result";
 import { AppErrors } from "@/core/errors";
 import { clientIp } from "@/core/rate-limit";
-import {
-  verifyCustomerToken,
-  customerDeviceFingerprint,
-  CUSTOMER_ACCESS_COOKIE,
-} from "@/core/customer-jwt";
+import { verifyCustomerToken, customerDeviceFingerprint, CUSTOMER_ACCESS_COOKIE } from "@/core/customer-jwt";
+import { sessionService } from "./session.service";
 
-export async function requireCustomer(): Promise<Result<{ customerId: string }>> {
+function bearerOf(h: Headers): string | undefined {
+  const a = h.get("authorization") ?? "";
+  return a.toLowerCase().startsWith("bearer ") ? a.slice(7).trim() : undefined;
+}
+
+export async function requireCustomer(): Promise<Result<{ customerId: string; sessionId?: string }>> {
   const [store, hdrs] = await Promise.all([cookies(), headers()]);
-  const token = store.get(CUSTOMER_ACCESS_COOKIE)?.value;
+  const token = bearerOf(hdrs) ?? store.get(CUSTOMER_ACCESS_COOKIE)?.value;
   const claims = await verifyCustomerToken(token, "access");
   if (!claims) return fail(AppErrors.unauthorized("Please sign in to continue"));
 
-  // Device-binding: the token must have been issued to THIS device.
-  const fp = await customerDeviceFingerprint(clientIp(hdrs), hdrs.get("user-agent") ?? "");
-  if (claims.fp && claims.fp !== fp) {
-    return fail(AppErrors.unauthorized("Session not valid on this device"));
+  if (claims.sid) {
+    const state = await sessionService.check(claims.sid, claims.sub, claims.ver);
+    if (state === "blocked") return fail(AppErrors.forbidden("This account has been disabled."));
+    if (state !== "ok") return fail(AppErrors.unauthorized("Session expired. Please sign in again."));
+    return ok({ customerId: claims.sub, sessionId: claims.sid });
   }
 
-  // Fresh check: token version + account status (kill-switch / blocked).
+  // ---- legacy access token (pre-sessions, lives at most 15 minutes) ----
+  const fp = await customerDeviceFingerprint(clientIp(hdrs), hdrs.get("user-agent") ?? "");
+  if (claims.fp && claims.fp !== fp) return fail(AppErrors.unauthorized("Session not valid on this device"));
   const { connectMongoose } = await import("@/core/db/mongoose");
   const { CustomerModel } = await import("@/modules/customers/customer.model");
   await connectMongoose();
-  const doc = await CustomerModel.findOne({ _id: claims.sub, isDeleted: { $ne: true } })
-    .select("+tokenVersion status")
-    .lean();
+  const doc = await CustomerModel.findOne({ _id: claims.sub, isDeleted: { $ne: true } }).select("+tokenVersion status").lean();
   if (!doc) return fail(AppErrors.unauthorized("Session expired"));
   if (doc.status === "blocked") return fail(AppErrors.forbidden("This account has been disabled."));
-  if ((doc.tokenVersion ?? 0) !== claims.ver) {
-    return fail(AppErrors.unauthorized("Session expired. Please sign in again."));
-  }
-
+  if ((doc.tokenVersion ?? 0) !== claims.ver) return fail(AppErrors.unauthorized("Session expired. Please sign in again."));
   return ok({ customerId: String(doc._id) });
 }

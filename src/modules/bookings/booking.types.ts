@@ -96,12 +96,28 @@ export interface Booking {
 
   /** Admin's scheduled appointment (ISO) once confirmed. */
   scheduledAt?: string;
+  /** Refund made when the CUSTOMER cancelled (or a late payment was returned). */
+  refund?: BookingRefundInfo | null;
   /** Admin-only internal notes + the delivery link/notes shown to customer. */
   adminNotes?: string;
 
   activity: BookingActivity[];
   placedAt: string; // ISO
   updatedAt: string; // ISO
+}
+
+/** Where a customer refund goes: the original payment method, or the AstroUnkle wallet (instant). */
+export type RefundDestination = "source" | "wallet";
+
+export interface BookingRefundInfo {
+  amount: number; // rupees
+  to: RefundDestination;
+  /** processed = sent (Razorpay accepted / wallet credited); failed = the team must refund by hand. */
+  status: "processed" | "failed";
+  /** Razorpay refund id or wallet txn id. */
+  reference: string;
+  at: string; // ISO
+  error?: string;
 }
 
 /** A line item as submitted when creating a booking from the storefront. */

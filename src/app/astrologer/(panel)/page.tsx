@@ -8,9 +8,10 @@ import { AdminButton, Card, PageHeader, StatCard, StatsSkeleton, Toggle, useAdmi
 import { usePartner } from "../_components/partner-context";
 import { STATUS_META } from "../_components/status-meta";
 import { DashboardToday } from "../_components/dashboard-today";
+import { AnnouncementsCard } from "../_components/announcements-card";
 
 export default function PartnerDashboard() {
-  const { me, loading, setMe, goOnline } = usePartner();
+  const { me, loading, setMe, goOnline, agreement } = usePartner();
   const { toast } = useAdminToast();
   if (loading || !me) return <StatsSkeleton count={4} />;
 
@@ -21,6 +22,8 @@ export default function PartnerDashboard() {
     { label: "Profile photo", done: Boolean(me.photo), href: "/astrologer/profile" },
     ...REQUIRED_KYC.map((t) => ({ label: `KYC: ${t.replace("_", " ")}`, done: kycDone(t) === "verified", pending: kycDone(t) === "pending", href: "/astrologer/kyc" })),
     { label: "Payout account", done: Boolean(me.payout), href: "/astrologer/kyc" },
+    // Only when an agreement is published (agreementId set).
+    ...(agreement?.agreementId ? [{ label: `Sign partner agreement v${agreement.version}`, done: agreement.signed, href: "/astrologer/agreement" }] : []),
     { label: "Profile approved", done: me.status === "approved", href: "/astrologer" },
   ];
   const doneCount = steps.filter((s) => s.done).length;
@@ -57,6 +60,8 @@ export default function PartnerDashboard() {
           </div>
         </div>
       </Card>
+
+      <AnnouncementsCard />
 
       {me.status !== "approved" && (
         <Card className="p-5">

@@ -28,6 +28,8 @@ import {
   Mail,
   RotateCcw,
   ScrollText,
+  FileSignature,
+  Megaphone,
   Wallet,
   Sparkles,
   Activity,
@@ -95,12 +97,20 @@ const groups: NavGroup[] = [
     title: "Astrology Platform",
     items: [
       { label: "Astrologers", href: "/admin/astrologers", icon: Sparkles },
+      { label: "Consultations", href: "/admin/consultations", icon: MessageSquare },
+      { label: "Live Sessions", href: "/admin/live", icon: Activity },
+      { label: "Partner Agreements", href: "/admin/astrologers/agreements", icon: FileSignature },
+      { label: "Announcements", href: "/admin/astrologers/announcements", icon: Megaphone },
       { label: "Program Settings", href: "/admin/astrologers/settings", icon: Settings },
     ],
   },
   {
     title: "Finance",
-    items: [{ label: "Payments", href: "/admin/payments", icon: Wallet }],
+    items: [
+      { label: "Payments", href: "/admin/payments", icon: Wallet },
+      { label: "Wallets", href: "/admin/wallets", icon: Wallet },
+      { label: "Astrologer Payouts", href: "/admin/payouts", icon: Wallet },
+    ],
   },
   {
     title: "Marketing",

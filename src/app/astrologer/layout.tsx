@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "../admin/admin.css";
+import { AdminToastProvider } from "@/app/admin/_components";
 
 export const metadata: Metadata = {
   title: "Partner Panel — Astrounkle",
@@ -18,5 +19,10 @@ export const viewport: Viewport = { themeColor: "#c9942a" };
  * pages render without it.
  */
 export default function AstrologerLayout({ children }: { children: React.ReactNode }) {
-  return <div className="admin-root">{children}</div>;
+  // Toasts for every partner page, including login / apply / password pages.
+  return (
+    <AdminToastProvider>
+      <div className="admin-root">{children}</div>
+    </AdminToastProvider>
+  );
 }

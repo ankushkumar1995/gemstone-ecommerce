@@ -12,7 +12,7 @@ import "server-only";
  *    service, date.
  */
 
-import { Schema, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
+import { Schema, deleteModel, model, models, type Model, type InferSchemaType, type Types } from "mongoose";
 
 const IntakeSchema = new Schema(
   {
@@ -91,6 +91,8 @@ const BookingSchema = new Schema(
 
     scheduledAt: { type: String, default: null },
     adminNotes: { type: String, trim: true, maxlength: 4000 },
+    // Customer-cancel / late-payment refund ({ amount, to, status, reference, at, error }).
+    refund: { type: Schema.Types.Mixed, default: null },
 
     activity: { type: [ActivitySchema], default: [] },
     placedAt: { type: String, required: true },
@@ -124,6 +126,10 @@ BookingSchema.index({ isDeleted: 1, customerId: 1, placedAt: -1 });
 BookingSchema.index({ isDeleted: 1, serviceId: 1 });
 
 export type BookingDoc = InferSchemaType<typeof BookingSchema> & { _id: Types.ObjectId };
+
+// Dev: drop the cached model so new fields (e.g. `refund`) apply on hot reload;
+// otherwise strict mode silently drops them. No-op in production.
+if (process.env.NODE_ENV !== "production" && models.Booking) deleteModel("Booking");
 
 export const BookingModel: Model<BookingDoc> =
   (models.Booking as Model<BookingDoc>) ?? model<BookingDoc>("Booking", BookingSchema);

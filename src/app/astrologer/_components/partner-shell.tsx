@@ -13,26 +13,18 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Gem, LayoutDashboard, LogOut, Menu, ShieldCheck, UserRound, FileCheck2, X, BellRing, MessagesSquare, History, CalendarDays,
   IndianRupee, Landmark, Star, Users, Gauge, Bell, LifeBuoy, ShoppingBag, BadgePercent, ListOrdered, MessageSquareReply,
-  HeartPulse, Smartphone, Radio, Heart, BarChart3, Receipt, Gift, FileSignature, Lock, type LucideIcon,
+  HeartPulse, Smartphone, Radio, Heart, BarChart3, Receipt, Gift, FileSignature, Lock, Ban, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { partnerApi } from "@/lib/astrologer-api";
 import { Avatar, StatusPill, Toggle, useAdminToast } from "@/app/admin/_components";
 import { usePartner } from "./partner-context";
 import { STATUS_META } from "./status-meta";
-import { MOCK_NOTIFICATIONS } from "./mock-data";
 import { BreakBanner, BreakButton } from "./break-control";
 import { InstallNudge } from "./pwa";
-import { QueueWatcher } from "./queue";
 import { LiveBanner } from "./live-banner";
-import { FOLLOWER_ALERT_COOLDOWN_MS, agreementStore, deletionStore, followerSettingsStore, useStore } from "./demo-store";
-import { AGREEMENT } from "./agreement-text";
-import { MOCK_FOLLOWER_GROWTH } from "./mock-data";
-import { nowMs } from "./demo";
-
-/** Demo unread count until notifications are wired to the backend. */
-const DEMO_UNREAD = MOCK_NOTIFICATIONS.filter((n) => !n.read).length;
-const FOLLOWERS_NOW = MOCK_FOLLOWER_GROWTH[MOCK_FOLLOWER_GROWTH.length - 1];
+import { ConsultAlert } from "./consult-inbox";
+import { deletionStore, useStore } from "./demo-store";
 
 export interface PartnerNavItem { label: string; href: string; icon: LucideIcon }
 export const NAV: { title: string; items: PartnerNavItem[] }[] = [
@@ -65,6 +57,7 @@ export const NAV: { title: string; items: PartnerNavItem[] }[] = [
       { label: "Followers", href: "/astrologer/followers", icon: Heart },
       { label: "Reviews", href: "/astrologer/reviews", icon: Star },
       { label: "My customers", href: "/astrologer/customers", icon: Users },
+      { label: "Blocked people", href: "/astrologer/blocked", icon: Ban },
       { label: "Performance", href: "/astrologer/performance", icon: Gauge },
       { label: "Offers", href: "/astrologer/offers", icon: BadgePercent },
       { label: "Refer & earn", href: "/astrologer/referral", icon: Gift },
@@ -135,19 +128,10 @@ function OnlineSwitch() {
           onChange={async (v) => {
             if (busy) return;
             if (v) {
-              // After the deadline, the current agreement must be signed to go online.
-              if (nowMs() > Date.parse(AGREEMENT.deadlineIso) && !agreementStore.get().some((a) => a.version === AGREEMENT.version)) {
-                toast(`Sign partner agreement v${AGREEMENT.version} to go online.`, "error");
-                return;
-              }
+              // The agreement gate is enforced by the server; it answers with the reason.
               const err = await goOnline();
               if (err) { toast(err, "error"); return; }
-              // Followers get an "online now" alert at most once every 3 hours.
-              const f = followerSettingsStore.get();
-              const t = nowMs();
-              const canAlert = f.autoNotify && (f.lastNotifiedAt === null || t - f.lastNotifiedAt >= FOLLOWER_ALERT_COOLDOWN_MS);
-              if (canAlert) followerSettingsStore.set({ ...f, lastNotifiedAt: t });
-              toast(canAlert ? `You are online. ${FOLLOWERS_NOW.toLocaleString("en-IN")} followers were alerted.` : "You are online. Customers can now reach you.", "success");
+              toast("You are online. Customers can now reach you.", "success");
             }
             else { await goOffline(); toast("You are offline.", "info"); }
           }}
@@ -160,10 +144,12 @@ function OnlineSwitch() {
 /** Pending agreement signature and scheduled account deletion, on every page. */
 function AccountNotices() {
   const pathname = usePathname();
-  const signed = useStore(agreementStore).some((a) => a.version === AGREEMENT.version);
   const deletion = useStore(deletionStore);
-  const { me } = usePartner();
+  const { me, agreement } = usePartner();
   if (!me) return null;
+  const deadline = agreement?.deadline
+    ? new Date(agreement.deadline).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "long", year: "numeric" })
+    : "";
   return (
     <>
       {deletion && pathname !== "/astrologer/privacy" && (
@@ -172,18 +158,25 @@ function AccountNotices() {
           <Link href="/astrologer/privacy" className="font-semibold underline">Cancel deletion</Link>
         </div>
       )}
-      {!signed && me.status === "approved" && pathname !== "/astrologer/agreement" && (
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: "var(--a-gold)", background: "var(--a-gold-soft)", color: "var(--a-fg)" }} role="status">
-          <p className="flex-1">Partner agreement <b>v{AGREEMENT.version}</b> needs your signature by {AGREEMENT.deadline}.</p>
-          <Link href="/astrologer/agreement" className="font-semibold" style={{ color: "var(--a-gold)" }}>Review and sign</Link>
-        </div>
+      {agreement && agreement.gate !== "none" && pathname !== "/astrologer/agreement" && (
+        agreement.gate === "blocked" ? (
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert">
+            <p className="flex-1">{agreement.reason ?? `Sign partner agreement v${agreement.version} to go online.`}</p>
+            <Link href="/astrologer/agreement" className="font-semibold underline">Review and sign</Link>
+          </div>
+        ) : (
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: "var(--a-gold)", background: "var(--a-gold-soft)", color: "var(--a-fg)" }} role="status">
+            <p className="flex-1">Partner agreement <b>v{agreement.version}</b> needs your signature by <b>{deadline}</b>{agreement.extendedUntil ? " (extended for you)" : ""}. After that you cannot go online.</p>
+            <Link href="/astrologer/agreement" className="font-semibold" style={{ color: "var(--a-gold)" }}>Review and sign</Link>
+          </div>
+        )
       )}
     </>
   );
 }
 
 export function PartnerShell({ children }: { children: React.ReactNode }) {
-  const { me } = usePartner();
+  const { me, unread } = usePartner();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const meta = me ? STATUS_META[me.status] : null;
@@ -211,14 +204,11 @@ export function PartnerShell({ children }: { children: React.ReactNode }) {
           <button className="rounded-lg p-2 lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)} style={{ color: "var(--a-fg)" }}><Menu size={20} /></button>
           {meta && <StatusPill tone={meta.tone}>{meta.label}</StatusPill>}
           <div className="ml-auto flex items-center gap-4">
-            <Link href="/astrologer/followers" className="hidden items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-black/[0.04] sm:flex" style={{ color: "var(--a-muted)" }} aria-label={`${FOLLOWERS_NOW} followers`}>
-              <Heart size={16} className="text-rose-500" /> {FOLLOWERS_NOW.toLocaleString("en-IN")}
-            </Link>
             <BreakButton />
             <OnlineSwitch />
-            <Link href="/astrologer/notifications" className="relative rounded-lg p-2 hover:bg-black/[0.04]" aria-label={`Notifications, ${DEMO_UNREAD} unread`} style={{ color: "var(--a-muted)" }}>
+            <Link href="/astrologer/notifications" className="relative rounded-lg p-2 hover:bg-black/[0.04]" aria-label={`Notifications, ${unread} unread`} style={{ color: "var(--a-muted)" }}>
               <Bell size={18} />
-              {DEMO_UNREAD > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{DEMO_UNREAD}</span>}
+              {unread > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{unread > 99 ? "99+" : unread}</span>}
             </Link>
             {me && (
               <div className="hidden items-center gap-2 md:flex">
@@ -231,7 +221,7 @@ export function PartnerShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6"><QueueWatcher /><AccountNotices /><LiveBanner /><BreakBanner /><InstallNudge />{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6"><ConsultAlert /><AccountNotices /><LiveBanner /><BreakBanner /><InstallNudge />{children}</main>
       </div>
     </div>
   );

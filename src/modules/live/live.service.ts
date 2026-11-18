@@ -73,6 +73,28 @@ function out(d: Doc | null): LiveSession | null {
   };
 }
 
+/**
+ * The astrologer's current name / photo / slug. A live keeps a copy from when it
+ * was made, so a photo added or approved later (profile edits are reviewed) would
+ * never show. Views read the live profile (cached 30 s) and fix the stored copy.
+ */
+async function freshAstro(s: LiveSession): Promise<LiveSession["astrologer"]> {
+  const key = `live:astro:${s.astrologerId}`;
+  let a = cache.get<LiveSession["astrologer"]>(key);
+  if (!a) {
+    try {
+      const p = await astrologerService.getInternal(s.astrologerId);
+      a = p ? { name: p.displayName, photo: p.photo ?? null, slug: p.slug } : s.astrologer;
+    } catch { a = s.astrologer; }
+    cache.set(key, a, 30);
+  }
+  if (a.photo !== s.astrologer.photo || a.name !== s.astrologer.name || a.slug !== s.astrologer.slug) {
+    const { LiveSessionModel } = await M();
+    await LiveSessionModel.updateOne({ _id: s.id }, { $set: { astrologer: a } }).catch(() => undefined);
+  }
+  return a;
+}
+
 /** Customer blocked by this astrologer for good (chats, waitlist, every live). */
 async function isBlocked(astrologerId: string, customerId: string): Promise<boolean> {
   const { ConsultBlockModel } = await import("@/modules/consultations/consult.model");
@@ -520,7 +542,7 @@ async function view(s: LiveSession, role: LiveRole): Promise<LiveView> {
   const st = await astroSettingsService.get();
   return {
     id: s.id, liveNumber: s.liveNumber, title: s.title, topic: s.topic, status: s.status,
-    astrologer: { id: s.astrologerId, ...s.astrologer },
+    astrologer: { id: s.astrologerId, ...(await freshAstro(s)) },
     scheduledAt: s.scheduledAt, startedAt: s.startedAt, endedAt: s.endedAt, endReason: s.endReason, endText: s.endReason ? END_TEXT[s.endReason] : null,
     endsAt: s.status === "live" && s.startedAt ? new Date(Date.parse(s.startedAt) + st.live.maxMinutes * 60_000).toISOString() : null,
     viewers: await viewersOf(s), likes: s.likes, commentCount: s.commentCount, giftCount: s.giftCount,
@@ -544,7 +566,7 @@ async function view(s: LiveSession, role: LiveRole): Promise<LiveView> {
 
 async function card(s: LiveSession, why: LiveCard["why"] = null): Promise<LiveCard> {
   return {
-    id: s.id, title: s.title, topic: s.topic, status: s.status, astrologer: { id: s.astrologerId, ...s.astrologer }, scheduledAt: s.scheduledAt, startedAt: s.startedAt,
+    id: s.id, title: s.title, topic: s.topic, status: s.status, astrologer: { id: s.astrologerId, ...(await freshAstro(s)) }, scheduledAt: s.scheduledAt, startedAt: s.startedAt,
     viewers: await viewersOf(s), likes: s.likes, reminderCount: s.reminderCount, tags: s.tags, featured: s.featured, why,
   };
 }

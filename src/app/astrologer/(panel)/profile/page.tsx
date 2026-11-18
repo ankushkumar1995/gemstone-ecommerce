@@ -78,7 +78,7 @@ export default function ProfilePage() {
           <div className="space-y-2">
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
             <AdminButton variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}><Camera size={16} />{uploading ? "Uploading…" : "Change photo"}</AdminButton>
-            <p className="text-xs" style={{ color: "var(--a-muted)" }}>A clear, friendly face photo. JPG/PNG/WEBP, up to 4 MB.</p>
+            <p className="text-xs" style={{ color: "var(--a-muted)" }}>A clear, friendly face photo. JPG/PNG/WEBP, up to 15 MB. We resize it for fast loading.</p>
           </div>
         </div>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">

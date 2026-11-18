@@ -258,7 +258,7 @@ export default function AgreementPage() {
                 {otp.devCode && (
                   <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2 text-xs" style={{ borderColor: "var(--a-gold)", color: "var(--a-fg)" }} role="note">
                     <FlaskConical size={14} className="mt-0.5 shrink-0" style={{ color: "var(--a-gold)" }} />
-                    <span>Test mode: the SMS service is not connected yet, so the OTP is shown here: <b className="font-mono tracking-widest">{otp.devCode}</b>. This never happens in production.</span>
+                    <span>Test mode: the SMS service is not connected yet, so the OTP is shown here: <b className="font-mono tracking-widest">{otp.devCode}</b>. Once SMS is connected, it comes by SMS only.</span>
                   </p>
                 )}
                 <div className="flex flex-wrap items-end gap-3">

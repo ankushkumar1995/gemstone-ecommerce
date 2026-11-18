@@ -3,3 +3,5 @@ export { liveService, sweepLives, maybeSweepLives, liveOf, currentLiveOf, endLiv
 export type { LiveSession, LiveEvent, LiveGift, LiveQueueItem, LiveStatus, LiveEndReason, LiveTag } from "./live.types";
 export { LIVE_TAGS } from "./live.types";
 export { liveWho } from "./live.who";
+export { liveReport, type LiveReport } from "./live.report";
+export { liveTemplates, type LiveTemplates } from "./live.templates";

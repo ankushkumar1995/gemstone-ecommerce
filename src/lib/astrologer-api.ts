@@ -13,6 +13,8 @@ import type { SessionView } from "@/modules/consultations/consult.service";
 import type { ConsultMessage } from "@/modules/consultations/consult.types";
 
 import type { LiveView } from "@/modules/live/live.service";
+import type { LiveReport } from "@/modules/live/live.report";
+import type { LiveTemplates } from "@/modules/live/live.templates";
 import type { EarningsBalance, LedgerEntry, Payout } from "@/modules/earnings/earnings.types";
 import type { WaitEntryView } from "@/modules/consultations/consult.waitlist";
 import type { LiveEvent, LiveQueueItem } from "@/modules/live/live.types";
@@ -128,6 +130,11 @@ export const partnerApi = {
     act: <T = { live: LiveView }>(id: string, action: "start" | "cancel" | "end" | "pin" | "hide" | "mute" | "block" | "settings" | "answer" | "done" | "skip" | "comment" | "video-token" | "video-on" | "video-off", body?: unknown) =>
       request<T>(`/api/v1/live/${encodeURIComponent(id)}/${action}`, json("POST", body ?? {})),
   },
+  liveTools: {
+    report: (id: string) => request<{ report: LiveReport }>(`/api/v1/astrologer/live/${encodeURIComponent(id)}/report`),
+    templates: () => request<{ templates: LiveTemplates }>("/api/v1/astrologer/live/templates"),
+    saveTemplates: (data: { quickReplies?: string[] | null; askTemplates?: string[] | null }) => request<{ templates: LiveTemplates }>("/api/v1/astrologer/live/templates", json("PUT", data)),
+  },
   blocks: {
     list: (cursor?: string) => request<{ total: number; items: BlockRow[]; nextCursor: string | null }>(`/api/v1/astrologer/blocks${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`),
     unblock: (id: string) => request<{ ok: true }>(`/api/v1/astrologer/blocks/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -142,6 +149,7 @@ export type WaitlistState = { open: boolean; entries: WaitEntryView[]; enabled: 
 export type { EarningsBalance, LedgerEntry, Payout, WaitEntryView };
 
 export type { LiveView, LiveEvent, LiveQueueItem };
+export type { LiveReport, LiveTemplates };
 export type BlockRow = { id: string; name: string; via: string; reason: string; at: string };
 
 type SignInput = { agreementId: string; contentHash: string; typedName: string; keyPoints: string[]; scrolledToEnd: true };

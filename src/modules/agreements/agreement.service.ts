@@ -63,6 +63,8 @@ const GATE_TTL = 20; // seconds; cleared on every write
 
 const nowIso = () => new Date().toISOString();
 const isProd = () => env.NODE_ENV === "production";
+/** Signing OTP is strict (SMS, then email, else refuse) only in production without OTP_DEMO_MODE. Demo mode = local behaviour: OTP shown on screen when SMS is not connected. */
+const strictOtp = () => isProd() && env.OTP_DEMO_MODE !== "true";
 const panelUrl = (path: string) => `${BRAND.url}${path}`;
 const invalidate = () => cache.delByPrefix("agreements:");
 
@@ -315,12 +317,12 @@ export const agreementService = {
       : { delivered: false, provider: null, reason: "invalid_number" };
     delivered = sms.delivered;
 
-    if (!delivered && isProd()) {
+    if (!delivered && strictOtp()) {
       // Production without a working SMS gateway: fall back to the registered email.
       const mailed = await mailSigningOtp(a.email, name, code, current.version);
       if (mailed) { channel = "email"; destinationMasked = maskEmail(a.email); delivered = true; }
     }
-    if (!delivered && isProd()) {
+    if (!delivered && strictOtp()) {
       logger.error("agreement otp could not be delivered", { astrologerId: a.id, smsReason: sms.reason });
       return fail(AppErrors.internal("We could not send the OTP right now. Try again in a minute or contact support."));
     }
@@ -335,8 +337,8 @@ export const agreementService = {
     return ok({
       challengeId: ch.id, channel, destinationMasked, expiresAt, delivered,
       resendAt: new Date(now + OTP_RESEND_MS).toISOString(),
-      // Never in production: only for local testing while no provider is connected.
-      ...(!delivered && !isProd() ? { devCode: code } : {}),
+      // Only for testing (local, or OTP_DEMO_MODE=true) while no SMS provider is connected.
+      ...(!delivered && !strictOtp() ? { devCode: code } : {}),
     });
   },
 

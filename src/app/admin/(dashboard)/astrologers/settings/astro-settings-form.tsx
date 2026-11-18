@@ -195,6 +195,14 @@ export function AstroSettingsForm() {
           </div>
           <p className="mt-2 text-xs" style={{ color: "var(--a-muted)" }}>Common Hindi, Hinglish and English abuse is already blocked, also when written with tricks (f@ck, ch00t, m a d a r). Add more words here. A caught comment is shown only to the person who wrote it. The same comment again within 2 minutes is refused. Abusive questions and Super Chats are refused before any charge.</p>
         </div>
+        <div className="border-t pt-4" style={{ borderColor: "var(--a-border)" }}>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--a-muted)" }}>Live console defaults</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <LinesBox label="Quick replies" hint="One tap sends it. {name} = the viewer being replied to" lines={s.live.quickReplies} onChange={(v) => set("live", { ...s.live, quickReplies: v })} />
+            <LinesBox label="Ask your viewers" hint="One tap posts and pins it" lines={s.live.askTemplates} onChange={(v) => set("live", { ...s.live, askTemplates: v })} />
+          </div>
+          <p className="mt-2 text-xs" style={{ color: "var(--a-muted)" }}>Astrologers see these until they save their own list in the live console. One per line, up to 12 each.</p>
+        </div>
       </Card>
 
       <Card className="space-y-4 p-5">
@@ -220,6 +228,17 @@ function WordsBox({ words, onChange }: { words: string[]; onChange: (w: string[]
     <Field label="Extra blocked words" hint={`${words.length} added · one per line or comma separated`}>
       <AdminTextarea value={raw} rows={4} maxLength={8000} onChange={(e) => { setRaw(e.target.value); onChange(parse(e.target.value)); }}
         placeholder={"word one\nword two"} aria-label="Extra blocked words" />
+    </Field>
+  );
+}
+
+/** A list edited as lines (keeps the typed text while typing). */
+function LinesBox({ label, hint, lines, onChange }: { label: string; hint: string; lines: string[]; onChange: (v: string[]) => void }) {
+  const [raw, setRaw] = useState(() => lines.join("\n"));
+  const parse = (v: string) => [...new Set(v.split("\n").map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x.length >= 2).map((x) => x.slice(0, 200)))].slice(0, 12);
+  return (
+    <Field label={label} hint={`${lines.length}/12 · ${hint}`}>
+      <AdminTextarea value={raw} rows={6} maxLength={4000} onChange={(e) => { setRaw(e.target.value); onChange(parse(e.target.value)); }} aria-label={label} />
     </Field>
   );
 }

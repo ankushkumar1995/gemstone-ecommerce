@@ -15,12 +15,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Ban, CalendarClock, Check, EyeOff, Gift, Heart, IndianRupee, MessageSquare, Mic, MicOff, Pin, Radio, Send, SkipForward, Users, Video, VideoOff, VolumeX, WifiOff, X } from "lucide-react";
-import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Badge, Card, ConfirmDialog, Field, PageHeader, StatsSkeleton, Toggle, useAdminToast, useOnMount } from "@/app/admin/_components";
-import { partnerApi, type LiveEvent, type LiveQueueItem, type LiveView } from "@/lib/astrologer-api";
+import { Ban, BarChart3, CalendarClock, Check, EyeOff, Gift, Heart, IndianRupee, MessageSquare, Mic, MicOff, Pencil, Pin, Radio, Reply, Send, SkipForward, Users, Zap, Video, VideoOff, VolumeX, WifiOff, X } from "lucide-react";
+import { AdminButton, AdminInput, AdminSelect, AdminTextarea, Badge, Card, ConfirmDialog, Field, Modal, PageHeader, StatsSkeleton, Toggle, useAdminToast, useOnMount } from "@/app/admin/_components";
+import { partnerApi, type LiveEvent, type LiveQueueItem, type LiveTemplates, type LiveView } from "@/lib/astrologer-api";
 import { LIVE_TAGS } from "@/modules/live/live.types";
 import { usePartner } from "../../_components/partner-context";
 import { useConsultInbox } from "../../_components/consult-inbox";
+import { LiveReportCard } from "../../_components/live-report";
 
 const inr = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const clock = (secs: number) => {
@@ -167,6 +168,7 @@ function LiveSetup({ data, reload, onLive }: { data: { scheduled: LiveView[]; pa
                 <span style={{ color: "var(--a-muted)" }}>{s.stats?.uniqueViewers ?? 0} viewers</span>
                 <span style={{ color: "var(--a-muted)" }}>{s.likes} likes</span>
                 <span className="font-semibold" style={{ color: "var(--a-fg)" }}>{inr(s.stats?.earningPaise ?? 0)}</span>
+                <Link href={`/astrologer/live/${s.id}`}><AdminButton variant="outline"><BarChart3 size={14} /> Report</AdminButton></Link>
               </li>
             ))}
           </ul>
@@ -237,6 +239,12 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
   const { live, events, queue } = room;
   const [now, setNow] = useState(0);
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState<{ name: string } | null>(null);
+  const [tpl, setTpl] = useState<LiveTemplates | null>(null);
+  const [editTpl, setEditTpl] = useState(false);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useOnMount(() => { void partnerApi.liveTools.templates().then((r) => { if (r.ok) setTpl(r.data.templates); }); });
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [blockTarget, setBlockTarget] = useState<{ seq: number; name: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -264,17 +272,41 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
     return true;
   }
 
-  async function send() {
-    const t = text.trim();
-    if (!t) return;
-    setText("");
+  /** Post as the astrologer. `pin` = pin it right after (ask-the-viewers prompts). */
+  async function post(t: string, opts: { pin?: boolean; restore?: boolean } = {}): Promise<boolean> {
     stick.current = true;
-    const r = await partnerApi.live.act<{ event: LiveEvent }>(live.id, "comment", { text: t, clientId: newClientId() });
-    if (!r.ok) { toast(r.message, "error"); setText(t); return; }
+    const r = await partnerApi.live.act<{ event: LiveEvent }>(live.id, "comment", { text: t.slice(0, 300), clientId: newClientId() });
+    if (!r.ok) { toast(r.message, "error"); if (opts.restore) setText(t); return false; }
     room.merge([r.data.event]);
+    if (opts.pin) await act("pin", { seq: r.data.event.seq });
     room.refresh();
+    return true;
   }
 
+  async function send() {
+    let t = text.trim();
+    if (!t) return;
+    if (replyTo && !t.toLowerCase().startsWith(`@${replyTo.name.toLowerCase()}`)) t = `@${replyTo.name} ${t}`;
+    setText("");
+    if (await post(t, { restore: true })) setReplyTo(null);
+  }
+
+  /** Quick reply: {name} becomes the viewer you are replying to, or is dropped. */
+  const fill = (tpl: string) => (replyTo ? tpl.replaceAll("{name}", replyTo.name) : tpl.replace(/\s*,?\s*\{name\}/g, "").replace(/\s+([.,!?])/g, "$1")).trim();
+  async function quick(tpl: string) {
+    if (quickBusy) return;
+    setQuickBusy(true);
+    const ok = await post(fill(tpl));
+    setQuickBusy(false);
+    if (ok) setReplyTo(null);
+  }
+  async function askViewers(tpl: string) {
+    if (quickBusy) return;
+    setQuickBusy(true);
+    const ok = await post(fill(tpl), { pin: true });
+    setQuickBusy(false);
+    if (ok) toast("Posted and pinned", "success");
+  }
   const serverNow = (now || Date.parse(live.serverNow) - room.skew) + room.skew;
   const elapsed = live.startedAt ? (serverNow - Date.parse(live.startedAt)) / 1000 : 0;
   const left = live.endsAt ? (Date.parse(live.endsAt) - serverNow) / 1000 : null;
@@ -341,6 +373,7 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
                 </p>
                 {e.by === "customer" && (
                   <span className="flex shrink-0 gap-1 opacity-60 group-hover:opacity-100">
+                    <IconBtn label="Reply" onClick={() => { setReplyTo({ name: e.name }); inputRef.current?.focus(); }}><Reply size={13} /></IconBtn>
                     <IconBtn label="Pin" onClick={() => act("pin", { seq: e.seq })}><Pin size={13} /></IconBtn>
                     <IconBtn label="Hide" onClick={() => act("hide", { seq: e.seq }, "Comment hidden")}><EyeOff size={13} /></IconBtn>
                     <IconBtn label="Mute this viewer" onClick={() => act("mute", { seq: e.seq }, `${e.name} muted for this live`)}><VolumeX size={13} /></IconBtn>
@@ -350,8 +383,26 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
               </div>
             ))}
           </div>
-          <div className="flex items-end gap-2 border-t p-3" style={{ borderColor: "var(--a-border)" }}>
-            <AdminTextarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={300} className="flex-1 resize-none"
+          {(tpl?.quickReplies.length ?? 0) > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto border-t px-3 pt-2" style={{ borderColor: "var(--a-border)" }} aria-label="Quick replies">
+              <Zap size={13} className="shrink-0" style={{ color: "var(--a-gold)" }} />
+              {tpl!.quickReplies.map((q) => (
+                <button key={q} type="button" disabled={quickBusy} onClick={() => void quick(q)} title={`Send: ${fill(q)}`}
+                  className="max-w-[220px] shrink-0 truncate rounded-full border px-2.5 py-1 text-xs hover:bg-black/[0.04] disabled:opacity-50" style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }}>
+                  {fill(q)}
+                </button>
+              ))}
+              <button type="button" onClick={() => setEditTpl(true)} className="shrink-0 rounded p-1 hover:bg-black/[0.06]" title="Edit quick replies" aria-label="Edit quick replies" style={{ color: "var(--a-muted)" }}><Pencil size={13} /></button>
+            </div>
+          )}
+          {replyTo && (
+            <div className="flex items-center gap-2 px-3 pt-2 text-xs" style={{ color: "var(--a-muted)" }}>
+              <Reply size={12} /> Replying to <b style={{ color: "var(--a-fg)" }}>{replyTo.name}</b>. Quick replies use their name.
+              <button type="button" onClick={() => setReplyTo(null)} className="underline">Cancel</button>
+            </div>
+          )}
+          <div className="flex items-end gap-2 p-3">
+            <AdminTextarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={300} className="flex-1 resize-none"
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
               placeholder="Reply to everyone. Enter sends." aria-label="Your comment" />
             <AdminButton onClick={send} disabled={!text.trim()} aria-label="Send"><Send size={16} /></AdminButton>
@@ -384,6 +435,25 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
             )}
           </Card>
 
+          <Card className="space-y-2 p-4">
+            <p className="flex items-center justify-between text-sm font-semibold" style={{ color: "var(--a-fg)" }}>
+              <span className="flex items-center gap-2"><MessageSquare size={15} /> Ask your viewers</span>
+              <button type="button" onClick={() => setEditTpl(true)} className="rounded p-1 text-xs font-medium hover:bg-black/[0.06]" style={{ color: "var(--a-muted)" }}><Pencil size={13} className="mr-1 inline" />Edit</button>
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--a-faint)" }}>One tap posts it and pins it on top, so viewers start talking.</p>
+            {!tpl ? <p className="text-xs" style={{ color: "var(--a-faint)" }}>Loading…</p> : tpl.askTemplates.length === 0 ? <p className="text-xs" style={{ color: "var(--a-faint)" }}>No templates. Add some with Edit.</p> : (
+              <ul className="space-y-1.5">
+                {tpl.askTemplates.map((q) => (
+                  <li key={q}>
+                    <button type="button" disabled={quickBusy} onClick={() => void askViewers(q)}
+                      className="w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-black/[0.03] disabled:opacity-50" style={{ borderColor: "var(--a-border)", color: "var(--a-fg)" }}>
+                      {q}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
           <Card className="space-y-3 p-4">
             <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Controls</p>
             <Toggle checked={!live.commentsOff} onChange={(v) => void act("settings", { commentsOff: !v })} label="Viewer comments" />
@@ -401,6 +471,7 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
         </div>
       </div>
 
+      {tpl && editTpl && <TemplatesEditor open value={tpl} onClose={() => setEditTpl(false)} onSaved={(v) => { setTpl(v); setEditTpl(false); }} />}
       <ConfirmDialog open={!!blockTarget} onClose={() => setBlockTarget(null)} danger confirmLabel="Block" title={`Block ${blockTarget?.name ?? "this viewer"}?`}
         message="They cannot comment, ask, send gifts or chat with you again, on this live and every future one. Their waiting question is removed and any Super Chat is refunded. You can unblock them later from Blocked people."
         onConfirm={async () => {
@@ -532,27 +603,56 @@ function Stat({ icon: Icon, k, v }: { icon: typeof Users; k: string; v: string }
 }
 
 function EndedSummary({ s, onDone }: { s: LiveView; onDone: () => void }) {
-  const mins = s.startedAt && s.endedAt ? (Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 1000 : 0;
   return (
     <div className="space-y-6">
-      <PageHeader title="Live ended" subtitle={s.endText ?? undefined} />
-      <Card className="p-5">
-        <p className="font-semibold" style={{ color: "var(--a-fg)" }}>{s.title}</p>
-        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Stat icon={Radio} k="Duration" v={clock(mins)} />
-          <Stat icon={Users} k="Viewers" v={String(s.stats?.uniqueViewers ?? 0)} />
-          <Stat icon={Users} k="Most at once" v={String(s.stats?.peakViewers ?? 0)} />
-          <Stat icon={Heart} k="Likes" v={s.likes.toLocaleString("en-IN")} />
-          <Stat icon={Mic} k="Super Chats" v={`${s.stats?.superChatCount ?? 0}`} />
-          <Stat icon={IndianRupee} k="You earned" v={inr(s.stats?.earningPaise ?? 0)} />
-          <Stat icon={MessageSquare} k="Joined your chat line" v={String(s.stats?.chatLeads ?? 0)} />
-        </div>
-        <p className="mt-3 text-xs" style={{ color: "var(--a-muted)" }}>Gift earnings are after platform commission.</p>
-        <div className="mt-4 flex gap-2">
+      <PageHeader title="Live ended" subtitle={s.endText ?? "Here is how your live did."}
+        action={<div className="flex gap-2">
+          <Link href="/astrologer/requests"><AdminButton variant="outline">Chat requests</AdminButton></Link>
           <AdminButton onClick={onDone}><X size={15} /> Close</AdminButton>
-          <Link href="/astrologer/requests"><AdminButton variant="outline">Back to chat requests</AdminButton></Link>
-        </div>
-      </Card>
+        </div>} />
+      <LiveReportCard liveId={s.id} />
     </div>
+  );
+}
+
+/** Edit quick replies and ask templates. One per line; up to 12 each. Saved to the account, so they show on every device. */
+function TemplatesEditor({ open, value, onClose, onSaved }: { open: boolean; value: LiveTemplates; onClose: () => void; onSaved: (v: LiveTemplates) => void }) {
+  const { toast } = useAdminToast();
+  const [qr, setQr] = useState(() => value.quickReplies.join("\n"));
+  const [at, setAt] = useState(() => value.askTemplates.join("\n"));
+  const [busy, setBusy] = useState(false);
+  const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter((x) => x.length >= 2);
+  const tooMany = lines(qr).length > 12 || lines(at).length > 12;
+  const tooLong = [...lines(qr), ...lines(at)].some((x) => x.length > 200);
+
+  async function save(data: { quickReplies?: string[] | null; askTemplates?: string[] | null }, msg: string) {
+    setBusy(true);
+    const r = await partnerApi.liveTools.saveTemplates(data);
+    setBusy(false);
+    if (!r.ok) return toast(r.message, "error");
+    setQr(r.data.templates.quickReplies.join("\n"));
+    setAt(r.data.templates.askTemplates.join("\n"));
+    toast(msg, "success");
+    onSaved(r.data.templates);
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Quick replies and templates" subtitle="One per line. Up to 12 each, 200 characters each." size="lg">
+      <div className="space-y-4">
+        <Field label="Quick replies" hint={`${lines(qr).length}/12 · one tap sends it · {name} = the viewer you reply to${value.custom.quickReplies ? "" : " · showing the default list"}`}>
+          <AdminTextarea value={qr} onChange={(e) => setQr(e.target.value)} rows={6} maxLength={4000} aria-label="Quick replies" />
+        </Field>
+        <Field label="Ask your viewers" hint={`${lines(at).length}/12 · one tap posts and pins it${value.custom.askTemplates ? "" : " · showing the default list"}`}>
+          <AdminTextarea value={at} onChange={(e) => setAt(e.target.value)} rows={5} maxLength={4000} aria-label="Ask templates" />
+        </Field>
+        {(tooMany || tooLong) && <p className="text-xs text-rose-600">{tooMany ? "Keep up to 12 lines in each list." : "Keep each line under 200 characters."}</p>}
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>Phone numbers, emails and links are hidden automatically, same as comments.</p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <AdminButton variant="ghost" disabled={busy} onClick={() => save({ quickReplies: null, askTemplates: null }, "Back to the default lists")}>Use defaults</AdminButton>
+          <AdminButton variant="outline" onClick={onClose}>Cancel</AdminButton>
+          <AdminButton loading={busy} disabled={tooMany || tooLong} onClick={() => save({ quickReplies: lines(qr), askTemplates: lines(at) }, "Saved")}>Save</AdminButton>
+        </div>
+      </div>
+    </Modal>
   );
 }

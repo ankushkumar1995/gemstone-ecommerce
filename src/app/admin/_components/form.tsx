@@ -39,7 +39,7 @@ export function Field({
 export function AdminTextarea({
   className,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: React.ComponentProps<"textarea">) {
   return (
     <textarea
       className={cn(

@@ -123,6 +123,10 @@ export interface LiveSettings {
   blockedWords: string[];
   /** Hidden comments in one live before the viewer is muted on it (0 = never). */
   autoMuteStrikes: number;
+  /** Default one-tap replies in the live console (an astrologer can save their own). {name} = the viewer being replied to. */
+  quickReplies: string[];
+  /** Default prompts the astrologer posts and pins to get viewers talking ("Comment your rashi"). */
+  askTemplates: string[];
 }
 export interface SuperChatSettings {
   enabled: boolean;
@@ -177,11 +181,15 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
     superChat: { enabled: true, tiers: [{ price: 51, pinSec: 60 }, { price: 101, pinSec: 120 }, { price: 251, pinSec: 300 }] },
     blockedWords: [],
     autoMuteStrikes: 3,
+    quickReplies: ["Namaste {name}, welcome to the live.", "Please send your question with the Ask button. I answer one by one.", "Please share your date, time and place of birth.", "Thank you for the gift, {name}. Blessings to you.", "For a detailed reading, tap 1-to-1 chat. I will take you after this live.", "Please be patient, I will come to your question."],
+    askTemplates: ["Comment your rashi (moon sign) and I will tell you this week's forecast.", "Which area do you want guidance on today: career, marriage, money or health?", "Write your date of birth (DD-MM-YYYY) in the comments.", "Who here is facing delays in marriage? Comment YES.", "Share one problem you want a remedy for today."],
   },
   payouts: { provider: "manual", autoCreate: false, cycleWeekday: 1, requireVerifiedAccount: true, maxPerRequest: 0 },
   tips: { enabled: true, presets: [21, 51, 101, 251], maxPerChat: 5000, windowHours: 24 },
   waitlist: { enabled: true, maxSize: 10, offerSec: 60 },
 };
+
+const DEFAULT_LIVE_TEXTS = { quickReplies: DEFAULT_ASTRO_SETTINGS.live.quickReplies, askTemplates: DEFAULT_ASTRO_SETTINGS.live.askTemplates };
 
 export const astroSettingsSchema = z.object({
   commissionPct: z.number().min(0).max(90),
@@ -225,6 +233,8 @@ export const astroSettingsSchema = z.object({
     }).default({ enabled: true, tiers: [{ price: 51, pinSec: 60 }, { price: 101, pinSec: 120 }, { price: 251, pinSec: 300 }] }),
     blockedWords: z.array(z.string().trim().min(2).max(40)).max(300).default([]),
     autoMuteStrikes: z.number().int().min(0).max(20).default(3),
+    quickReplies: z.array(z.string().trim().min(2).max(200)).max(12).default(DEFAULT_LIVE_TEXTS.quickReplies),
+    askTemplates: z.array(z.string().trim().min(2).max(200)).max(12).default(DEFAULT_LIVE_TEXTS.askTemplates),
   }),
   payouts: z.object({
     provider: z.enum(["manual", "razorpayx"]),

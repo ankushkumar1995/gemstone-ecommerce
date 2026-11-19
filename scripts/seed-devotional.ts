@@ -3,16 +3,33 @@
  * the admin-managed `devotional_items` collection (upsert by slug, so it is
  * safe to run again; admin edits to the same slug are overwritten).
  *
- *   npx tsx --env-file=.env --require ./scripts/server-only-shim.cjs scripts/seed-devotional.ts [--dry]
+ *   npx tsx --env-file=.env --require ./scripts/server-only-shim.cjs scripts/seed-devotional.ts [--dry] [--from <path to the app's mocks/devotional.ts>]
  *
  * Old app ids ("m-gayatri", "l-jagdish") become the slugs, so saved sadhanas
  * and deep links keep working. Audio is not included: upload it in admin.
+ *
+ * The app's data file is loaded at run time (default: the sibling
+ * astrounkle-app checkout). It must not be a static import: the app folder
+ * does not exist on Vercel, and `next build` type-checks every .ts file, so a
+ * static import here breaks the deploy.
  */
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import mongoose from "mongoose";
-import { mantras, library } from "../../astrounkle-app/src/mocks/devotional";
 import { devotionalService } from "@/modules/devotional";
 
 const DRY = process.argv.includes("--dry");
+const fromArg = process.argv.indexOf("--from");
+const SOURCE = path.resolve(fromArg > -1 && process.argv[fromArg + 1] ? process.argv[fromArg + 1] : path.join(process.cwd(), "..", "astrounkle-app", "src", "mocks", "devotional.ts"));
+
+interface AppMantra { id: string; title: string; deity: string; devanagari: string; roman: string; meaning: string; when: string; seconds: number }
+interface AppLibraryItem { id: string; kind: string; title: string; hindiTitle: string; deity: string; blurb: string; lines: string[] }
+
+async function loadAppData(): Promise<{ mantras: AppMantra[]; library: AppLibraryItem[] }> {
+  const mod = (await import(pathToFileURL(SOURCE).href)) as { mantras?: AppMantra[]; library?: AppLibraryItem[] };
+  if (!Array.isArray(mod.mantras) || !Array.isArray(mod.library)) throw new Error(`No mantras / library exported by ${SOURCE}`);
+  return { mantras: mod.mantras, library: mod.library };
+}
 
 /** Traditional weekday (0 = Sunday) and graha for each deity. */
 const DEITY: Record<string, { days: number[]; planets: string[] }> = {
@@ -28,6 +45,7 @@ const DEITY: Record<string, { days: number[]; planets: string[] }> = {
 const FESTIVALS: Record<string, string[]> = { "l-ekadashi": ["ekadashi"], "l-kartik-purnima": ["purnima"], "l-shiv": ["shivratri", "mahashivratri"], "l-jagdish": ["gita jayanti", "vivah panchami"] };
 
 async function main() {
+  const { mantras, library } = await loadAppData();
   const rows: Record<string, unknown>[] = [];
   mantras.forEach((m, i) => {
     const d = DEITY[m.deity] ?? { days: [], planets: [] };

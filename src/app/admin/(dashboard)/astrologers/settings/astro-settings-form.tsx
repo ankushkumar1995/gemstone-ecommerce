@@ -65,8 +65,15 @@ export function AstroSettingsForm() {
           <Num label="Idle auto-end (sec)" hint="No heartbeat from either side" value={s.idleTimeoutSec} onChange={(n) => set("idleTimeoutSec", n)} />
           <Num label="Presence stale after (sec)" value={s.presenceStaleSec} onChange={(n) => set("presenceStaleSec", n)} />
           <Num label="Missed requests before auto-offline" value={s.maxMissedBeforeOffline} onChange={(n) => set("maxMissedBeforeOffline", n)} />
-          <Num label="Free minutes on first session" value={s.firstSessionFreeMinutes} onChange={(n) => set("firstSessionFreeMinutes", n)} />
+          <Num label="Free minutes on first chat" hint="New customers only, one per phone. 0 = offer off" value={s.firstSessionFreeMinutes} onChange={(n) => set("firstSessionFreeMinutes", n)} />
+          <Num label="Astrologer paid for free minutes (%)" hint="Of their normal earning, paid by AstroUnkle" value={s.firstChat.astrologerPayPct} onChange={(n) => set("firstChat", { ...s.firstChat, astrologerPayPct: n })} />
+          <Num label="Offer only up to rate (₹/min)" hint="0 = any astrologer. Caps the cost of each free chat" value={s.firstChat.maxRate} onChange={(n) => set("firstChat", { ...s.firstChat, maxRate: n })} />
         </div>
+        {s.firstSessionFreeMinutes > 0 && (
+          <p className="text-xs" style={{ color: "var(--a-muted)" }}>
+            Cost of one free chat: up to {s.firstSessionFreeMinutes} min × the astrologer&apos;s earning per minute × {s.firstChat.astrologerPayPct}%{s.firstChat.maxRate > 0 ? `, at most about ₹${Math.round((s.firstSessionFreeMinutes * s.firstChat.maxRate * (100 - s.commissionPct) * s.firstChat.astrologerPayPct) / 10_000)} per new customer (at the default commission)` : ""}. Astrologers can opt out in their panel (Offers).
+          </p>
+        )}
         <Toggle checked={s.billFromFirstReply} onChange={(v) => set("billFromFirstReply", v)} label="Start chat billing only after the astrologer's first reply" />
       </Card>
 
@@ -135,6 +142,41 @@ export function AstroSettingsForm() {
           <Num label="Most people waiting" value={s.waitlist.maxSize} onChange={(n) => set("waitlist", { ...s.waitlist, maxSize: n })} />
           <Num label="Seconds to take a turn" value={s.waitlist.offerSec} onChange={(n) => set("waitlist", { ...s.waitlist, offerSec: n })} />
         </div>
+      </Card>
+
+      <Card className="space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Refer a friend</p>
+          <Toggle checked={s.referral.enabled} onChange={(v) => set("referral", { ...s.referral, enabled: v })} label="New customers can enter a friend's code" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Num label="Bonus for the referrer (₹)" hint="Person who shared the code" value={s.referral.referrerReward} onChange={(n) => set("referral", { ...s.referral, referrerReward: n })} />
+          <Num label="Bonus for the friend (₹)" hint="New customer" value={s.referral.refereeReward} onChange={(n) => set("referral", { ...s.referral, refereeReward: n })} />
+          <Num label="Friend's first recharge at least (₹)" hint="Before GST" value={s.referral.minRecharge} onChange={(n) => set("referral", { ...s.referral, minRecharge: n })} />
+          <Num label="Most paid referrals per month" hint="Per referrer. Over it, only the friend gets a bonus" value={s.referral.monthlyCap} onChange={(n) => set("referral", { ...s.referral, monthlyCap: n })} />
+          <Num label="Code can be entered within (days)" hint="After the friend's sign-up" value={s.referral.applyWithinDays} onChange={(n) => set("referral", { ...s.referral, applyWithinDays: n })} />
+          <Num label="Recharge must happen within (days)" hint="After entering the code" value={s.referral.qualifyWithinDays} onChange={(n) => set("referral", { ...s.referral, qualifyWithinDays: n })} />
+        </div>
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>Bonuses go to the bonus balance: usable on consultations, never paid out as cash. Nothing is paid when the code is entered, only after the friend&apos;s recharge. Changes apply to codes entered from now on. Several sign-ups from one network for the same referrer are held for review in Refer a friend.</p>
+      </Card>
+
+      <Card className="space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Remedy suggestions in chat</p>
+          <Toggle checked={s.remedy.enabled} onChange={(v) => set("remedy", { ...s.remedy, enabled: v })} label="Astrologers can suggest products and poojas" />
+        </div>
+        <div className="flex flex-wrap gap-6">
+          <Toggle checked={s.remedy.allowProducts} onChange={(v) => set("remedy", { ...s.remedy, allowProducts: v })} label="Shop products" />
+          <Toggle checked={s.remedy.allowPoojas} onChange={(v) => set("remedy", { ...s.remedy, allowPoojas: v })} label="Poojas and havans" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Num label="Astrologer commission (%)" hint="Of the item's paid price, after discount, without shipping / tax" value={s.remedy.commissionPct} step={0.5} onChange={(n) => set("remedy", { ...s.remedy, commissionPct: n })} />
+          <Num label="Purchase counts within (days)" hint="After the suggestion" value={s.remedy.attributionDays} onChange={(n) => set("remedy", { ...s.remedy, attributionDays: n })} />
+          <Num label="Commission final after (days)" hint="After delivery or the pooja. Returns window" value={s.remedy.confirmAfterDays} onChange={(n) => set("remedy", { ...s.remedy, confirmAfterDays: n })} />
+          <Num label="Most suggestions per chat" value={s.remedy.maxPerChat} onChange={(n) => set("remedy", { ...s.remedy, maxPerChat: n })} />
+          <Num label="Most commission per sale (₹)" hint="0 = no limit" value={s.remedy.maxCommission} onChange={(n) => set("remedy", { ...s.remedy, maxCommission: n })} />
+        </div>
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>The % is fixed on each card when it is sent, so a change here applies to new suggestions only. If two astrologers suggest the same item, the latest one before the purchase gets the commission. Cancels and refunds reverse it automatically. All sales are in Remedy sales.</p>
       </Card>
 
       <Card className="space-y-4 p-5">

@@ -305,6 +305,8 @@ async function onConfirmed(o: Order) {
   if (o.customerId) await customerService.recordOrder(o.customerId, o.pricing.grandTotal, o.orderNumber, o.placedAt).catch(() => undefined);
   if (o.pricing.couponCode) await couponService.recordUsage(o.pricing.couponCode, o.pricing.subtotal, { customerId: o.customerId, orderNumber: o.orderNumber }).catch(() => undefined);
   for (const it of o.items) await productService.incrementCounter(it.productId, "sold", it.qty).catch(() => undefined);
+  // Remedy commission: a suggested item may have just been bought (the sweep also catches it).
+  if (o.customerId) void import("@/modules/remedies").then((m) => m.remedyService.maybeSweep(5_000)).catch(() => undefined);
 }
 
 /* ======================================================================= *

@@ -33,6 +33,8 @@ const SessionSchema = new Schema(
     rate: { type: Number, required: true },
     commissionPct: { type: Number, required: true },
     freeMinutes: { type: Number, default: 0 },
+    /** First-chat offer: % of the normal earning the platform pays the astrologer per free minute (fixed at request time). */
+    freePayPct: { type: Number, default: 0 },
     openAstro: { type: String, default: null },
     openCustomer: { type: String, default: null },
     requestedAt: { type: String, required: true },
@@ -78,6 +80,8 @@ const MessageSchema = new Schema(
     masked: { type: Boolean, default: false },
     clientId: { type: String },
     at: { type: String, required: true },
+    /** Rich card (remedy suggestion); absent on plain messages. */
+    card: { type: Mixed, default: undefined },
   },
   { collection: "consult_messages", versionKey: false },
 );

@@ -33,7 +33,7 @@ async function M() {
 
 const nowIso = () => new Date().toISOString();
 const DAY = 86_400_000;
-const EARNING_TYPES: LedgerType[] = ["consultation", "gift", "super_chat", "tip", "refund", "adjustment"];
+const EARNING_TYPES: LedgerType[] = ["consultation", "gift", "super_chat", "tip", "remedy", "remedy_reversal", "refund", "adjustment"];
 const OPEN_PAYOUT: PayoutStatus[] = ["requested", "approved", "processing"];
 const inr = (p: number) => `₹${(p / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
@@ -120,6 +120,31 @@ export const earningsLedger = {
       key: `tip:${t.sessionId}:${t.requestId}`, astrologerId: t.astrologerId, type: "tip",
       grossPaise: t.amountPaise, commissionPaise: 0, netPaise: t.amountPaise,
       availableAt: await holdUntil(at), at, ref: { kind: "consultation", id: t.sessionId, label: `Tip from ${t.from} · chat ${t.sessionNumber}` }, note: "", actor: "System",
+    });
+  },
+
+  /**
+   * Commission on a remedy sale. Written only once the return / complaint
+   * window is over, so it is withdrawable at once. Returns false when it was already recorded.
+   */
+  async remedy(r: { saleId: string; astrologerId: string; basePaise: number; commissionPaise: number; label: string; note: string; at?: string }): Promise<boolean> {
+    if (r.commissionPaise <= 0) return false;
+    const at = r.at ?? nowIso();
+    return record({
+      key: `remedy:${r.saleId}`, astrologerId: r.astrologerId, type: "remedy",
+      grossPaise: r.commissionPaise, commissionPaise: 0, netPaise: r.commissionPaise,
+      availableAt: at, at, ref: { kind: "remedy", id: r.saleId, label: r.label }, note: r.note, actor: "System",
+    });
+  },
+
+  /** A confirmed remedy sale was refunded or cancelled later: take the commission back (once). */
+  async remedyReversal(r: { saleId: string; astrologerId: string; commissionPaise: number; label: string; note: string; actor: string }): Promise<boolean> {
+    if (r.commissionPaise <= 0) return false;
+    const at = nowIso();
+    return record({
+      key: `remedy-rev:${r.saleId}`, astrologerId: r.astrologerId, type: "remedy_reversal",
+      grossPaise: r.commissionPaise, commissionPaise: 0, netPaise: -r.commissionPaise,
+      availableAt: at, at, ref: { kind: "remedy", id: r.saleId, label: r.label }, note: r.note, actor: r.actor,
     });
   },
 

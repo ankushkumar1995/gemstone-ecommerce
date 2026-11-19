@@ -52,6 +52,8 @@ export interface AstroProgramSettings {
   billFromFirstReply: boolean;
   /** Free minutes on a customer's very first consultation (0 = off). */
   firstSessionFreeMinutes: number;
+  /** First-chat offer rules (minutes above; 0 minutes = offer off). */
+  firstChat: FirstChatSettings;
   /** Days earnings stay "pending" (dispute window) before payout. */
   holdDays: number;
   payoutMinAmount: number;
@@ -72,7 +74,26 @@ export interface AstroProgramSettings {
   tips: TipSettings;
   /** Waitlist when an astrologer is busy. */
   waitlist: WaitlistSettings;
+  /** Refer a friend: wallet bonus for both, only after the friend's first qualifying recharge. */
+  referral: ReferralSettings;
+  /** Remedy suggestions in chat: the astrologer earns a commission when the customer buys what they suggested. */
+  remedy: RemedySettings;
   updatedAt?: string;
+}
+export interface RemedySettings {
+  enabled: boolean;
+  /** % of the item's paid price (after discount, before shipping / tax) paid to the astrologer. Fixed on each suggestion when it is sent. */
+  commissionPct: number;
+  /** A purchase counts if it is made this many days after the suggestion. */
+  attributionDays: number;
+  /** Commission is confirmed this many days after delivery (shop) or after the pooja is done (return / complaint window). */
+  confirmAfterDays: number;
+  allowProducts: boolean;
+  allowPoojas: boolean;
+  /** Most suggestions in one chat. */
+  maxPerChat: number;
+  /** Most commission on one sale (₹, 0 = no limit). */
+  maxCommission: number;
 }
 export interface PayoutSettings {
   /** "manual" = admin pays by bank transfer and enters the UTR. "razorpayx" = sent automatically. */
@@ -94,6 +115,27 @@ export interface TipSettings {
   maxPerChat: number;
   /** Hours after a chat during which a tip can be added. */
   windowHours: number;
+}
+export interface FirstChatSettings {
+  /** The platform pays the astrologer this % of their normal earning for each free minute (so offer chats are not declined). */
+  astrologerPayPct: number;
+  /** Offer only with astrologers whose chat rate is at most this (₹/min). 0 = any rate. Caps the offer's cost. */
+  maxRate: number;
+}
+export interface ReferralSettings {
+  enabled: boolean;
+  /** Bonus (₹, promo bucket) for the person who shared the code. */
+  referrerReward: number;
+  /** Bonus (₹, promo bucket) for the friend who joined with it. */
+  refereeReward: number;
+  /** The friend's recharge must be at least this much (₹, before GST) to count. */
+  minRecharge: number;
+  /** Most rewarded referrals per referrer in a calendar month (IST). Over the cap the friend still gets theirs. */
+  monthlyCap: number;
+  /** A code can be entered only this many days after the friend's account was made. */
+  applyWithinDays: number;
+  /** The friend has this many days after entering the code to make the qualifying recharge. */
+  qualifyWithinDays: number;
 }
 export interface WaitlistSettings {
   enabled: boolean;
@@ -187,6 +229,9 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
   payouts: { provider: "manual", autoCreate: false, cycleWeekday: 1, requireVerifiedAccount: true, maxPerRequest: 0 },
   tips: { enabled: true, presets: [21, 51, 101, 251], maxPerChat: 5000, windowHours: 24 },
   waitlist: { enabled: true, maxSize: 10, offerSec: 60 },
+  firstChat: { astrologerPayPct: 50, maxRate: 0 },
+  referral: { enabled: true, referrerReward: 100, refereeReward: 100, minRecharge: 200, monthlyCap: 10, applyWithinDays: 7, qualifyWithinDays: 30 },
+  remedy: { enabled: true, commissionPct: 10, attributionDays: 7, confirmAfterDays: 7, allowProducts: true, allowPoojas: true, maxPerChat: 5, maxCommission: 0 },
 };
 
 const DEFAULT_LIVE_TEXTS = { quickReplies: DEFAULT_ASTRO_SETTINGS.live.quickReplies, askTemplates: DEFAULT_ASTRO_SETTINGS.live.askTemplates };
@@ -254,6 +299,29 @@ export const astroSettingsSchema = z.object({
     maxSize: z.number().int().min(1).max(100),
     offerSec: z.number().int().min(20).max(600),
   }),
+  firstChat: z.object({
+    astrologerPayPct: z.number().int().min(0).max(100),
+    maxRate: z.number().int().min(0).max(10000),
+  }),
+  referral: z.object({
+    enabled: z.boolean(),
+    referrerReward: z.number().int().min(0).max(5000),
+    refereeReward: z.number().int().min(0).max(5000),
+    minRecharge: z.number().int().min(1).max(100000),
+    monthlyCap: z.number().int().min(0).max(1000),
+    applyWithinDays: z.number().int().min(1).max(365),
+    qualifyWithinDays: z.number().int().min(1).max(365),
+  }),
+  remedy: z.object({
+    enabled: z.boolean(),
+    commissionPct: z.number().min(0).max(50),
+    attributionDays: z.number().int().min(1).max(60),
+    confirmAfterDays: z.number().int().min(0).max(60),
+    allowProducts: z.boolean(),
+    allowPoojas: z.boolean(),
+    maxPerChat: z.number().int().min(1).max(20),
+    maxCommission: z.number().int().min(0).max(1_000_000),
+  }),
 }).partial().refine((v) => v.minRate === undefined || v.maxRate === undefined || v.minRate <= v.maxRate, { message: "minRate must be ≤ maxRate" });
 
 export type UpdateAstroSettingsDto = z.infer<typeof astroSettingsSchema>;
@@ -278,6 +346,9 @@ const merge = (stored: Partial<AstroProgramSettings> | undefined): AstroProgramS
   payouts: { ...DEFAULT_ASTRO_SETTINGS.payouts, ...(stored?.payouts ?? {}) },
   tips: { ...DEFAULT_ASTRO_SETTINGS.tips, ...(stored?.tips ?? {}) },
   waitlist: { ...DEFAULT_ASTRO_SETTINGS.waitlist, ...(stored?.waitlist ?? {}) },
+  referral: { ...DEFAULT_ASTRO_SETTINGS.referral, ...(stored?.referral ?? {}) },
+  firstChat: { ...DEFAULT_ASTRO_SETTINGS.firstChat, ...(stored?.firstChat ?? {}) },
+  remedy: { ...DEFAULT_ASTRO_SETTINGS.remedy, ...(stored?.remedy ?? {}) },
 });
 
 const CACHE_KEY = "astro-settings";

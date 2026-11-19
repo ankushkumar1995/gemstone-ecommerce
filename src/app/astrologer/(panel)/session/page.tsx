@@ -16,10 +16,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Ban, Check, CheckCheck, Clock, Flag, IndianRupee, Loader2, MessagesSquare, RotateCw, Send, UserRound, WifiOff } from "lucide-react";
+import { AlertTriangle, Ban, Check, CheckCheck, Clock, Flag, IndianRupee, Loader2, MessagesSquare, RotateCw, Send, Sparkles, UserRound, WifiOff } from "lucide-react";
 import { AdminButton, AdminTextarea, Badge, Card, ConfirmDialog, Modal, PageHeader, StatsSkeleton, useAdminToast } from "@/app/admin/_components";
 import { partnerApi, type ConsultMessage, type SessionView } from "@/lib/astrologer-api";
 import { useConsultInbox } from "../../_components/consult-inbox";
+import { RemedyCardBubble, RemedyPicker } from "../../_components/remedy-picker";
 
 const OPEN = new Set(["requested", "active"]);
 const TYPING_SHOW_MS = 6000;
@@ -128,6 +129,7 @@ function ChatRoom({ id }: { id: string }) {
   const [now, setNow] = useState(0);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [dialog, setDialog] = useState<null | "report" | "block">(null);
+  const [suggesting, setSuggesting] = useState(false);
   const [reason, setReason] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -290,6 +292,14 @@ function ChatRoom({ id }: { id: string }) {
               if (m.from === "system") return <p key={m.seq} className="py-1 text-center text-xs" style={{ color: "var(--a-faint)" }}>{m.text}</p>;
               const mine = m.from === "astrologer";
               const seen = mine && session.otherReadSeq >= m.seq;
+              if (m.card) {
+                return (
+                  <div key={m.seq} className="flex flex-col items-end gap-1">
+                    <RemedyCardBubble card={m.card} />
+                    <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--a-faint)" }}>{hhmm(m.at)}{seen ? <CheckCheck size={12} aria-label="Seen" /> : <Check size={12} aria-label="Sent" />}</p>
+                  </div>
+                );
+              }
               return (
                 <div key={m.seq} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm ${mine ? "rounded-br-md text-white" : "rounded-bl-md"}`}
@@ -341,7 +351,10 @@ function ChatRoom({ id }: { id: string }) {
                   className="flex-1 resize-none"
                   aria-label="Message"
                 />
-                <AdminButton onClick={submit} disabled={!text.trim()} aria-label="Send"><Send size={16} /></AdminButton>
+                <div className="flex flex-col gap-1.5">
+                  <AdminButton onClick={submit} disabled={!text.trim()} aria-label="Send"><Send size={16} /></AdminButton>
+                  <AdminButton variant="outline" onClick={() => setSuggesting(true)} aria-label="Suggest a remedy" title="Suggest a product or pooja"><Sparkles size={16} /></AdminButton>
+                </div>
               </div>
               <p className="mt-1.5 text-[11px]" style={{ color: "var(--a-faint)" }}>Phone numbers, emails and links are hidden automatically. Do not ask customers to contact you outside the app.</p>
             </div>
@@ -375,6 +388,11 @@ function ChatRoom({ id }: { id: string }) {
           </Card>
         </div>
       </div>
+
+      {active && (
+        <RemedyPicker open={suggesting} onClose={() => setSuggesting(false)} sessionId={id} customerName={session.customer.name}
+          onSent={(m) => { stick.current = true; chat.merge([m]); chat.refresh(); }} />
+      )}
 
       <ConfirmDialog open={confirmEnd} onClose={() => setConfirmEnd(false)} onConfirm={() => void end()} danger confirmLabel="End chat"
         title="End this chat?" message="The customer is billed up to the current minute and the chat closes for both of you." />

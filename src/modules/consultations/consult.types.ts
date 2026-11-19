@@ -42,6 +42,8 @@ export interface ConsultSession {
   rate: number;
   commissionPct: number;
   freeMinutes: number;
+  /** First-chat offer: % of the normal earning the platform pays the astrologer per free minute. */
+  freePayPct?: number;
   openAstro: string | null;
   openCustomer: string | null;
   requestedAt: string;
@@ -71,4 +73,23 @@ export interface ConsultSession {
   version: number;
 }
 
-export interface ConsultMessage { id: string; seq: number; from: ConsultRole | "system"; text: string; masked: boolean; at: string; clientId?: string }
+export interface ConsultMessage { id: string; seq: number; from: ConsultRole | "system"; text: string; masked: boolean; at: string; clientId?: string; card?: ConsultCard }
+
+/**
+ * A rich card inside a message. `text` on the message stays a plain fallback
+ * ("Suggested: Yellow Sapphire") for older app versions.
+ */
+export interface ConsultCard {
+  type: "remedy";
+  /** Suggestion id. */
+  id: string;
+  kind: "product" | "pooja";
+  itemId: string;
+  slug: string;
+  name: string;
+  image: string;
+  /** ₹ when it was suggested. */
+  price: number;
+  mrp: number | null;
+  note: string;
+}

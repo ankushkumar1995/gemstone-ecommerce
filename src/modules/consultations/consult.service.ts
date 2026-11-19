@@ -14,7 +14,7 @@ import { auditService } from "@/modules/audit";
 import { astroSettingsService } from "@/modules/astro-settings";
 import { astrologerService, isOnline } from "@/modules/astrologers";
 import { maskContacts } from "./consult.mask";
-import type { ConsultMessage, ConsultRole, ConsultSession, EndReason } from "./consult.types";
+import type { ConsultCard, ConsultMessage, ConsultRole, ConsultSession, EndReason } from "./consult.types";
 
 type Doc = Record<string, unknown> & { _id: unknown };
 
@@ -39,7 +39,7 @@ function out(d: Doc | null): ConsultSession | null {
   const { _id, ...rest } = d;
   return { ...(rest as unknown as Omit<ConsultSession, "id">), id: String(_id), lastSeen: (d.lastSeen as ConsultSession["lastSeen"]) ?? {}, typing: (d.typing as ConsultSession["typing"]) ?? {}, read: (d.read as ConsultSession["read"]) ?? {}, reports: (d.reports as ConsultSession["reports"]) ?? [] };
 }
-const msgOut = (d: Doc): ConsultMessage => ({ id: String(d._id), seq: d.seq as number, from: d.from as ConsultMessage["from"], text: d.text as string, masked: Boolean(d.masked), at: d.at as string, ...(d.clientId ? { clientId: d.clientId as string } : {}) });
+const msgOut = (d: Doc): ConsultMessage => ({ id: String(d._id), seq: d.seq as number, from: d.from as ConsultMessage["from"], text: d.text as string, masked: Boolean(d.masked), at: d.at as string, ...(d.clientId ? { clientId: d.clientId as string } : {}), ...(d.card ? { card: d.card as ConsultCard } : {}) });
 
 async function get(id: string): Promise<ConsultSession | null> {
   if (!/^[a-f0-9]{24}$/i.test(id)) return null;
@@ -72,10 +72,6 @@ async function balancePaise(customerId: string): Promise<number> {
 }
 
 /** Has this customer ever had a paid / completed consultation? (first-session offer) */
-async function isFirstSession(customerId: string): Promise<boolean> {
-  const { ConsultSessionModel } = await M();
-  return !(await ConsultSessionModel.exists({ customerId, status: "ended", minutesCharged: { $gt: 0 } }));
-}
 
 function isDup(e: unknown, field: string) {
   const err = e as { code?: number; keyPattern?: Record<string, unknown>; message?: string };
@@ -152,7 +148,11 @@ async function endSession(s: ConsultSession, reason: EndReason, actor: string, a
   if (cur.status === "active" && reason !== "low_balance") cur = await bill(cur, Date.parse(at));
   if (cur.status !== "active" && cur.status !== "requested") return cur;
   const status: ConsultSession["status"] = cur.status === "requested" ? (reason === "declined" ? "declined" : reason === "missed" ? "missed" : "cancelled") : "ended";
-  const earning = Math.floor((cur.chargedPaise * (100 - cur.commissionPct)) / 100);
+  // Paid minutes after commission, plus what the platform pays for free (offer) minutes.
+  const freePay = cur.freeUsed > 0 && (cur.freePayPct ?? 0) > 0
+    ? cur.freeUsed * Math.floor((Math.round(cur.rate * 100) * (100 - cur.commissionPct) * (cur.freePayPct ?? 0)) / 10_000)
+    : 0;
+  const earning = Math.floor((cur.chargedPaise * (100 - cur.commissionPct)) / 100) + freePay;
   const done = await cas(cur.id, [cur.status], {
     status, endReason: reason, endedAt: at, openAstro: null, openCustomer: null,
     earningPaise: earning, platformPaise: cur.chargedPaise - earning,
@@ -162,6 +162,9 @@ async function endSession(s: ConsultSession, reason: EndReason, actor: string, a
   await astrologerService.setBusy(done.astrologerId, null).catch(() => undefined);
   // The astrologer is free again: give the next person in line their turn.
   try { const { offerNext } = await import("./consult.waitlist"); await offerNext(done.astrologerId); } catch { /* the sweep retries */ }
+  if (status === "ended" && done.freeUsed > 0) {
+    try { const { firstChatOffer } = await import("./consult.offer"); await firstChatOffer.recordUse(done); } catch { /* eligibility also checks past sessions */ }
+  }
   if (status === "ended" && done.earningPaise > 0) {
     // Earnings ledger (idempotent; the reconcile sweep also catches a miss).
     try {
@@ -344,7 +347,9 @@ export const consultService = {
     const c = await customerService.getById(customerId);
     if (!c.ok) return fail(AppErrors.unauthorized("Please sign in again"));
     const rate = a.rates.chat;
-    const freeMinutes = st.firstSessionFreeMinutes > 0 && (await isFirstSession(customerId)) ? st.firstSessionFreeMinutes : 0;
+    // First-chat offer: new customer (one per phone, ever) with an astrologer who takes offer chats.
+    const { firstChatOffer } = await import("./consult.offer");
+    const freeMinutes = st.firstSessionFreeMinutes > 0 && (await firstChatOffer.takes(a.id, rate)) && (await firstChatOffer.eligible(customerId)) ? st.firstSessionFreeMinutes : 0;
     const need = Math.max(0, st.minStartMinutes - freeMinutes) * Math.round(rate * 100);
     const bal = await balancePaise(customerId);
     if (bal < need) return fail(AppErrors.validation(`You need at least ₹${need / 100} (${st.minStartMinutes} minutes) in your wallet to start this chat.`, { reason: "LOW_BALANCE", needPaise: need, balancePaise: bal }));
@@ -364,7 +369,7 @@ export const consultService = {
         requestId: input.requestId, channel: "chat", status: "requested",
         customerId, customer: { name: (c.value.name || "Customer").split(" ")[0].slice(0, 40) },
         astrologerId: a.id, astrologer: { name: a.displayName, photo: a.photo ?? null, slug: a.slug },
-        intake, question, rate, commissionPct: a.commissionPct ?? st.commissionPct, freeMinutes,
+        intake, question, rate, commissionPct: a.commissionPct ?? st.commissionPct, freeMinutes, freePayPct: freeMinutes ? st.firstChat.astrologerPayPct : 0,
         openAstro: a.id, openCustomer: customerId,
         requestedAt: now.toISOString(), expiresAt: new Date(now.getTime() + st.requestTimeoutSec * 1000).toISOString(),
         lastSeen: { customer: now.toISOString() }, typing: {}, read: {}, msgSeq: 0, reports: [], version: 1,
@@ -446,7 +451,11 @@ export const consultService = {
     return ok(await view((await endSession(s, role === "customer" ? "customer" : "astrologer", role === "customer" ? "Customer" : "Astrologer")) ?? s, role));
   },
 
-  async send(who: { customerId?: string; astrologerId?: string }, id: string, text: string, clientId: string): Promise<Result<ConsultMessage>> {
+  /**
+   * Send a message. `card` is only ever built on the server (remedy
+   * suggestions); the HTTP route never passes one from the client.
+   */
+  async send(who: { customerId?: string; astrologerId?: string }, id: string, text: string, clientId: string, card?: ConsultCard): Promise<Result<ConsultMessage>> {
     const s0 = await get(id);
     const role = s0 ? roleOf(s0, who) : null;
     if (!s0 || !role) return fail(AppErrors.notFound("Chat not found"));
@@ -458,7 +467,7 @@ export const consultService = {
     const { ConsultSessionModel, ConsultMessageModel } = await M();
     const dup = await ConsultMessageModel.findOne({ sessionId: id, clientId }).lean<Doc>();
     if (dup) return ok(msgOut(dup));
-    const m = st.maskContactInfo ? maskContacts(clean) : { text: clean, masked: false };
+    const m = st.maskContactInfo && !card ? maskContacts(clean) : { text: clean, masked: false };
     const at = nowIso();
     // First astrologer reply starts the meter.
     const firstReply = role === "astrologer" && !s.firstReplyAt;
@@ -469,7 +478,7 @@ export const consultService = {
     ).lean<Doc>());
     if (!bumped) return fail(AppErrors.validation("This chat has ended.", { reason: "NOT_ACTIVE" }));
     try {
-      const d = await ConsultMessageModel.create({ sessionId: id, seq: bumped.msgSeq, from: role, text: m.text, masked: m.masked, clientId, at });
+      const d = await ConsultMessageModel.create({ sessionId: id, seq: bumped.msgSeq, from: role, text: m.text, masked: m.masked, clientId, at, ...(card ? { card } : {}) });
       s = bumped;
       if (firstReply) await bill(s);
       return ok(msgOut(d.toObject() as Doc));

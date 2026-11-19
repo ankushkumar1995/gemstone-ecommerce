@@ -277,7 +277,7 @@ function phone10(e164: string | null | undefined): string | null {
 }
 
 /** Support channels from store settings (what the "Need help" sheet offers). */
-async function supportContact(): Promise<SupportContact> {
+export async function supportContact(): Promise<SupportContact> {
   const { settingsService } = await import("@/modules/settings");
   const r = await settingsService.get();
   const s = r.ok ? r.value.general : null;

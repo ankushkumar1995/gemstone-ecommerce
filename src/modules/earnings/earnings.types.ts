@@ -6,6 +6,8 @@
  *   gift          +net   live gift after commission         key gift:<liveId>:<clientId>
  *   super_chat    +net   answered Super Chat on a live      key superchat:<queueId>
  *   tip           +net   tip after a chat (100%)            key tip:<sessionId>:<requestId>
+ *   remedy        +net   commission on a suggested item     key remedy:<saleId>
+ *   remedy_reversal −net that sale was refunded later      key remedy-rev:<saleId>
  *   refund        −net   share of a customer refund         key refund:<sessionId>:<requestId>
  *   adjustment    ±      admin correction with a reason     key adjust:<requestId>
  *   payout        −gross money withdrawn                    key payout:<payoutId>
@@ -21,7 +23,7 @@
  * Only one open payout per astrologer (unique `openKey`).
  */
 
-export type LedgerType = "consultation" | "gift" | "super_chat" | "tip" | "refund" | "adjustment" | "payout" | "payout_reversal";
+export type LedgerType = "consultation" | "gift" | "super_chat" | "tip" | "remedy" | "remedy_reversal" | "refund" | "adjustment" | "payout" | "payout_reversal";
 
 export interface LedgerEntry {
   id: string;
@@ -36,7 +38,7 @@ export interface LedgerEntry {
   /** When this row becomes withdrawable. */
   availableAt: string;
   at: string;
-  ref: { kind: "consultation" | "live" | "payout" | "admin"; id: string; label: string };
+  ref: { kind: "consultation" | "live" | "payout" | "admin" | "remedy"; id: string; label: string };
   note: string;
   actor: string;
 }

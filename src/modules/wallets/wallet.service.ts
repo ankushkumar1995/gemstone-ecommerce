@@ -90,7 +90,16 @@ export const walletService = {
     if (res.status === "insufficient") return fail(AppErrors.internal("Could not credit the wallet"));
     const marked = await repo.markRechargePaid(razorpayOrderId, razorpayPaymentId);
     const recharge = marked ?? (await repo.rechargeByOrder(razorpayOrderId)) ?? r;
-    return ok({ recharge, credited: res.status === "applied", balance: res.balance });
+    // Refer-a-friend: a paid recharge can unlock the bonus (idempotent; also retried by the sweep).
+    if (res.status === "applied") {
+      try {
+        const { referralService } = await import("@/modules/referrals");
+        await referralService.onRecharge(recharge.customerId, recharge.id, recharge.amountPaise);
+      } catch { /* the referral sweep retries */ }
+    }
+    let balance = res.balance;
+    if (res.status === "applied") balance = (await repo.balance(recharge.customerId).catch(() => null)) ?? res.balance;
+    return ok({ recharge, credited: res.status === "applied", balance });
   },
 
   /** Per-minute (or any) consultation charge. Idempotent on `key`. */
@@ -104,6 +113,10 @@ export const walletService = {
   },
 
   txnsByRef: (ref: string) => getWalletRepository().txnsByRef(ref),
+  /** Referral bonus into the promo bucket (spendable on consultations, never paid out). Idempotent on `key`. */
+  async creditReferral(customerId: string, key: string, paise: number, ref: string, note: string): Promise<ApplyResult> {
+    return getWalletRepository().apply({ key, customerId, type: "referral", promoPaise: paise, ref, note, actor: "System" });
+  },
 
   /** Manual admin credit/debit. Requires a reason; audited; idempotent via requestId. */
   async adjust(input: { customerId: string; bucket: "cash" | "promo"; direction: "credit" | "debit"; amountPaise: number; reason: string; requestId: string; adminName: string; customerLabel?: string }): Promise<Result<{ txn: WalletTxn; balance: WalletBalance }>> {

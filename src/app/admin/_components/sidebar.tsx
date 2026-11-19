@@ -39,6 +39,8 @@ import {
   CalendarClock,
   Flame,
   UserCheck,
+  Gift,
+  Music,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -91,6 +93,7 @@ const groups: NavGroup[] = [
       { label: "Poojas", href: "/admin/poojas", icon: Flame },
       { label: "Pooja Bookings", href: "/admin/poojas/bookings", icon: CalendarClock },
       { label: "Pandits", href: "/admin/poojas/pandits", icon: UserCheck },
+      { label: "Mantras & Aarti", href: "/admin/devotional", icon: Music },
     ],
   },
   {
@@ -109,7 +112,9 @@ const groups: NavGroup[] = [
     items: [
       { label: "Payments", href: "/admin/payments", icon: Wallet },
       { label: "Wallets", href: "/admin/wallets", icon: Wallet },
+      { label: "Refer a friend", href: "/admin/referrals", icon: Gift },
       { label: "Astrologer Payouts", href: "/admin/payouts", icon: Wallet },
+      { label: "Remedy sales", href: "/admin/remedy-sales", icon: Gift },
     ],
   },
   {

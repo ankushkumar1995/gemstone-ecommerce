@@ -37,23 +37,27 @@ import type {
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
 const MAX_OTHER_BYTES = 25 * 1024 * 1024; // 25 MB
+const MAX_AUDIO_BYTES = 50 * 1024 * 1024; // 50 MB (long kathas / bhajans)
 
 const ALLOWED = {
   image: ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/svg+xml"],
   video: ["video/mp4", "video/webm", "video/quicktime"],
   doc: ["application/pdf"],
+  audio: ["audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/ogg", "audio/wav", "audio/x-wav", "audio/webm"],
 };
 
-function kindFor(contentType: string): "image" | "video" | "doc" | null {
+function kindFor(contentType: string): "image" | "video" | "doc" | "audio" | null {
   if (ALLOWED.image.includes(contentType)) return "image";
   if (ALLOWED.video.includes(contentType)) return "video";
   if (ALLOWED.doc.includes(contentType)) return "doc";
+  if (ALLOWED.audio.includes(contentType)) return "audio";
   return null;
 }
 
-function maxBytesFor(kind: "image" | "video" | "doc"): number {
+function maxBytesFor(kind: "image" | "video" | "doc" | "audio"): number {
   if (kind === "video") return MAX_VIDEO_BYTES;
   if (kind === "doc") return MAX_OTHER_BYTES;
+  if (kind === "audio") return MAX_AUDIO_BYTES;
   return MAX_IMAGE_BYTES;
 }
 

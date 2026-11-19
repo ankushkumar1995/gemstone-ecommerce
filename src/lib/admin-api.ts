@@ -457,11 +457,13 @@ export const adminApi = {
       request<{ id: string }>(`/api/v1/reviews/${id}`, { method: "DELETE" }),
   },
   audit: {
-    list: (filters?: { entity?: string; action?: string; q?: string }) => {
+    list: (filters?: { entity?: string; action?: string; q?: string; before?: string; limit?: number }) => {
       const qs = new URLSearchParams();
       if (filters?.entity) qs.set("entity", filters.entity);
       if (filters?.action) qs.set("action", filters.action);
       if (filters?.q) qs.set("q", filters.q);
+      if (filters?.before) qs.set("before", filters.before);
+      if (filters?.limit) qs.set("limit", String(filters.limit));
       const q = qs.toString();
       return request<AuditEntry[]>(`/api/v1/audit${q ? `?${q}` : ""}`);
     },

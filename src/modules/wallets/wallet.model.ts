@@ -23,7 +23,7 @@ const TxnSchema = new Schema(
   {
     key: { type: String, required: true, unique: true },
     customerId: { type: String, required: true },
-    type: { type: String, enum: ["recharge", "consultation", "refund", "adjustment", "reversal"], required: true },
+    type: { type: String, enum: ["recharge", "consultation", "refund", "adjustment", "reversal", "referral"], required: true },
     cashPaise: { type: Number, required: true },
     promoPaise: { type: Number, required: true },
     cashAfter: { type: Number, required: true },

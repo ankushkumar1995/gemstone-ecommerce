@@ -14,6 +14,7 @@ import type { AnnouncementWithStats } from "@/modules/partner-notices/notice.typ
 import type { ConsultMessage, ConsultSession } from "@/modules/consultations/consult.types";
 import type { LiveEvent, LiveQueueItem, LiveSession } from "@/modules/live/live.types";
 import type { EarningsBalance, LedgerEntry, Payout } from "@/modules/earnings/earnings.types";
+import type { RemedyRules, RemedySale, RemedyStats } from "@/modules/remedies/remedy.types";
 import type {
   AgreementAcceptance, AgreementExtension, AgreementGateInfo, AgreementListItem, AgreementVersion, SignatureRow, SignedCopy,
 } from "@/modules/agreements/agreement.types";
@@ -22,7 +23,9 @@ export type AdminRes<T> = { ok: true; data: T } | { ok: false; message: string; 
 
 async function request<T>(url: string, init?: RequestInit, retried = false): Promise<AdminRes<T>> {
   try {
-    const res = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+    // FormData (uploads) sets its own multipart Content-Type.
+    const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    const res = await fetch(url, { ...init, headers: isForm ? init?.headers : { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
     if (res.status === 401 && !retried) {
       const r = await fetch("/api/v1/admin/refresh", { method: "POST" });
       if (r.ok) return request<T>(url, init, true);
@@ -62,6 +65,26 @@ export const astroAdminApi = {
     adjust: (astrologerId: string, amountPaise: number, reason: string, requestId: string) => request<{ balance: EarningsBalance }>("/api/v1/admin/earnings", json("POST", { action: "adjust", astrologerId, amountPaise, reason, requestId })),
     reconcile: () => request<{ consultations: number; refunds: number; gifts: number; tips: number; superChats: number }>("/api/v1/admin/earnings", json("POST", { action: "reconcile" })),
     runWeekly: () => request<{ ran: boolean; created: number; skipped: number; date: string }>("/api/v1/admin/earnings", json("POST", { action: "run_weekly" })),
+  },
+  remedySales: {
+    list: (f: { status?: string; astrologerId?: string; before?: string } = {}) => {
+      const p = new URLSearchParams();
+      if (f.status) p.set("status", f.status);
+      if (f.astrologerId) p.set("astrologerId", f.astrologerId);
+      if (f.before) p.set("before", f.before);
+      return request<{ rules: RemedyRules; stats: RemedyStats; items: RemedySale[]; nextBefore: string | null }>(`/api/v1/admin/remedy-sales?${p.toString()}`);
+    },
+    reverse: (id: string, reason: string) => request<{ sale: RemedySale }>(`/api/v1/admin/remedy-sales/${encodeURIComponent(id)}`, json("POST", { reason })),
+  },
+  referrals: {
+    list: (f: { status?: string; q?: string; before?: string } = {}) => {
+      const p = new URLSearchParams();
+      if (f.status) p.set("status", f.status);
+      if (f.q) p.set("q", f.q);
+      if (f.before) p.set("before", f.before);
+      return request<{ items: AdminReferral[]; stats: Record<string, number>; nextBefore: string | null }>(`/api/v1/admin/referrals?${p.toString()}`);
+    },
+    decide: (id: string, decision: "approve" | "reject", note: string) => request<{ status: string }>(`/api/v1/admin/referrals/${encodeURIComponent(id)}`, json("POST", { decision, note })),
   },
   live: {
     list: (status: "live" | "scheduled" | "all") => request<{ lives: LiveSession[] }>(`/api/v1/admin/live?status=${status}`),
@@ -137,3 +160,36 @@ export const astroAdminApi = {
   },
   request,
 };
+
+export interface AdminReferral {
+  id: string; code: string; referrerId: string; refereeId: string; referrerName: string; refereeName: string;
+  status: "pending" | "qualified" | "review" | "rewarded" | "expired" | "rejected";
+  flags: string[]; appliedAt: string; expiresAt: string; qualifiedAt: string | null; rewardedAt: string | null;
+  rechargePaise: number; referrerRewardPaise: number; refereeRewardPaise: number; referrerCapped: boolean; reviewNote: string; reviewedBy: string;
+}
+
+/* ---------------- Mantras & Aarti (devotional) ---------------- */
+export type { DevotionalItem, DevotionalKind } from "@/modules/devotional/devotional.types";
+type DevoItem = import("@/modules/devotional/devotional.types").DevotionalItem;
+export const devotionalAdminApi = {
+  list: (f: { kind?: string; status?: string; q?: string } = {}) => {
+    const p = new URLSearchParams();
+    if (f.kind) p.set("kind", f.kind);
+    if (f.status) p.set("status", f.status);
+    if (f.q) p.set("q", f.q);
+    return request<{ items: DevoItem[]; counts: Record<string, number> }>(`/api/v1/admin/devotional?${p.toString()}`);
+  },
+  get: (id: string) => request<{ item: DevoItem }>(`/api/v1/admin/devotional/${encodeURIComponent(id)}`),
+  create: (data: unknown) => request<{ item: DevoItem }>("/api/v1/admin/devotional", json("POST", data)),
+  update: (id: string, data: unknown) => request<{ item: DevoItem }>(`/api/v1/admin/devotional/${encodeURIComponent(id)}`, json("PATCH", data)),
+  remove: (id: string) => request<{ ok: true }>(`/api/v1/admin/devotional/${encodeURIComponent(id)}`, json("DELETE")),
+  reorder: (ids: string[]) => request<{ ok: true }>("/api/v1/admin/devotional", json("PUT", { action: "reorder", ids })),
+  importMany: (items: unknown, dryRun: boolean) => request<{ created: number; updated: number; failed: { row: number; slug: string; error: string }[] }>("/api/v1/admin/devotional", json("PUT", { action: "import", items, dryRun })),
+  upload: async (file: File, type: "audio" | "image") => {
+    const fd = new FormData();
+    fd.set("file", file);
+    fd.set("type", type);
+    return request<{ url: string; key: string; bytes: number; contentType: string }>("/api/v1/admin/devotional/upload", { method: "POST", body: fd });
+  },
+};
+export type { RemedyRules, RemedySale, RemedyStats };

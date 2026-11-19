@@ -32,6 +32,7 @@ import {
   AdminDropdown,
   StatsSkeleton,
   EmptyState,
+  AdminButton,
 } from "../../_components";
 
 const ENTITY_ICON: Record<AuditEntity, LucideIcon> = {
@@ -109,11 +110,27 @@ export function ActivityView() {
   const [action, setAction] = useState("");
   const [q, setQ] = useState("");
 
+  const [more, setMore] = useState(false);
+  const [busyMore, setBusyMore] = useState(false);
+  const PAGE = 100;
+
   const load = async () => {
     setLoading(true);
-    const res = await adminApi.audit.list({ entity, action, q });
-    if (res.ok) setEntries(res.data);
+    const res = await adminApi.audit.list({ entity, action, q, limit: PAGE });
+    if (res.ok) { setEntries(res.data); setMore(res.data.length === PAGE); }
     setLoading(false);
+  };
+
+  const loadMore = async () => {
+    const last = entries[entries.length - 1];
+    if (!last || busyMore) return;
+    setBusyMore(true);
+    const res = await adminApi.audit.list({ entity, action, q, before: last.at, limit: PAGE });
+    if (res.ok) {
+      setEntries((cur) => [...cur, ...res.data.filter((x) => !cur.some((c) => c.id === x.id))]);
+      setMore(res.data.length === PAGE);
+    }
+    setBusyMore(false);
   };
 
   useEffect(() => {
@@ -194,6 +211,11 @@ export function ActivityView() {
               </Card>
             </div>
           ))}
+          {more && (
+            <div className="text-center">
+              <AdminButton variant="outline" loading={busyMore} onClick={loadMore}>Load older activity</AdminButton>
+            </div>
+          )}
         </div>
       )}
     </div>

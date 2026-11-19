@@ -9,6 +9,7 @@
  *   report   { reason }              either side
  *   accept / decline                 astrologer, while requested
  *   block    { reason }              astrologer: block this customer
+ *   suggest  { kind, itemId, note?, clientId }  astrologer: send a product / pooja card (remedy commission)
  */
 import type { NextRequest } from "next/server";
 import { z } from "zod";
@@ -24,6 +25,12 @@ const msg = z.object({ text: z.string().max(2000), clientId: z.string().trim().r
 const read = z.object({ seq: z.number().int().min(0) });
 const rate = z.object({ stars: z.number().int().min(1).max(5), text: z.string().max(500).optional().default("") });
 const reason = z.object({ reason: z.string().trim().min(3, "Tell us what happened").max(500) });
+const suggest = z.object({
+  kind: z.enum(["product", "pooja"]),
+  itemId: z.string().trim().min(1).max(64),
+  note: z.string().max(300).optional().default(""),
+  clientId: z.string().trim().regex(/^[A-Za-z0-9_-]{6,64}$/, "Invalid message id"),
+});
 const tip = z.object({ amountPaise: z.number().int().min(100).max(10_000_000), requestId: z.string().trim().regex(/^[A-Za-z0-9_-]{8,64}$/, "Invalid request id") });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string; action: string }> }) {
@@ -87,6 +94,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!w.value.astrologerId) return jsonError(AppErrors.forbidden("Only the astrologer can do this"));
       const r = action === "accept" ? await consultService.accept(w.value.astrologerId, id) : await consultService.decline(w.value.astrologerId, id);
       return r.ok ? jsonOk({ session: r.value }) : jsonError(r.error);
+    }
+    case "suggest": {
+      if (!w.value.astrologerId) return jsonError(AppErrors.forbidden("Only the astrologer can suggest a remedy"));
+      if (!limit("suggest", 10)) return jsonError(AppErrors.rateLimited("Please wait a moment."));
+      const p = parse(suggest, body);
+      if (!p.ok) return jsonError(p.error);
+      const { remedyService } = await import("@/modules/remedies");
+      const r = await remedyService.suggest(w.value.astrologerId, id, p.value);
+      return r.ok ? jsonOk(r.value, 201) : jsonError(r.error);
     }
     case "block": {
       if (!w.value.astrologerId) return jsonError(AppErrors.forbidden("Only the astrologer can block"));

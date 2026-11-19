@@ -27,6 +27,7 @@ const TYPE_LABEL: Record<WalletTxnType, string> = {
   refund: "Refund",
   adjustment: "Adjustment",
   reversal: "Reversal",
+  referral: "Referral bonus",
 };
 const FILTERS: { key: WalletTxnType | "all"; label: string }[] = [
   { key: "all", label: "All" },

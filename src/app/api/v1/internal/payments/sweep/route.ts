@@ -2,7 +2,8 @@
  * POST /api/v1/internal/payments/sweep  (scheduled job, server to server)
  *   Header: Authorization: Bearer <CRON_SECRET>
  *   Releases seats of expired pay-online pooja holds (after asking Razorpay)
- *   and settles any that were actually paid. Run every 5 minutes.
+ *   and settles any that were actually paid. Also chats, lives, the earnings ledger,
+ *   weekly payouts, referral bonuses and remedy commissions. Run every 5 minutes.
  * Disabled (404) when CRON_SECRET is not set.
  */
 import crypto from "node:crypto";
@@ -16,6 +17,7 @@ import { sweepExpiredOrderHolds } from "@/modules/orders/order-checkout.service"
 import { sweepConsultations } from "@/modules/consultations";
 import { sweepLives } from "@/modules/live";
 import { earningsService } from "@/modules/earnings";
+import { referralService } from "@/modules/referrals";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +32,16 @@ function authorized(request: NextRequest): boolean {
 export async function POST(request: NextRequest) {
   if (!env.CRON_SECRET) return jsonError(AppErrors.notFound("Not found"));
   if (!authorized(request)) return jsonError(AppErrors.unauthorized("Unauthorized"));
-  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured" });
+  // Remedy commissions only read orders / bookings, so they run without Razorpay too.
+  const { remedyService } = await import("@/modules/remedies");
+  const remedies = await remedyService.sweep().catch(() => null);
+  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured", remedies });
   const pooja = await poojaPaymentService.sweepExpiredHolds(fetchOrderPayments);
   const orders = await sweepExpiredOrderHolds(fetchOrderPayments);
   const consultations = await sweepConsultations().catch(() => ({ checked: -1 }));
   const lives = await sweepLives().catch(() => ({ checked: -1 }));
   const ledger = await earningsService.reconcile().catch(() => null);
   const weeklyPayouts = await earningsService.runWeekly(false).catch(() => null);
-  return jsonOk({ pooja, orders, consultations, lives, ledger, weeklyPayouts });
+  const referrals = await referralService.sweep().catch(() => null);
+  return jsonOk({ pooja, orders, consultations, lives, ledger, weeklyPayouts, referrals, remedies });
 }

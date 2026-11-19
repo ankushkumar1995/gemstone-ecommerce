@@ -14,9 +14,10 @@ export type WalletTxnType =
   | "consultation" // per-minute consultation charge
   | "refund" // money returned (e.g. consultation refund)
   | "adjustment" // manual admin credit/debit
-  | "reversal"; // correction of an earlier txn
+  | "reversal" // correction of an earlier txn
+  | "referral"; // refer-a-friend bonus (promo)
 
-export const WALLET_TXN_TYPES = ["recharge", "consultation", "refund", "adjustment", "reversal"] as const;
+export const WALLET_TXN_TYPES = ["recharge", "consultation", "refund", "adjustment", "reversal", "referral"] as const;
 
 export interface WalletBalance {
   customerId: string;

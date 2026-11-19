@@ -53,6 +53,8 @@ export const STORAGE_FOLDERS = [
   "astrologers",
   // Pooja catalog images and pooja proof photos.
   "poojas",
+  // Mantras, aarti, chalisa, katha: audio + cover images.
+  "devotional",
 ] as const;
 
 export type StorageFolder = (typeof STORAGE_FOLDERS)[number];

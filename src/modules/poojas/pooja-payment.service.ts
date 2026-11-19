@@ -74,6 +74,8 @@ export const poojaPaymentService = {
         if (r === "conflict") continue;
         if (!r) return fail(AppErrors.notFound("Booking not found"));
         await audit(r, `${r.bookingNumber} paid online ₹${r.pricing.total}`);
+        // Remedy commission: this pooja may have been suggested in a chat (the sweep also catches it).
+        void import("@/modules/remedies").then((m) => m.remedyService.maybeSweep(5_000)).catch(() => undefined);
         return ok({ booking: r, outcome: "confirmed" });
       }
 

@@ -18,6 +18,7 @@ import type { LiveTemplates } from "@/modules/live/live.templates";
 import type { EarningsBalance, LedgerEntry, Payout } from "@/modules/earnings/earnings.types";
 import type { WaitEntryView } from "@/modules/consultations/consult.waitlist";
 import type { LiveEvent, LiveQueueItem } from "@/modules/live/live.types";
+import type { RemedyCatalogItem, RemedyKind, RemedyRules, RemedySale, RemedyStats, RemedySuggestion } from "@/modules/remedies/remedy.types";
 
 export type { SessionView, ConsultMessage };
 
@@ -135,6 +136,18 @@ export const partnerApi = {
     templates: () => request<{ templates: LiveTemplates }>("/api/v1/astrologer/live/templates"),
     saveTemplates: (data: { quickReplies?: string[] | null; askTemplates?: string[] | null }) => request<{ templates: LiveTemplates }>("/api/v1/astrologer/live/templates", json("PUT", data)),
   },
+  remedies: {
+    summary: (status?: string, before?: string) => {
+      const p = new URLSearchParams();
+      if (status) p.set("status", status);
+      if (before) p.set("before", before);
+      return request<RemedyPartnerView>(`/api/v1/astrologer/remedies?${p.toString()}`);
+    },
+    forSession: (sessionId: string) => request<{ rules: RemedyRules; suggestions: RemedySuggestion[] }>(`/api/v1/astrologer/remedies?sessionId=${encodeURIComponent(sessionId)}`),
+    catalog: (q: string, kind?: RemedyKind) => request<{ rules: RemedyRules; items: RemedyCatalogItem[] }>(`/api/v1/astrologer/remedies/catalog?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ""}`),
+    suggest: (sessionId: string, body: { kind: RemedyKind; itemId: string; note?: string; clientId: string }) =>
+      request<{ suggestion: RemedySuggestion; message: ConsultMessage }>(`/api/v1/consult/sessions/${encodeURIComponent(sessionId)}/suggest`, json("POST", body)),
+  },
   blocks: {
     list: (cursor?: string) => request<{ total: number; items: BlockRow[]; nextCursor: string | null }>(`/api/v1/astrologer/blocks${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`),
     unblock: (id: string) => request<{ ok: true }>(`/api/v1/astrologer/blocks/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -151,6 +164,8 @@ export type { EarningsBalance, LedgerEntry, Payout, WaitEntryView };
 export type { LiveView, LiveEvent, LiveQueueItem };
 export type { LiveReport, LiveTemplates };
 export type BlockRow = { id: string; name: string; via: string; reason: string; at: string };
+export type RemedyPartnerView = { rules: RemedyRules; stats: RemedyStats; items: RemedySale[]; nextBefore: string | null; recent: RemedySuggestion[] };
+export type { RemedyCatalogItem, RemedyKind, RemedyRules, RemedySale, RemedyStats, RemedySuggestion };
 
 type SignInput = { agreementId: string; contentHash: string; typedName: string; keyPoints: string[]; scrolledToEnd: true };
 

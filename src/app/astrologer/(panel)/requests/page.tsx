@@ -179,7 +179,7 @@ export default function LiveRequestsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold" style={{ color: "var(--a-fg)" }}>{r.customer.name}</p>
                         <Badge tone="gold">Chat · ₹{r.rate}/min</Badge>
-                        {r.freeMinutes > 0 && <Badge tone="green">{r.freeMinutes} free min</Badge>}
+                        {r.freeMinutes > 0 && <Badge tone="green">{`New customer · ${r.freeMinutes} free min (AstroUnkle pays you)`}</Badge>}
                       </div>
                       {r.question
                         ? <p className="mt-1.5 break-words text-sm" style={{ color: "var(--a-fg)" }}>&ldquo;{r.question}&rdquo;</p>

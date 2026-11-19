@@ -21,13 +21,15 @@ const TYPE: Record<LedgerEntry["type"], { label: string; tone: "green" | "gold" 
   gift: { label: "Live gift", tone: "royal" },
   super_chat: { label: "Super Chat", tone: "gold" },
   tip: { label: "Tip", tone: "gold" },
+  remedy: { label: "Remedy sale", tone: "green" },
+  remedy_reversal: { label: "Remedy reversed", tone: "rose" },
   refund: { label: "Refund", tone: "rose" },
   adjustment: { label: "Adjustment", tone: "muted" },
   payout: { label: "Payout", tone: "green" },
   payout_reversal: { label: "Payout returned", tone: "muted" },
 };
 const FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "All" }, { key: "consultation", label: "Chats" }, { key: "gift", label: "Gifts" }, { key: "super_chat", label: "Super Chats" }, { key: "tip", label: "Tips" },
+  { key: "", label: "All" }, { key: "consultation", label: "Chats" }, { key: "gift", label: "Gifts" }, { key: "super_chat", label: "Super Chats" }, { key: "tip", label: "Tips" }, { key: "remedy", label: "Remedy sales" },
   { key: "refund", label: "Refunds" }, { key: "payout", label: "Payouts" }, { key: "adjustment", label: "Adjustments" },
 ];
 

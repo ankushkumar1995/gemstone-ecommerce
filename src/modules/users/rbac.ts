@@ -44,6 +44,7 @@ export const RESOURCES: Resource[] = [
   "wallets",
   "payouts",
   "poojas",
+  "devotional",
 ];
 
 /** The four actions, in display order. */
@@ -75,6 +76,7 @@ export const RESOURCE_LABELS: Record<Resource, string> = {
   wallets: "Customer Wallets",
   payouts: "Astrologer Payouts",
   poojas: "Poojas & Bookings",
+  devotional: "Mantras & Aarti",
 };
 
 /* ---------------- permission builders ---------------- */
@@ -99,7 +101,7 @@ export const SUPERUSER: Permission[] = ["*:*"];
 
 /* ---------------- preset roles ---------------- */
 
-const contentResources: Resource[] = ["products", "blog", "pages", "media", "banners", "categories", "collections"];
+const contentResources: Resource[] = ["products", "blog", "pages", "media", "banners", "categories", "collections", "devotional"];
 
 /**
  * Preset roles — seeded into the `roles` collection. `priority` ranks power
@@ -146,6 +148,7 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...viewOnly("wallets"),
       ...viewOnly("payouts"),
       ...all("poojas"),
+      ...all("devotional"),
     ],
     isSystem: true,
     priority: 60,

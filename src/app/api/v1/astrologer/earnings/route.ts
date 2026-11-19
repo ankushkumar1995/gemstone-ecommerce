@@ -9,7 +9,7 @@ import { requireAstrologer } from "@/modules/astrologer-auth";
 import { earningsService, maybeRunEarningsJobs, type LedgerType } from "@/modules/earnings";
 
 export const dynamic = "force-dynamic";
-const TYPES: LedgerType[] = ["consultation", "gift", "super_chat", "tip", "refund", "adjustment", "payout", "payout_reversal"];
+const TYPES: LedgerType[] = ["consultation", "gift", "super_chat", "tip", "remedy", "remedy_reversal", "refund", "adjustment", "payout", "payout_reversal"];
 
 export async function GET(request: NextRequest) {
   const g = await requireAstrologer({ approved: true });

@@ -338,8 +338,9 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
         <Stat icon={MessageSquare} k="Chat line from live" v={String(live.stats?.chatLeads ?? 0)} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        <Card className="flex h-[min(68vh,620px)] flex-col p-0">
+      {/* minmax(0,1fr) + min-w-0: the quick-reply strip scrolls inside the card instead of widening the column. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="flex h-[min(68vh,620px)] min-w-0 flex-col p-0">
           <div className="flex items-center gap-2 border-b px-4 py-3 text-sm" style={{ borderColor: "var(--a-border)" }}>
             <MessageSquare size={15} /><span className="flex-1 font-medium" style={{ color: "var(--a-fg)" }}>Live comments</span>
             {recentJoins.length > 0 && <span className="truncate text-xs" style={{ color: "var(--a-muted)" }}>{recentJoins.join(", ")} joined</span>}

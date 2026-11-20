@@ -260,9 +260,10 @@ function ChatRoom({ id }: { id: string }) {
 
       {!open && <EndedSummary s={session} elapsed={elapsed} />}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+      {/* minmax(0,1fr) + min-w-0: the quick-reply strip scrolls inside the card instead of widening the column. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         {/* conversation */}
-        <Card className="flex h-[min(70vh,640px)] flex-col p-0">
+        <Card className="flex h-[min(70vh,640px)] min-w-0 flex-col p-0">
           <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: "var(--a-border)" }}>
             <span className={`h-2.5 w-2.5 rounded-full ${session.otherOnline && open ? "bg-emerald-500" : "bg-slate-300"}`} aria-hidden />
             <p className="flex-1 text-sm font-medium" style={{ color: "var(--a-fg)" }}>

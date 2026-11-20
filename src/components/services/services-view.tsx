@@ -323,11 +323,11 @@ export function ServicesView({
             className="relative mx-auto aspect-square w-full max-w-xs overflow-hidden rounded-3xl border border-foreground/10"
           >
             <Image
-              src="https://images.unsplash.com/photo-1600353068440-6361ef3a86e8?auto=format&fit=crop&w=800&q=85"
+              src="/astrologers/a13.jpeg"
               alt="Senior Vedic astrologer"
               fill
               sizes="(max-width: 1024px) 100vw, 288px"
-              className="object-cover"
+              className="object-cover object-top"
             />
           </motion.div>
 
@@ -342,7 +342,7 @@ export function ServicesView({
               Meet Your Guide
             </div>
             <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-              Pandit Astrounkle Sharma
+              Sakshi Sharma
             </h2>
             <p className="mt-1 text-sm font-medium text-gold-600">
               Vedic Astrologer · 15+ years experience

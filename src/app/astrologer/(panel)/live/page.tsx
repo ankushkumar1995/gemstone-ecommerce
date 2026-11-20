@@ -411,6 +411,8 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
         </Card>
 
         <div className="space-y-4">
+          {/* First thing on the right: without it viewers only see the photo. */}
+          <CameraCard live={live} onLive={(l) => { room.setLive(l); room.refresh(); }} />
           <Card className="p-4">
             <p className="mb-2 flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}><Mic size={15} /> Questions <Badge tone={waiting.length ? "gold" : "muted"}>{waiting.length} waiting</Badge></p>
             {answering && (
@@ -467,8 +469,6 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
             <p className="text-xs" style={{ color: "var(--a-muted)" }}>Phone numbers, emails and links are hidden automatically. Abusive comments and copy-paste spam are hidden by themselves. Muted viewers cannot comment or ask on this live. Blocked viewers cannot comment, ask, gift or chat with you again, on any live.</p>
             <p className="text-xs" style={{ color: "var(--a-muted)" }}>Viewers can join your 1-to-1 chat line from the live. The first one gets their turn when you end the live. <Link href="/astrologer/blocked" className="font-semibold underline">Blocked people</Link></p>
           </Card>
-
-          <CameraCard live={live} onLive={(l) => { room.setLive(l); room.refresh(); }} />
         </div>
       </div>
 
@@ -586,11 +586,25 @@ function CameraCard({ live, onLive }: { live: LiveView; onLive: (l: LiveView) =>
     );
   }
   const audio = state !== "off" ? mode === "audio" : v?.kind === "audio";
+  // Off: a small, clear call to action instead of an empty black box.
+  if (state === "off") {
+    return (
+      <Card className="space-y-3 border-2 p-4" style={{ borderColor: "var(--a-gold)", background: "var(--a-gold-soft)" }}>
+        <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}><VideoOff size={15} /> Camera is off
+          {v?.on && <Badge tone="gold">On in another tab</Badge>}
+        </p>
+        <p className="text-xs" style={{ color: "var(--a-fg)" }}>Viewers see only your photo. Turn on the camera so they can see and hear you.</p>
+        <div className="flex flex-wrap gap-2">
+          <AdminButton onClick={() => void start("video")}><Video size={15} /> Turn on camera</AdminButton>
+          {v?.audioOnlyAllowed && <AdminButton variant="outline" onClick={() => void start("audio")}><Mic size={15} /> Audio only</AdminButton>}
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card className="space-y-3 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}>{audio ? <Mic size={15} /> : <Video size={15} />} {audio ? "Audio live" : "Camera"}
         {state === "on" && <Badge tone={v?.state === "live" ? "rose" : "muted"}>{v?.state === "live" ? "Viewers watching" : "On air"}</Badge>}
-        {state === "off" && v?.on && <Badge tone="gold">On in another tab</Badge>}
       </p>
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-black">
         <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full -scale-x-100 object-cover ${state === "on" && mode === "video" ? "" : "hidden"}`} />

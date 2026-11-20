@@ -38,11 +38,12 @@ export async function POST(request: NextRequest) {
   // Push: send what is due, check receipts, and watch order / booking statuses.
   const { pushService } = await import("@/modules/push");
   const push = await pushService.sweep().catch(() => null);
-  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured", remedies, push });
+  // Lives (and their billed video recorders) do not need Razorpay.
+  const lives = await sweepLives().catch(() => ({ checked: -1 }));
+  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured", remedies, push, lives });
   const pooja = await poojaPaymentService.sweepExpiredHolds(fetchOrderPayments);
   const orders = await sweepExpiredOrderHolds(fetchOrderPayments);
   const consultations = await sweepConsultations().catch(() => ({ checked: -1 }));
-  const lives = await sweepLives().catch(() => ({ checked: -1 }));
   const ledger = await earningsService.reconcile().catch(() => null);
   const weeklyPayouts = await earningsService.runWeekly(false).catch(() => null);
   const referrals = await referralService.sweep().catch(() => null);

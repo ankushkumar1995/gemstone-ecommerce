@@ -231,6 +231,26 @@ export function AstroSettingsForm() {
           </Field>
           <Num label="Full-screen animation from (₹)" hint="Gift price × combo" value={s.live.bigGiftAt} onChange={(n) => set("live", { ...s.live, bigGiftAt: n })} />
         </div>
+        <div className="space-y-3 border-t pt-4" style={{ borderColor: "var(--a-border)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--a-muted)" }}>Live video (LiveKit, billed per minute)</p>
+            <Toggle checked={s.live.video.enabled} onChange={(v) => set("live", { ...s.live, video: { ...s.live.video, enabled: v } })} label="Astrologers can turn on camera or mic" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Quality for viewers" hint="540p is sharp on a phone and uses less than half the data">
+              <AdminSelect value={s.live.video.quality} onChange={(e) => set("live", { ...s.live, video: { ...s.live.video, quality: e.target.value === "720p" ? "720p" : "540p" } })}>
+                <option value="540p">540p (recommended)</option>
+                <option value="720p">720p</option>
+              </AdminSelect>
+            </Field>
+            <Num label="Stop video after no viewer for (sec)" hint="30 to 900. Starts again when someone joins" value={s.live.video.idleStopSec} onChange={(n) => set("live", { ...s.live, video: { ...s.live.video, idleStopSec: n } })} />
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <Toggle checked={s.live.video.waitForViewers} onChange={(v) => set("live", { ...s.live, video: { ...s.live.video, waitForViewers: v } })} label="Send video only while someone is watching" />
+            <Toggle checked={s.live.video.allowAudioOnly} onChange={(v) => set("live", { ...s.live, video: { ...s.live.video, allowAudioOnly: v } })} label="Allow audio-only lives" />
+          </div>
+          <p className="text-xs" style={{ color: "var(--a-muted)" }}>The astrologer&apos;s camera is free; the copy sent to viewers is billed per minute (audio about 4 times cheaper than video). With &quot;only while someone is watching&quot;, a live nobody watches costs nothing, and the first viewer sees the video after about 10 seconds.</p>
+        </div>
         <div className="border-t pt-4" style={{ borderColor: "var(--a-border)" }}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--a-muted)" }}>Super Chat (paid priority question)</p>

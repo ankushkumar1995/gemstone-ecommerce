@@ -24,8 +24,10 @@ import { auditService } from "@/modules/audit";
 import { astroSettingsService } from "@/modules/astro-settings";
 import { astrologerService } from "@/modules/astrologers";
 import { maskContacts } from "@/modules/consultations/consult.mask";
-import { liveHlsUrl, liveVideoConfigured, publisherToken, startHlsEgress, stopEgress } from "@/core/livekit";
-import { LIVE_TAGS, type LiveEndReason, type LiveEvent, type LiveEventKind, type LiveGift, type LiveQueueItem, type LiveSession, type LiveStatus } from "./live.types";
+import { activeLiveEgress, EgressStatus, liveHlsUrl, liveIdOfRoom, liveVideoConfigured, publisherToken, startHlsEgress, stopEgress } from "@/core/livekit";
+import type { WebhookEvent } from "livekit-server-sdk";
+import type { LiveVideoSettings } from "@/modules/astro-settings/astro-settings";
+import { LIVE_TAGS, type LiveEndReason, type LiveEvent, type LiveEventKind, type LiveGift, type LiveQueueItem, type LiveSession, type LiveStatus, type LiveStream } from "./live.types";
 import { check as filterText, isRepeat, norm } from "./live.filter";
 
 type Doc = Record<string, unknown> & { _id: unknown };
@@ -52,6 +54,27 @@ const END_TEXT: Record<LiveEndReason, string> = {
   admin: "This live was ended by AstroUnkle support.",
 };
 
+/** Stored stream → full shape (older lives stored only provider / playbackUrl / startedAt / egressId). */
+function streamOf(raw: unknown): LiveStream | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<LiveStream>;
+  const startedAt = typeof r.startedAt === "string" ? r.startedAt : nowIso();
+  return {
+    provider: "livekit-hls",
+    kind: r.kind === "audio" ? "audio" : "video",
+    orientation: r.orientation === "landscape" ? "landscape" : "portrait",
+    startedAt,
+    egressId: r.egressId ?? null,
+    egressStartedAt: r.egressStartedAt ?? (r.egressId ? startedAt : null),
+    startingAt: r.startingAt ?? null,
+    run: typeof r.run === "number" ? r.run : 0,
+    playbackUrl: r.playbackUrl ?? null,
+    demandAt: r.demandAt ?? null,
+    fails: typeof r.fails === "number" ? r.fails : 0,
+    failedAt: r.failedAt ?? null,
+  };
+}
+
 function out(d: Doc | null): LiveSession | null {
   if (!d) return null;
   const { _id, createdAt, ...rest } = d;
@@ -70,6 +93,8 @@ function out(d: Doc | null): LiveSession | null {
     featured: d.featured === true,
     featuredAt: (d.featuredAt as string) ?? null,
     chatLeads: (d.chatLeads as number) ?? 0,
+    stream: streamOf(d.stream),
+    videoSeconds: (d.videoSeconds as number) ?? 0,
   };
 }
 
@@ -282,14 +307,194 @@ async function beat(s: LiveSession): Promise<LiveSession> {
   return out(d) ?? s;
 }
 
+/* ---------------- video recorder (cost control) ----------------
+ *
+ * The astrologer publishes to LiveKit for free; what costs money is the HLS
+ * recorder ("egress", per minute). So the recorder runs only while viewers
+ * poll this live (admin setting `waitForViewers`), stops after `idleStopSec`
+ * with nobody watching, and starts again when someone comes back (new folder,
+ * so the player never mixes two runs). Starts take a lock in the document, so
+ * many viewers arriving together start one recorder. Every stop path adds the
+ * minutes to `videoSeconds`. A recorder LiveKit ends on its own (room closed,
+ * failure) is cleared by the webhook or by the orphan sweep.
+ */
+
+/** A recorder runs at least this long before an idle stop (no start/stop flapping). */
+const MIN_RUN_MS = 60_000;
+/** A start call older than this is treated as lost. */
+const START_LOCK_MS = 45_000;
+/** How often one server writes "someone is watching" for a live. */
+const DEMAND_EVERY_MS = 10_000;
+const demandTouched = new Map<string, number>();
+
+const backoffMs = (fails: number) => Math.min(300_000, 10_000 * 2 ** Math.max(0, fails - 1));
+const runSeconds = (v: LiveStream | null) => (v?.egressId && v.egressStartedAt ? Math.max(0, Math.round((Date.now() - Date.parse(v.egressStartedAt)) / 1000)) : 0);
+
+async function logVideo(msg: string, meta: Record<string, unknown>) {
+  try { const { logger } = await import("@/core/logger"); logger.error(msg, meta); } catch { /* logging must never break a live */ }
+}
+
+/** A viewer (customer or guest) is polling: the recorder is wanted. Throttled per server. */
+async function touchDemand(s: LiveSession): Promise<void> {
+  if (s.status !== "live" || !s.stream) return;
+  const last = demandTouched.get(s.id) ?? 0;
+  if (Date.now() - last < DEMAND_EVERY_MS) return;
+  demandTouched.set(s.id, Date.now());
+  if (demandTouched.size > 5000) demandTouched.clear();
+  const at = nowIso();
+  s.stream.demandAt = at;
+  const { LiveSessionModel } = await M();
+  // Presence only: no version bump (it would wake every long-poll).
+  await LiveSessionModel.updateOne({ _id: s.id, status: "live", stream: { $ne: null } }, { $set: { "stream.demandAt": at } });
+}
+
+async function startRecorder(s: LiveSession, vs: LiveVideoSettings): Promise<LiveSession> {
+  const v = s.stream!;
+  const { LiveSessionModel } = await M();
+  const lockAt = nowIso();
+  const locked = await LiveSessionModel.findOneAndUpdate(
+    {
+      _id: s.id, status: "live", "stream.startedAt": v.startedAt, "stream.egressId": null,
+      $or: [{ "stream.startingAt": null }, { "stream.startingAt": { $lt: new Date(Date.now() - START_LOCK_MS).toISOString() } }],
+    },
+    { $set: { "stream.startingAt": lockAt } },
+    { new: true },
+  ).lean<Doc>();
+  if (!locked) return (await get(s.id)) ?? s;
+  const run = Date.now();
+  let egressId: string;
+  try {
+    egressId = await startHlsEgress(s.id, run, { kind: v.kind, orientation: v.orientation, quality: vs.quality });
+  } catch (e) {
+    await logVideo("live recorder start failed", { liveId: s.id, fails: v.fails + 1, error: e instanceof Error ? e.message : String(e) });
+    await LiveSessionModel.updateOne({ _id: s.id, "stream.startingAt": lockAt }, { $set: { "stream.startingAt": null, "stream.failedAt": nowIso() }, $inc: { "stream.fails": 1 } });
+    return (await get(s.id)) ?? s;
+  }
+  const done = await bump(s.id, {
+    $set: {
+      "stream.egressId": egressId, "stream.egressStartedAt": nowIso(), "stream.startingAt": null, "stream.run": run,
+      "stream.playbackUrl": liveHlsUrl(s.id, run), "stream.fails": 0, "stream.failedAt": null,
+    },
+  }, { status: "live", "stream.startingAt": lockAt });
+  // The camera went off or the live ended while we were starting: do not leave it running.
+  if (!done) { await stopEgress(egressId).catch(() => undefined); return (await get(s.id)) ?? s; }
+  return done;
+}
+
+/** Stop the running recorder (or note that LiveKit stopped it) and bill its minutes. */
+async function stopRecorder(s: LiveSession, opts: { callStop: boolean; failed?: boolean }): Promise<LiveSession> {
+  const v = s.stream;
+  if (!v?.egressId) return s;
+  const egressId = v.egressId;
+  const done = await bump(s.id, {
+    $set: { "stream.egressId": null, "stream.egressStartedAt": null, "stream.playbackUrl": null, ...(opts.failed ? { "stream.failedAt": nowIso() } : {}) },
+    $inc: { videoSeconds: runSeconds(v), ...(opts.failed ? { "stream.fails": 1 } : {}) },
+  }, { "stream.egressId": egressId });
+  if (done && opts.callStop && liveVideoConfigured()) await stopEgress(egressId).catch(() => undefined);
+  return done ?? (await get(s.id)) ?? s;
+}
+
+/** Camera and mic off: stop the recorder and clear the stream. */
+async function clearStream(s: LiveSession): Promise<LiveSession> {
+  if (!s.stream) return s;
+  const egressId = s.stream.egressId;
+  const done = await bump(s.id, { $set: { stream: null }, $inc: { videoSeconds: runSeconds(s.stream) } }, { "stream.startedAt": s.stream.startedAt });
+  if (done && egressId && liveVideoConfigured()) await stopEgress(egressId).catch(() => undefined);
+  return done ?? (await get(s.id)) ?? s;
+}
+
+/** Start or stop the recorder to match demand. Cheap when nothing changes (no DB call). */
+async function reconcileVideo(s: LiveSession, vs: LiveVideoSettings): Promise<LiveSession> {
+  const v = s.stream;
+  if (!v || s.status !== "live") return s;
+  if (!vs.enabled || !liveVideoConfigured()) return clearStream(s);
+  const now = Date.now();
+  const wanted = !vs.waitForViewers || (v.demandAt !== null && now - Date.parse(v.demandAt) < vs.idleStopSec * 1000);
+  if (wanted && !v.egressId) {
+    if (v.startingAt && now - Date.parse(v.startingAt) < START_LOCK_MS) return s;
+    if (v.failedAt && now - Date.parse(v.failedAt) < backoffMs(v.fails)) return s;
+    return startRecorder(s, vs);
+  }
+  if (!wanted && v.egressId && v.egressStartedAt && now - Date.parse(v.egressStartedAt) > MIN_RUN_MS) {
+    return stopRecorder(s, { callStop: true });
+  }
+  return s;
+}
+
+/**
+ * Safety net for the bill: stop recorders LiveKit still runs for a live that
+ * ended or moved on to another recorder, and forget recorders LiveKit no longer
+ * runs. Throttled to once a minute per server.
+ */
+let lastVideoSweep = 0;
+export async function sweepVideo(): Promise<{ stopped: number; cleared: number } | null> {
+  if (!liveVideoConfigured() || Date.now() - lastVideoSweep < 60_000) return null;
+  lastVideoSweep = Date.now();
+  const active = await activeLiveEgress();
+  const { LiveSessionModel } = await M();
+  let stopped = 0, cleared = 0;
+  const running = new Set(active.map((a) => a.egressId));
+  for (const a of active) {
+    const s = await get(a.liveId);
+    if (!s || s.status !== "live" || s.stream?.egressId !== a.egressId) {
+      // A start may be finishing right now: give it the lock window.
+      if (s?.stream?.startingAt && Date.now() - Date.parse(s.stream.startingAt) < START_LOCK_MS) continue;
+      await stopEgress(a.egressId).catch(() => undefined);
+      stopped++;
+    }
+  }
+  const rows = await LiveSessionModel.find({ status: "live", "stream.egressId": { $ne: null } }).limit(300).lean<Doc[]>();
+  for (const r of rows) {
+    const s = out(r);
+    const v = s?.stream;
+    if (!s || !v?.egressId || running.has(v.egressId)) continue;
+    if (v.egressStartedAt && Date.now() - Date.parse(v.egressStartedAt) < MIN_RUN_MS) continue;
+    await stopRecorder(s, { callStop: false, failed: true });
+    cleared++;
+  }
+  return { stopped, cleared };
+}
+
+/** LiveKit webhook: recorder ended on its own, or the astrologer left the room. */
+export async function onLivekitEvent(ev: WebhookEvent): Promise<void> {
+  const at = Number(ev.createdAt ?? 0) * 1000;
+  if (ev.event === "egress_ended" || ev.event === "egress_updated") {
+    const info = ev.egressInfo;
+    if (!info?.egressId) return;
+    const ended = [EgressStatus.EGRESS_COMPLETE, EgressStatus.EGRESS_FAILED, EgressStatus.EGRESS_ABORTED, EgressStatus.EGRESS_LIMIT_REACHED].includes(info.status);
+    if (!ended) return;
+    const { LiveSessionModel } = await M();
+    const s = out(await LiveSessionModel.findOne({ "stream.egressId": info.egressId }).lean<Doc>());
+    if (!s) return; // we stopped it ourselves (already cleared)
+    if (info.status !== EgressStatus.EGRESS_COMPLETE) await logVideo("live recorder ended by LiveKit", { liveId: s.id, status: info.status, error: info.error });
+    await stopRecorder(s, { callStop: false, failed: info.status !== EgressStatus.EGRESS_COMPLETE });
+    return;
+  }
+  if (ev.event === "participant_left" || ev.event === "room_finished") {
+    const liveId = liveIdOfRoom(ev.room?.name);
+    if (!liveId) return;
+    if (ev.event === "participant_left" && !ev.participant?.identity?.startsWith("astro-")) return;
+    const s = await get(liveId);
+    // An event from before the current camera-on (a refresh, then on again) is old news.
+    if (!s?.stream || (at && at < Date.parse(s.stream.startedAt))) return;
+    await clearStream(s);
+    if (s.status === "live") await addEvent(s.id, { kind: "system", by: "system", name: "", text: "The video has stopped. The live goes on." }).catch(() => undefined);
+  }
+}
+
 /* ---------------- end + sweep ---------------- */
 
 async function endLive(s: LiveSession, reason: LiveEndReason, actor: string, at = nowIso()): Promise<LiveSession | null> {
   if (s.status !== "live") return s;
   const done = await cas(s.id, ["live"], { status: "ended", endReason: reason, endedAt: at, openAstro: null, answering: null });
   if (!done) return get(s.id);
-  // Stop the video recorder (best effort: LiveKit also stops it when the room empties).
-  if (s.stream?.egressId && liveVideoConfigured()) await stopEgress(s.stream.egressId).catch(() => undefined);
+  // Stop the video recorder and bill its minutes (the orphan sweep is the backstop).
+  const rec = done.stream;
+  if (rec?.egressId) {
+    const { LiveSessionModel } = await M();
+    await LiveSessionModel.updateOne({ _id: s.id, "stream.egressId": rec.egressId }, { $set: { "stream.egressId": null, "stream.playbackUrl": null }, $inc: { videoSeconds: runSeconds(rec) } });
+    if (liveVideoConfigured()) await stopEgress(rec.egressId).catch(() => undefined);
+  }
   const { LiveQueueModel } = await M();
   // Super Chats: the one being answered is kept; the ones still waiting go back to the customers.
   const paid = await LiveQueueModel.find({ liveId: s.id, status: { $in: ["waiting", "answering"] }, paidState: "held" }).lean<Doc[]>();
@@ -307,7 +512,7 @@ async function endLive(s: LiveSession, reason: LiveEndReason, actor: string, at 
   const mins = done.startedAt ? Math.max(0, Math.round((Date.parse(at) - Date.parse(done.startedAt)) / 60000)) : 0;
   await auditService.record({
     action: "status", entity: "live", entityId: done.id, entityLabel: done.liveNumber,
-    summary: `Live ${done.liveNumber} by ${done.astrologer.name} ended (${reason}) · ${mins} min · ${done.uniqueViewers} viewers · gifts ₹${done.giftsPaise / 100}`, actor,
+    summary: `Live ${done.liveNumber} by ${done.astrologer.name} ended (${reason}) · ${mins} min · ${done.uniqueViewers} viewers · gifts ₹${done.giftsPaise / 100} · video ${Math.round((done.videoSeconds + runSeconds(rec)) / 60)} min`, actor,
   }).catch(() => undefined);
   return (await get(s.id)) ?? done;
 }
@@ -323,14 +528,15 @@ async function sweepOne(s: LiveSession): Promise<LiveSession> {
   if (started + st.live.maxMinutes * 60_000 <= now) return (await endLive(s, "time_limit", "System", new Date(started + st.live.maxMinutes * 60_000).toISOString())) ?? s;
   const lastBeat = s.lastBeatAt ? Date.parse(s.lastBeatAt) : started;
   if (now - lastBeat > ASTRO_GONE_MS) return (await endLive(s, "astrologer_left", "System", new Date(lastBeat + 30_000).toISOString())) ?? s;
-  return s;
+  return s.stream ? reconcileVideo(s, st.live.video) : s;
 }
 
-export async function sweepLives(): Promise<{ checked: number }> {
+export async function sweepLives(): Promise<{ checked: number; video: { stopped: number; cleared: number } | null }> {
   const { LiveSessionModel } = await M();
   const rows = await LiveSessionModel.find({ status: { $in: ["live", "scheduled"] } }).limit(300).lean<Doc[]>();
   for (const r of rows) { const s = out(r); if (s) await sweepOne(s).catch(() => undefined); }
-  return { checked: rows.length };
+  const video = await sweepVideo().catch(() => null);
+  return { checked: rows.length, video };
 }
 
 let lastSweep = 0;
@@ -480,10 +686,15 @@ export interface LiveView {
   pinned: LiveSession["pinned"]; answering: LiveSession["answering"];
   commentsOff: boolean; slowSec: number; queueOpen: boolean; queueCount: number;
   hiddenSeqs: number[];
-  /** Camera on: HLS playlist for viewers (plays a few seconds behind). */
-  stream: { provider: string; playbackUrl: string; startedAt: string } | null;
-  /** Astrologer only: can this server stream video at all (LiveKit set up)? */
+  /** Recorder running: HLS playlist for viewers (plays a few seconds behind). `kind` audio = no picture, keep the photo. */
+  stream: { provider: string; playbackUrl: string; startedAt: string; kind: "video" | "audio" } | null;
+  /** Astrologer only: can this server stream video at all (LiveKit set up and allowed by the admin)? */
   videoAvailable: boolean;
+  /**
+   * Astrologer only. `state`: off · waiting (on, nobody watching, recorder off to save cost)
+   * · starting · live (viewers get it) · retrying (a start failed, trying again).
+   */
+  video: { on: boolean; kind: "video" | "audio" | null; state: "off" | "waiting" | "starting" | "live" | "retrying"; audioOnlyAllowed: boolean; waitForViewers: boolean; minutes: number } | null;
   role: LiveRole;
   /** Latest Super Chat while its highlight is on (null after `until`). */
   superPin: LiveSession["superPin"];
@@ -549,8 +760,18 @@ async function view(s: LiveSession, role: LiveRole): Promise<LiveView> {
     pinned: s.pinned, answering: s.answering,
     commentsOff: s.commentsOff, slowSec: s.slowSec, queueOpen: s.queueOpen, queueCount: s.status === "live" ? await queueCount(s.id) : 0,
     hiddenSeqs: s.hiddenSeqs.slice(-200),
-    stream: s.status === "live" && s.stream ? { provider: s.stream.provider, playbackUrl: s.stream.playbackUrl, startedAt: s.stream.startedAt } : null,
-    videoAvailable: role === "astrologer" && liveVideoConfigured(),
+    stream: s.status === "live" && s.stream?.egressId && s.stream.playbackUrl
+      ? { provider: s.stream.provider, playbackUrl: s.stream.playbackUrl, startedAt: s.stream.egressStartedAt ?? s.stream.startedAt, kind: s.stream.kind }
+      : null,
+    videoAvailable: role === "astrologer" && liveVideoConfigured() && st.live.video.enabled,
+    video: role === "astrologer" ? {
+      on: s.status === "live" && Boolean(s.stream),
+      kind: s.stream?.kind ?? null,
+      state: s.status !== "live" || !s.stream ? "off" : s.stream.egressId ? "live" : s.stream.startingAt ? "starting" : s.stream.failedAt ? "retrying" : "waiting",
+      audioOnlyAllowed: st.live.video.allowAudioOnly,
+      waitForViewers: st.live.video.waitForViewers,
+      minutes: Math.round((s.videoSeconds + runSeconds(s.stream)) / 60),
+    } : null,
     role,
     superPin: s.status === "live" && s.superPin && Date.parse(s.superPin.until) > Date.now() && !s.hiddenSeqs.includes(s.superPin.seq) ? s.superPin : null,
     tags: s.tags, featured: s.featured,
@@ -687,6 +908,8 @@ export const liveService = {
     const { LiveEventModel, LiveQueueModel } = await M();
     const until = Date.now() + Math.min(Math.max(waitMs, 0), 20_000);
     for (;;) {
+      // Any viewer (signed in or not) keeps the video recorder wanted.
+      if (role !== "astrologer") await touchDemand(s!).catch(() => undefined);
       s = await sweepOne(s!);
       if (role === "astrologer") s = await beat(s);
       if (role === "customer" && who.customerId) await touchViewer(s, who.customerId).catch(() => undefined);
@@ -1043,35 +1266,45 @@ export const liveService = {
     return ok(await publisherToken(id, astrologerId, s.astrologer.name));
   },
 
-  /** The camera is publishing: start the HLS recorder and tell viewers. Idempotent. */
-  async videoOn(astrologerId: string, id: string): Promise<Result<LiveView>> {
-    const s = await get(id);
+  /**
+   * The panel is publishing (camera + mic, or mic only). Saves the stream; the
+   * recorder for viewers starts now if someone is watching (or always, when the
+   * admin turned "wait for viewers" off), otherwise when the first viewer comes.
+   * Idempotent; switching camera ↔ audio replaces the stream.
+   */
+  async videoOn(astrologerId: string, id: string, body: Record<string, unknown> = {}): Promise<Result<LiveView>> {
+    let s = await get(id);
     if (!s || s.astrologerId !== astrologerId) return fail(AppErrors.notFound("Live not found"));
     if (s.status !== "live") return fail(AppErrors.validation("This live has ended.", { reason: "NOT_LIVE" }));
     if (!liveVideoConfigured()) return fail(AppErrors.validation("Live video is not set up on the server yet.", { reason: "VIDEO_NOT_SET_UP" }));
-    if (s.stream?.egressId) return ok(await view(s, "astrologer"));
-    let egressId: string;
-    try {
-      egressId = await startHlsEgress(id);
-    } catch (e) {
-      const { logger } = await import("@/core/logger");
-      logger.error("live video egress failed", { liveId: id, error: e instanceof Error ? e.message : String(e) });
-      return fail(AppErrors.validation("Could not start the video for viewers. Check your camera is on and try again.", { reason: "VIDEO_FAILED" }));
+    const vs = (await astroSettingsService.get()).live.video;
+    if (!vs.enabled) return fail(AppErrors.validation("Live video is turned off right now. Your live goes on with your photo and the chat.", { reason: "VIDEO_OFF" }));
+    const kind: LiveStream["kind"] = body.kind === "audio" ? "audio" : "video";
+    const orientation: LiveStream["orientation"] = body.orientation === "landscape" ? "landscape" : "portrait";
+    if (kind === "audio" && !vs.allowAudioOnly) return fail(AppErrors.validation("Audio-only lives are not allowed right now. Turn on the camera instead.", { reason: "AUDIO_OFF" }));
+    if (s.stream && s.stream.kind === kind && s.stream.orientation === orientation) {
+      return ok(await view(await reconcileVideo(s, vs), "astrologer"));
     }
-    // Only one recorder per live: if another tab won the race, stop ours.
-    const done = await bump(id, { $set: { stream: { provider: "livekit-hls", playbackUrl: liveHlsUrl(id), startedAt: nowIso(), egressId } } }, { status: "live", stream: null });
-    if (!done) { await stopEgress(egressId).catch(() => undefined); return ok(await view((await get(id)) ?? s, "astrologer")); }
-    await addEvent(id, { kind: "system", by: "system", name: "", text: "Video is on. It may take a few seconds to appear." });
-    return ok(await view(done, "astrologer"));
+    if (s.stream) s = await clearStream(s);
+    const at = nowIso();
+    const stream: LiveStream = {
+      provider: "livekit-hls", kind, orientation, startedAt: at,
+      egressId: null, egressStartedAt: null, startingAt: null, run: 0, playbackUrl: null,
+      // People already watching count as demand, so their video starts right away.
+      demandAt: (await viewersOf(s)) > 0 ? at : null,
+      fails: 0, failedAt: null,
+    };
+    const done = await bump(id, { $set: { stream } }, { status: "live", stream: null });
+    if (!done) return ok(await view((await get(id)) ?? s, "astrologer"));
+    await addEvent(id, { kind: "system", by: "system", name: "", text: kind === "audio" ? "Audio is on. It may take a few seconds to start." : "Video is on. It may take a few seconds to appear." });
+    return ok(await view(await reconcileVideo(done, vs), "astrologer"));
   },
 
-  /** Camera off: stop the recorder; viewers see the photo again. */
+  /** Camera and mic off: stop the recorder; viewers see the photo again. */
   async videoOff(astrologerId: string, id: string): Promise<Result<LiveView>> {
     const s = await get(id);
     if (!s || s.astrologerId !== astrologerId) return fail(AppErrors.notFound("Live not found"));
-    if (s.stream?.egressId && liveVideoConfigured()) await stopEgress(s.stream.egressId).catch(() => undefined);
-    const done = s.stream ? await bump(id, { $set: { stream: null } }) : s;
-    return ok(await view(done ?? s, "astrologer"));
+    return ok(await view(await clearStream(s), "astrologer"));
   },
 
   /** pin / hide / mute (by event seq), settings, and the question queue. */

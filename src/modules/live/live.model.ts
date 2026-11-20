@@ -60,6 +60,8 @@ const LiveSchema = new Schema(
     featured: { type: Boolean, default: false },
     featuredAt: { type: String, default: null },
     chatLeads: { type: Number, default: 0 },
+    /** Seconds the HLS recorder ran (LiveKit bills these minutes). */
+    videoSeconds: { type: Number, default: 0 },
     /** Watching count about once a minute while live (the report graph). */
     viewerSamples: { type: [{ _id: false, at: String, n: Number }], default: [] },
     lastSampleAt: { type: String, default: null },

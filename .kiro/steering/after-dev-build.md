@@ -44,7 +44,12 @@ The AstroUnkle app (`d:\PrepMasterProject\astrounkle-app`, Expo SDK 58) runs in 
 
 ## Pending but NOT build-dependent (can be done any time)
 
-- **Live video**: the code is done. It needs `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in `.env`, plus CORS on the S3 bucket for HLS. Viewers play it with `expo-video`, which works in Expo Go.
+- **Live video**: code done, with cost control (recorder only while someone watches, idle stop, 540p, portrait/landscape canvas, audio-only lives, webhook `/api/v1/webhooks/livekit`, orphan sweep, `videoSeconds` per live; admin → Astrologer settings → Live video). LiveKit project `astrounkle-1f2giqrb.livekit.cloud`. Still needed:
+  - `LIVEKIT_URL` (`wss://astrounkle-1f2giqrb.livekit.cloud`), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` in `.env` and both Vercel projects.
+  - LiveKit dashboard → Webhooks: `https://www.astrounkle.com/api/v1/webhooks/livekit` (staging: its own project or the staging URL).
+  - Optional, before launch: Cloudflare R2 for HLS (no download fees) via `LIVE_S3_BUCKET`, `LIVE_S3_ENDPOINT`, `LIVE_S3_REGION=auto`, `LIVE_PUBLIC_URL`, `LIVE_S3_ACCESS_KEY_ID`, `LIVE_S3_SECRET_ACCESS_KEY`.
+  - S3 lifecycle rule on `live/` (delete after 30 days). CORS only if the website plays HLS later.
+  - Viewers play it with `expo-video`, which works in Expo Go.
 - **Load for big lives**: long-poll does a DB read about every second per viewer. Add Redis or another shared cache before lives with hundreds of viewers.
 - **"Report live"** for viewers, with an admin review list.
 - **Remedy commission and part returns**: commission is reversed on a full cancel or refund of an order, and lowered on a part refund of a pooja booking. A part return of one shop item does not lower it yet, because the Returns module is still mock-only. Fix this when Returns moves to Mongo.

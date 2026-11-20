@@ -187,7 +187,22 @@ export interface LiveSettings {
   quickReplies: string[];
   /** Default prompts the astrologer posts and pins to get viewers talking ("Comment your rashi"). */
   askTemplates: string[];
+  /** Live video (LiveKit). The recorder for viewers is billed per minute, so these keep the cost down. */
+  video: LiveVideoSettings;
 }
+export interface LiveVideoSettings {
+  /** Off = lives run with the photo and chat only. */
+  enabled: boolean;
+  /** What viewers get. 540p is plenty for a phone and uses less than half the data. */
+  quality: "540p" | "720p";
+  /** Run the recorder only while someone is watching (no cost for empty lives). */
+  waitForViewers: boolean;
+  /** Stop the recorder after this many seconds with no viewer. */
+  idleStopSec: number;
+  /** Astrologers may go live with the mic only (about 4 times cheaper). */
+  allowAudioOnly: boolean;
+}
+export const DEFAULT_LIVE_VIDEO: LiveVideoSettings = { enabled: true, quality: "540p", waitForViewers: true, idleStopSec: 120, allowAudioOnly: true };
 export interface SuperChatSettings {
   enabled: boolean;
   /** Price (₹) and how long (seconds) the highlight stays pinned on screen. */
@@ -243,6 +258,7 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
     autoMuteStrikes: 3,
     quickReplies: ["Namaste {name}, welcome to the live.", "Please send your question with the Ask button. I answer one by one.", "Please share your date, time and place of birth.", "Thank you for the gift, {name}. Blessings to you.", "For a detailed reading, tap 1-to-1 chat. I will take you after this live.", "Please be patient, I will come to your question."],
     askTemplates: ["Comment your rashi (moon sign) and I will tell you this week's forecast.", "Which area do you want guidance on today: career, marriage, money or health?", "Write your date of birth (DD-MM-YYYY) in the comments.", "Who here is facing delays in marriage? Comment YES.", "Share one problem you want a remedy for today."],
+    video: DEFAULT_LIVE_VIDEO,
   },
   payouts: { provider: "manual", autoCreate: false, cycleWeekday: 1, requireVerifiedAccount: true, maxPerRequest: 0 },
   tips: { enabled: true, presets: [21, 51, 101, 251], maxPerChat: 5000, windowHours: 24 },
@@ -307,6 +323,13 @@ export const astroSettingsSchema = z.object({
     autoMuteStrikes: z.number().int().min(0).max(20).default(3),
     quickReplies: z.array(z.string().trim().min(2).max(200)).max(12).default(DEFAULT_LIVE_TEXTS.quickReplies),
     askTemplates: z.array(z.string().trim().min(2).max(200)).max(12).default(DEFAULT_LIVE_TEXTS.askTemplates),
+    video: z.object({
+      enabled: z.boolean(),
+      quality: z.enum(["540p", "720p"]),
+      waitForViewers: z.boolean(),
+      idleStopSec: z.number().int().min(30).max(900),
+      allowAudioOnly: z.boolean(),
+    }).default(DEFAULT_LIVE_VIDEO),
   }),
   payouts: z.object({
     provider: z.enum(["manual", "razorpayx"]),
@@ -378,7 +401,11 @@ const merge = (stored: Partial<AstroProgramSettings> | undefined): AstroProgramS
   defaultRates: { ...DEFAULT_ASTRO_SETTINGS.defaultRates, ...(stored?.defaultRates ?? {}) },
   gst: { ...DEFAULT_ASTRO_SETTINGS.gst, ...(stored?.gst ?? {}) },
   tds: { ...DEFAULT_ASTRO_SETTINGS.tds, ...(stored?.tds ?? {}) },
-  live: { ...DEFAULT_ASTRO_SETTINGS.live, ...(stored?.live ?? {}), superChat: { ...DEFAULT_ASTRO_SETTINGS.live.superChat, ...(stored?.live?.superChat ?? {}) } },
+  live: {
+    ...DEFAULT_ASTRO_SETTINGS.live, ...(stored?.live ?? {}),
+    superChat: { ...DEFAULT_ASTRO_SETTINGS.live.superChat, ...(stored?.live?.superChat ?? {}) },
+    video: { ...DEFAULT_LIVE_VIDEO, ...(stored?.live?.video ?? {}) },
+  },
   payouts: { ...DEFAULT_ASTRO_SETTINGS.payouts, ...(stored?.payouts ?? {}) },
   tips: { ...DEFAULT_ASTRO_SETTINGS.tips, ...(stored?.tips ?? {}) },
   waitlist: { ...DEFAULT_ASTRO_SETTINGS.waitlist, ...(stored?.waitlist ?? {}) },

@@ -68,6 +68,14 @@ const schema = z.object({
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().optional(),
   LIVEKIT_API_SECRET: z.string().optional(),
+  // Optional own storage for live HLS (e.g. Cloudflare R2: no download fees).
+  // Set all of BUCKET + ENDPOINT + PUBLIC_URL + the LIVE_S3 keys to use it;
+  // otherwise segments go to the main S3 bucket.
+  LIVE_S3_BUCKET: z.string().optional(),
+  LIVE_S3_ENDPOINT: z.string().url().optional(),
+  LIVE_S3_REGION: z.string().optional(),
+  /** Public base URL viewers load from, e.g. https://live.astrounkle.com */
+  LIVE_PUBLIC_URL: z.string().url().optional(),
   // Optional separate S3 keys for LiveKit to upload HLS segments (least privilege:
   // PutObject on live/* only). Falls back to the main S3 keys.
   LIVE_S3_ACCESS_KEY_ID: z.string().optional(),
@@ -115,6 +123,10 @@ const parsed = schema.safeParse({
   LIVEKIT_URL: process.env.LIVEKIT_URL || undefined,
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || undefined,
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || undefined,
+  LIVE_S3_BUCKET: process.env.LIVE_S3_BUCKET || undefined,
+  LIVE_S3_ENDPOINT: process.env.LIVE_S3_ENDPOINT || undefined,
+  LIVE_S3_REGION: process.env.LIVE_S3_REGION || undefined,
+  LIVE_PUBLIC_URL: process.env.LIVE_PUBLIC_URL || undefined,
   LIVE_S3_ACCESS_KEY_ID: process.env.LIVE_S3_ACCESS_KEY_ID || undefined,
   LIVE_S3_SECRET_ACCESS_KEY: process.env.LIVE_S3_SECRET_ACCESS_KEY || undefined,
   RAZORPAYX_KEY_ID: process.env.RAZORPAYX_KEY_ID || undefined,

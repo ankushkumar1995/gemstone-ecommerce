@@ -62,8 +62,10 @@ export interface LiveSession {
   queueOpen: boolean;
   muted: string[];
   hiddenSeqs: number[];
-  /** Live video (LiveKit → HLS on S3). Null while the camera is off. `egressId` is server-only. */
-  stream: { provider: string; playbackUrl: string; startedAt: string; egressId?: string } | null;
+  /** Live video / audio (LiveKit → HLS). Null while the camera and mic are off. Server-only state. */
+  stream: LiveStream | null;
+  /** Seconds the HLS recorder ran for this live (LiveKit bills these minutes). */
+  videoSeconds: number;
   /** Topic chips (LIVE_TAGS). */
   tags: string[];
   /** Astrologer's languages when the live was made (feed ranking by the viewer's language). */
@@ -74,6 +76,33 @@ export interface LiveSession {
   /** Viewers who joined the astrologer's 1-to-1 chat line from this live. */
   chatLeads: number;
   createdAt: string;
+}
+
+/**
+ * The astrologer is publishing (camera + mic, or mic only). The HLS recorder
+ * ("egress", billed per minute) runs only while viewers are watching when the
+ * admin setting `live.video.waitForViewers` is on; each run writes its own folder.
+ */
+export interface LiveStream {
+  provider: "livekit-hls";
+  kind: "video" | "audio";
+  orientation: "portrait" | "landscape";
+  /** When the astrologer turned it on. */
+  startedAt: string;
+  /** Recorder for viewers; null while nobody watches. */
+  egressId: string | null;
+  egressStartedAt: string | null;
+  /** Lock while a start call is in flight. */
+  startingAt: string | null;
+  /** Recorder runs so far (folder r<run>). */
+  run: number;
+  /** HLS playlist of the running recorder. */
+  playbackUrl: string | null;
+  /** Last time any viewer polled this live. */
+  demandAt: string | null;
+  /** Failed starts in a row, for the retry backoff. */
+  fails: number;
+  failedAt: string | null;
 }
 
 export interface LiveEvent {

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return t.ok ? jsonOk(t.value) : jsonError(t.error);
     }
     const r = action === "start" ? await liveService.goLive(who.astrologerId, id)
-      : action === "video-on" ? await liveService.videoOn(who.astrologerId, id)
+      : action === "video-on" ? await liveService.videoOn(who.astrologerId, id, body)
       : action === "video-off" ? await liveService.videoOff(who.astrologerId, id)
       : action === "cancel" ? await liveService.cancelScheduled(who.astrologerId, id)
       : action === "end" ? await liveService.end(who.astrologerId, id)

@@ -9,8 +9,8 @@
  * reply in the comments, pin / hide / mute, turn comments or questions on and
  * off, set slow mode, answer questions one by one, and end the live.
  *
- * Video is not connected yet (needs a streaming provider and the app build):
- * viewers see the astrologer's photo with the live chat.
+ * Video: camera or audio-only through LiveKit (see CameraCard). Without
+ * LiveKit set up, viewers see the astrologer's photo with the live chat.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -493,25 +493,39 @@ function LiveConsole({ first, onEnded }: { first: LiveView; onEnded: (s: LiveVie
 }
 
 /**
- * Camera: publishes the browser camera + mic to LiveKit, then asks the server to
- * start the HLS feed that the app plays. Viewers see it a few seconds behind.
- * Closing the tab or ending the live stops it; LiveKit also stops when the room empties.
+ * Camera / mic: publishes the browser camera + mic (or the mic only) to LiveKit,
+ * then tells the server. Publishing is free; the copy for viewers (billed per
+ * minute) runs only while someone watches when the admin set it so, and starts
+ * by itself when the first viewer joins. Viewers are 5 to 10 seconds behind.
+ * Closing the tab or ending the live stops it; the room closes 20 s after we leave.
  */
 type LkRoom = import("livekit-client").Room;
+type Mode = "video" | "audio";
+
+const VIDEO_STATE: Record<NonNullable<LiveView["video"]>["state"], string> = {
+  off: "",
+  waiting: "You are on air. Nobody is watching yet, so nothing is sent (no cost). It starts by itself when a viewer joins.",
+  starting: "Starting for your viewers…",
+  live: "Viewers are getting your stream.",
+  retrying: "Could not start for viewers. Trying again by itself…",
+};
 
 function CameraCard({ live, onLive }: { live: LiveView; onLive: (l: LiveView) => void }) {
   const { toast } = useAdminToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const roomRef = useRef<LkRoom | null>(null);
   const [state, setState] = useState<"off" | "connecting" | "on">("off");
+  const [mode, setMode] = useState<Mode>("video");
   const [mic, setMic] = useState(true);
+  const v = live.video;
 
   // Leave the room when the console unmounts (tab closed, live ended).
   useEffect(() => () => { void roomRef.current?.disconnect(); roomRef.current = null; }, []);
 
-  async function start() {
+  async function start(m: Mode) {
     if (state !== "off") return;
     setState("connecting");
+    setMode(m);
     try {
       const t = await partnerApi.live.act<{ url: string; token: string }>(live.id, "video-token");
       if (!t.ok) { toast(t.message, "error"); setState("off"); return; }
@@ -520,18 +534,26 @@ function CameraCard({ live, onLive }: { live: LiveView; onLive: (l: LiveView) =>
       room.on(RoomEvent.Disconnected, () => { roomRef.current = null; setState("off"); });
       await room.connect(t.data.url, t.data.token);
       roomRef.current = room;
-      await room.localParticipant.setCameraEnabled(true);
+      let orientation: "portrait" | "landscape" = "landscape";
+      if (m === "video") {
+        await room.localParticipant.setCameraEnabled(true);
+        const cam = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track;
+        if (cam && videoRef.current) cam.attach(videoRef.current);
+        // The viewers' picture follows the camera: a phone held upright gives a portrait stream.
+        const set = cam?.mediaStreamTrack.getSettings();
+        if (set?.width && set?.height && set.height > set.width) orientation = "portrait";
+      }
       await room.localParticipant.setMicrophoneEnabled(true);
-      const cam = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track;
-      if (cam && videoRef.current) cam.attach(videoRef.current);
-      const on = await partnerApi.live.act(live.id, "video-on");
+      const on = await partnerApi.live.act(live.id, "video-on", { kind: m, orientation });
       if (!on.ok) { toast(on.message, "error"); await room.disconnect(); setState("off"); return; }
       onLive(on.data.live);
       setMic(true);
       setState("on");
-      toast("Camera is on. Viewers see you in a few seconds.", "success");
+      toast(m === "audio" ? "You are live on audio." : "Camera is on.", "success");
     } catch (e) {
-      const msg = e instanceof Error && /Permission|NotAllowed/i.test(e.name + e.message) ? "Allow camera and microphone in the browser, then try again." : "Could not start the camera. Check it is not used by another app.";
+      const msg = e instanceof Error && /Permission|NotAllowed/i.test(e.name + e.message)
+        ? (m === "audio" ? "Allow the microphone in the browser, then try again." : "Allow camera and microphone in the browser, then try again.")
+        : m === "audio" ? "Could not start the microphone. Check it is not used by another app." : "Could not start the camera. Check it is not used by another app.";
       toast(msg, "error");
       await roomRef.current?.disconnect();
       roomRef.current = null;
@@ -558,34 +580,44 @@ function CameraCard({ live, onLive }: { live: LiveView; onLive: (l: LiveView) =>
     return (
       <Card className="p-4">
         <p className="text-xs" style={{ color: "var(--a-muted)" }}>
-          Live video is not set up on the server yet, so viewers see your photo with this chat. Keep this tab open: if the panel is closed for 90 seconds the live ends by itself.
+          Live video is not available right now, so viewers see your photo with this chat. Keep this tab open: if the panel is closed for 90 seconds the live ends by itself.
         </p>
       </Card>
     );
   }
+  const audio = state !== "off" ? mode === "audio" : v?.kind === "audio";
   return (
     <Card className="space-y-3 p-4">
-      <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}><Video size={15} /> Camera
-        {state === "on" && <Badge tone="rose">On air</Badge>}
-        {state === "off" && live.stream && <Badge tone="gold">Video on in another tab</Badge>}
+      <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--a-fg)" }}>{audio ? <Mic size={15} /> : <Video size={15} />} {audio ? "Audio live" : "Camera"}
+        {state === "on" && <Badge tone={v?.state === "live" ? "rose" : "muted"}>{v?.state === "live" ? "Viewers watching" : "On air"}</Badge>}
+        {state === "off" && v?.on && <Badge tone="gold">On in another tab</Badge>}
       </p>
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-black">
-        <video ref={videoRef} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
-        {state !== "on" && (
-          <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/80">
-            {state === "connecting" ? "Starting camera…" : "Camera is off. Viewers see your photo."}
+        <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full -scale-x-100 object-cover ${state === "on" && mode === "video" ? "" : "hidden"}`} />
+        {!(state === "on" && mode === "video") && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-xs text-white/80">
+            {state === "on" ? <><Mic size={28} className={mic ? "animate-pulse" : "opacity-40"} />{mic ? "Viewers hear you. They see your photo." : "Mic is muted."}</>
+              : state === "connecting" ? (mode === "audio" ? "Starting microphone…" : "Starting camera…")
+              : "Off. Viewers see your photo."}
           </div>
         )}
       </div>
+      {state === "on" && v && v.state !== "off" && <p className="text-xs" style={{ color: v.state === "retrying" ? "var(--a-danger, #b91c1c)" : "var(--a-muted)" }} role="status">{VIDEO_STATE[v.state]}</p>}
       {state === "on" ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <AdminButton variant="outline" onClick={toggleMic}>{mic ? <><Mic size={15} /> Mute mic</> : <><MicOff size={15} /> Unmute</>}</AdminButton>
-          <AdminButton variant="danger" onClick={stop}><VideoOff size={15} /> Camera off</AdminButton>
+          <AdminButton variant="danger" onClick={stop}>{mode === "audio" ? <><MicOff size={15} /> Stop audio</> : <><VideoOff size={15} /> Camera off</>}</AdminButton>
         </div>
       ) : (
-        <AdminButton onClick={start} loading={state === "connecting"}><Video size={15} /> Turn on camera</AdminButton>
+        <div className="flex flex-wrap gap-2">
+          <AdminButton onClick={() => void start("video")} loading={state === "connecting" && mode === "video"} disabled={state === "connecting"}><Video size={15} /> Turn on camera</AdminButton>
+          {v?.audioOnlyAllowed && <AdminButton variant="outline" onClick={() => void start("audio")} loading={state === "connecting" && mode === "audio"} disabled={state === "connecting"}><Mic size={15} /> Audio only</AdminButton>}
+        </div>
       )}
-      <p className="text-[11px]" style={{ color: "var(--a-faint)" }}>Viewers see and hear you about 5 to 10 seconds late, so give them a moment to react. Keep this tab open while live.</p>
+      <p className="text-[11px]" style={{ color: "var(--a-faint)" }}>
+        Viewers see and hear you about 5 to 10 seconds late, so give them a moment to react. Keep this tab open while live.
+        {v && v.minutes > 0 ? ` Sent to viewers so far: ${v.minutes} min.` : ""}
+      </p>
     </Card>
   );
 }

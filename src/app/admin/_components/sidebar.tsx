@@ -123,6 +123,7 @@ const groups: NavGroup[] = [
       { label: "Coupons", href: "/admin/coupons", icon: TicketPercent },
       { label: "Banners", href: "/admin/banners", icon: GalleryHorizontalEnd },
       { label: "Popups", href: "/admin/popups", icon: MessageSquare },
+      { label: "Push notifications", href: "/admin/push", icon: Megaphone },
       { label: "Email", href: "/admin/email", icon: Mail },
       { label: "Services", href: "/admin/services", icon: Sparkles },
       { label: "Bookings", href: "/admin/bookings", icon: CalendarClock },

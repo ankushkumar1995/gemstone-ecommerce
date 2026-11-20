@@ -44,6 +44,7 @@ const ROLE_MIGRATIONS: { key: string; resources: string[] }[] = [
   { key: "roles-astrologer-platform-v1", resources: ["astrologers", "consultations", "wallets", "payouts"] },
   { key: "roles-poojas-v1", resources: ["poojas"] },
   { key: "roles-devotional-v1", resources: ["devotional"] },
+  { key: "roles-notifications-v1", resources: ["notifications"] },
 ];
 
 async function migrateSystemRoles(M: Awaited<ReturnType<typeof model>>): Promise<void> {

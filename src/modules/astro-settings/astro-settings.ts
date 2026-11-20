@@ -78,7 +78,25 @@ export interface AstroProgramSettings {
   referral: ReferralSettings;
   /** Remedy suggestions in chat: the astrologer earns a commission when the customer buys what they suggested. */
   remedy: RemedySettings;
+  /** Push notifications to the customer app. */
+  push: PushSettings;
   updatedAt?: string;
+}
+export type PushGroup = "live" | "reminders" | "chat" | "wallet" | "orders";
+export interface PushSettings {
+  /** Master switch: off = nothing is sent (the in-app inbox still fills). */
+  enabled: boolean;
+  /** Turn a whole kind of notification off for everyone. */
+  groups: Record<PushGroup, boolean>;
+  /** Default quiet hours for new customers (IST, "HH:MM"). Chat and "your turn" alerts still come through. */
+  quietStart: string;
+  quietEnd: string;
+  /** Most "X is live" alerts one customer gets in a day (0 = no limit). */
+  liveDailyCap: number;
+  /** Most followers alerted when one astrologer goes live. */
+  liveFanoutMax: number;
+  /** One "new message" alert per chat in this many seconds (the newest replaces the older one). */
+  chatCooldownSec: number;
 }
 export interface RemedySettings {
   enabled: boolean;
@@ -232,6 +250,15 @@ export const DEFAULT_ASTRO_SETTINGS: AstroProgramSettings = {
   firstChat: { astrologerPayPct: 50, maxRate: 0 },
   referral: { enabled: true, referrerReward: 100, refereeReward: 100, minRecharge: 200, monthlyCap: 10, applyWithinDays: 7, qualifyWithinDays: 30 },
   remedy: { enabled: true, commissionPct: 10, attributionDays: 7, confirmAfterDays: 7, allowProducts: true, allowPoojas: true, maxPerChat: 5, maxCommission: 0 },
+  push: {
+    enabled: true,
+    groups: { live: true, reminders: true, chat: true, wallet: true, orders: true },
+    quietStart: "22:00",
+    quietEnd: "08:00",
+    liveDailyCap: 5,
+    liveFanoutMax: 5000,
+    chatCooldownSec: 60,
+  },
 };
 
 const DEFAULT_LIVE_TEXTS = { quickReplies: DEFAULT_ASTRO_SETTINGS.live.quickReplies, askTemplates: DEFAULT_ASTRO_SETTINGS.live.askTemplates };
@@ -322,6 +349,15 @@ export const astroSettingsSchema = z.object({
     maxPerChat: z.number().int().min(1).max(20),
     maxCommission: z.number().int().min(0).max(1_000_000),
   }),
+  push: z.object({
+    enabled: z.boolean(),
+    groups: z.object({ live: z.boolean(), reminders: z.boolean(), chat: z.boolean(), wallet: z.boolean(), orders: z.boolean() }),
+    quietStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24 hour)"),
+    quietEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24 hour)"),
+    liveDailyCap: z.number().int().min(0).max(50),
+    liveFanoutMax: z.number().int().min(10).max(1_000_000),
+    chatCooldownSec: z.number().int().min(10).max(3600),
+  }),
 }).partial().refine((v) => v.minRate === undefined || v.maxRate === undefined || v.minRate <= v.maxRate, { message: "minRate must be ≤ maxRate" });
 
 export type UpdateAstroSettingsDto = z.infer<typeof astroSettingsSchema>;
@@ -349,6 +385,7 @@ const merge = (stored: Partial<AstroProgramSettings> | undefined): AstroProgramS
   referral: { ...DEFAULT_ASTRO_SETTINGS.referral, ...(stored?.referral ?? {}) },
   firstChat: { ...DEFAULT_ASTRO_SETTINGS.firstChat, ...(stored?.firstChat ?? {}) },
   remedy: { ...DEFAULT_ASTRO_SETTINGS.remedy, ...(stored?.remedy ?? {}) },
+  push: { ...DEFAULT_ASTRO_SETTINGS.push, ...(stored?.push ?? {}), groups: { ...DEFAULT_ASTRO_SETTINGS.push.groups, ...(stored?.push?.groups ?? {}) } },
 });
 
 const CACHE_KEY = "astro-settings";

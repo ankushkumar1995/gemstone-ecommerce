@@ -181,6 +181,26 @@ export function AstroSettingsForm() {
 
       <Card className="space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Push notifications (app)</p>
+          <Toggle checked={s.push.enabled} onChange={(v) => set("push", { ...s.push, enabled: v })} label="Send push notifications" />
+        </div>
+        <div className="flex flex-wrap gap-6">
+          {([["live", "Astrologer went live"], ["reminders", "\"Remind me\" lives"], ["chat", "Chat, your turn"], ["wallet", "Low balance"], ["orders", "Orders & bookings"]] as const).map(([k, label]) => (
+            <Toggle key={k} checked={s.push.groups[k]} onChange={(v) => set("push", { ...s.push, groups: { ...s.push.groups, [k]: v } })} label={label} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Default quiet hours from" hint="IST, 24 hour (HH:MM)"><AdminInput value={s.push.quietStart} maxLength={5} onChange={(e) => set("push", { ...s.push, quietStart: e.target.value })} /></Field>
+          <Field label="Quiet hours until" hint="Customers can change their own"><AdminInput value={s.push.quietEnd} maxLength={5} onChange={(e) => set("push", { ...s.push, quietEnd: e.target.value })} /></Field>
+          <Num label="Most live alerts per customer per day" hint="0 = no limit" value={s.push.liveDailyCap} onChange={(n) => set("push", { ...s.push, liveDailyCap: n })} />
+          <Num label="Most followers alerted per live" value={s.push.liveFanoutMax} onChange={(n) => set("push", { ...s.push, liveFanoutMax: n })} />
+          <Num label="New message alert at most every (sec)" hint="Per chat; the newest replaces the older" value={s.push.chatCooldownSec} onChange={(n) => set("push", { ...s.push, chatCooldownSec: n })} />
+        </div>
+        <p className="text-xs" style={{ color: "var(--a-muted)" }}>During quiet hours, chat, &quot;your turn&quot; and low-balance alerts still come through. Other alerts wait until the end, and live alerts that would be out of date by then are dropped. Delivery, failures and a test send are in Push notifications.</p>
+      </Card>
+
+      <Card className="space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-semibold" style={{ color: "var(--a-fg)" }}>Live sessions</p>
           <Toggle checked={s.live.enabled} onChange={(v) => set("live", { ...s.live, enabled: v })} label="Astrologers can go live" />
         </div>

@@ -10,6 +10,7 @@ import { dataSourceFor } from "@/core/config/env";
 import { orders as seed } from "@/data/orders";
 import type { Order, OrderItem } from "./order.types";
 import type { OrderDoc } from "./order.model";
+import { nudgePush } from "@/modules/push/nudge";
 
 export interface OrderRepository {
   findAll(): Promise<Order[]>;
@@ -257,6 +258,7 @@ const mongoOrderRepository: OrderRepository = {
       { $set: toDoc(patch) },
       { new: true, runValidators: true },
     ).lean<OrderDoc>();
+    if (doc) nudgePush(patch);
     return doc ? fromDoc(doc) : null;
   },
   async updateIf(id, statuses, paymentStatus, patch) {
@@ -267,6 +269,7 @@ const mongoOrderRepository: OrderRepository = {
       { $set: toDoc(patch) },
       { new: true, runValidators: true },
     ).lean<OrderDoc>();
+    if (doc) nudgePush(patch);
     return doc ? fromDoc(doc) : null;
   },
   async findByRequestId(requestId) {

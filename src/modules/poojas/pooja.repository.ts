@@ -11,6 +11,7 @@
 import { dataSourceFor } from "@/core/config/env";
 import { normalizeChannels } from "@/core/channels";
 import { newId } from "@/core/id";
+import { nudgePush } from "@/modules/push/nudge";
 import { CATEGORY_LABEL, DEFAULT_CATEGORY_ICON, DEFAULT_CATEGORY_KEYS, RITUAL_TYPES, blankHavan, type RitualType, type BookingFilter, type Pandit, type Pooja, type PoojaBooking, type PoojaCategoryItem } from "./pooja.types";
 
 /** The 11 categories that existed before categories became editable. */
@@ -398,7 +399,7 @@ const mongoRepo: PoojaRepository = {
       { $set: { ...strip<PoojaBooking>(patch), ...indexFields(patch) }, $inc: { version: 1 } },
       { returnDocument: "after" },
     ).lean<Row>();
-    if (d) return out<PoojaBooking>(d);
+    if (d) { nudgePush(patch); return out<PoojaBooking>(d); }
     return (await PoojaBookingModel.exists({ _id: id })) ? "conflict" : null;
   },
   async stats(today) {

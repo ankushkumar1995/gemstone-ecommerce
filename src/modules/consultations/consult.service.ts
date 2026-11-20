@@ -32,6 +32,8 @@ const OPEN: ConsultSession["status"][] = ["requested", "active"];
 /** A customer counts as "connected" this long after their last poll. */
 const PRESENT_MS = 30_000;
 const TYPING_MS = 6_000;
+/** The open chat screen polls every few seconds; quieter than this means the customer is away. */
+const CUSTOMER_AWAY_MS = 15_000;
 const nowIso = () => new Date().toISOString();
 
 function out(d: Doc | null): ConsultSession | null {
@@ -126,7 +128,10 @@ async function bill(s: ConsultSession, until = Date.now()): Promise<ConsultSessi
   const low = freeLeft < 2 && bal < Math.round(cur.rate * 100) * (2 - freeLeft);
   if (low !== cur.lowBalance) {
     cur = (await bumpVersion(cur.id, { lowBalance: low })) ?? cur;
-    if (low) await systemMessage(cur, "Balance is low: about 2 minutes left. Recharge to keep chatting.");
+    if (low) {
+      await systemMessage(cur, "Balance is low: about 2 minutes left. Recharge to keep chatting.");
+      try { const { pushEvents } = await import("@/modules/push"); await pushEvents.lowBalance(cur); } catch { /* best effort */ }
+    }
   }
   return cur;
 }
@@ -422,6 +427,7 @@ export const consultService = {
     const done = await cas(id, ["requested"], { status: "active", acceptedAt: at, billFrom: st.billFromFirstReply ? null : at, "lastSeen.astrologer": at });
     if (!done) { const cur = await get(id); return cur?.status === "active" ? ok(await view(cur, "astrologer")) : fail(AppErrors.validation("This request is no longer waiting.")); }
     await systemMessage(done, `${done.astrologer.name} joined the chat.${st.billFromFirstReply ? " Billing starts with their first reply." : ""}`);
+    try { const { pushEvents } = await import("@/modules/push"); await pushEvents.chatAccepted(done); } catch { /* push is best effort */ }
     return ok(await view((await get(id)) ?? done, "astrologer"));
   },
 
@@ -481,6 +487,11 @@ export const consultService = {
       const d = await ConsultMessageModel.create({ sessionId: id, seq: bumped.msgSeq, from: role, text: m.text, masked: m.masked, clientId, at, ...(card ? { card } : {}) });
       s = bumped;
       if (firstReply) await bill(s);
+      // The customer is not looking at the chat (app closed / in the background): tell their phone.
+      const seen = bumped.lastSeen.customer ? Date.parse(bumped.lastSeen.customer) : 0;
+      if (role === "astrologer" && Date.now() - seen > CUSTOMER_AWAY_MS) {
+        try { const { pushEvents } = await import("@/modules/push"); await pushEvents.chatMessage(bumped, card ? `Suggested: ${card.name}` : m.text); } catch { /* best effort */ }
+      }
       return ok(msgOut(d.toObject() as Doc));
     } catch (e) {
       if (isDup(e, "clientId")) { const x = await ConsultMessageModel.findOne({ sessionId: id, clientId }).lean<Doc>(); if (x) return ok(msgOut(x)); }
@@ -512,6 +523,8 @@ export const consultService = {
     const role = s ? roleOf(s, who) : null;
     if (!s || !role) return fail(AppErrors.notFound("Chat not found"));
     const { ConsultMessageModel } = await M();
+    // Busy endpoint: also lets due pushes go out without waiting for the cron (throttled to 30 s).
+    void import("@/modules/push").then((p) => p.pushService.maybeSweep()).catch(() => undefined);
     const until = Date.now() + Math.min(Math.max(waitMs, 0), 20_000);
     for (;;) {
       s = await touch(s!, role);

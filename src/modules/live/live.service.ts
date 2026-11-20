@@ -1007,6 +1007,12 @@ export const liveService = {
       throw e;
     }
     await addEvent(s!.id, { kind: "system", by: "system", name: "", text: `${s!.astrologer.name} is live. Ask your questions in the comments.` });
+    try {
+      // Followers with alerts on + everyone who tapped "Remind me" (sent after the response).
+      const { pushEvents } = await import("@/modules/push");
+      const fresh = await freshAstro(s!).catch(() => s!.astrologer);
+      await pushEvents.liveStarted({ id: s!.id, title: s!.title, astrologerId: astrologerId, astrologer: { name: fresh.name, photo: fresh.photo ?? null } });
+    } catch { /* best effort */ }
     await auditService.record({ action: "status", entity: "live", entityId: s!.id, entityLabel: s!.liveNumber, summary: `${s!.astrologer.name} went live: ${s!.title}`, actor: "Astrologer" }).catch(() => undefined);
     return ok(await view((await get(s!.id)) ?? s!, "astrologer"));
   },

@@ -45,6 +45,7 @@ export const RESOURCES: Resource[] = [
   "payouts",
   "poojas",
   "devotional",
+  "notifications",
 ];
 
 /** The four actions, in display order. */
@@ -77,6 +78,7 @@ export const RESOURCE_LABELS: Record<Resource, string> = {
   payouts: "Astrologer Payouts",
   poojas: "Poojas & Bookings",
   devotional: "Mantras & Aarti",
+  notifications: "Push Notifications",
 };
 
 /* ---------------- permission builders ---------------- */
@@ -149,6 +151,7 @@ export const PRESET_ROLES: RoleSeed[] = [
       ...viewOnly("payouts"),
       ...all("poojas"),
       ...all("devotional"),
+      ...all("notifications"),
     ],
     isSystem: true,
     priority: 60,

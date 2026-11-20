@@ -15,6 +15,7 @@ import type { ConsultMessage, ConsultSession } from "@/modules/consultations/con
 import type { LiveEvent, LiveQueueItem, LiveSession } from "@/modules/live/live.types";
 import type { EarningsBalance, LedgerEntry, Payout } from "@/modules/earnings/earnings.types";
 import type { RemedyRules, RemedySale, RemedyStats } from "@/modules/remedies/remedy.types";
+import type { PushRowView } from "@/modules/push/push.types";
 import type {
   AgreementAcceptance, AgreementExtension, AgreementGateInfo, AgreementListItem, AgreementVersion, SignatureRow, SignedCopy,
 } from "@/modules/agreements/agreement.types";
@@ -65,6 +66,17 @@ export const astroAdminApi = {
     adjust: (astrologerId: string, amountPaise: number, reason: string, requestId: string) => request<{ balance: EarningsBalance }>("/api/v1/admin/earnings", json("POST", { action: "adjust", astrologerId, amountPaise, reason, requestId })),
     reconcile: () => request<{ consultations: number; refunds: number; gifts: number; tips: number; superChats: number }>("/api/v1/admin/earnings", json("POST", { action: "reconcile" })),
     runWeekly: () => request<{ ran: boolean; created: number; skipped: number; date: string }>("/api/v1/admin/earnings", json("POST", { action: "run_weekly" })),
+  },
+  push: {
+    stats: (f: { status?: string; group?: string; before?: string } = {}) => {
+      const p = new URLSearchParams();
+      if (f.status) p.set("status", f.status);
+      if (f.group) p.set("group", f.group);
+      if (f.before) p.set("before", f.before);
+      return request<AdminPushStats>(`/api/v1/admin/push?${p.toString()}`);
+    },
+    test: (body: { customerId?: string; phone?: string; title: string; body: string; url?: string }) =>
+      request<{ queued: boolean; devices: number; customerId: string }>("/api/v1/admin/push", json("POST", body)),
   },
   remedySales: {
     list: (f: { status?: string; astrologerId?: string; before?: string } = {}) => {
@@ -193,3 +205,5 @@ export const devotionalAdminApi = {
   },
 };
 export type { RemedyRules, RemedySale, RemedyStats };
+export type AdminPushStats = { devices: { active: number; customers: number; disabled: number }; last24h: Record<string, number>; reasons: Record<string, number>; rows: PushRowView[]; nextBefore: string | null; expoTokenSet: boolean };
+export type { PushRowView };

@@ -142,7 +142,15 @@ export async function offerNext(astrologerId: string): Promise<void> {
   } catch { /* no live module: ignore */ }
   const next = await W.findOne({ astrologerId, status: "waiting" }).sort({ createdAt: 1 }).lean<Doc>();
   if (!next) return;
-  await W.updateOne({ _id: next._id, status: "waiting" }, { $set: { status: "offered", offeredAt: now, offerExpiresAt: new Date(Date.now() + st.waitlist.offerSec * 1000).toISOString() } });
+  const r = await W.updateOne({ _id: next._id, status: "waiting" }, { $set: { status: "offered", offeredAt: now, offerExpiresAt: new Date(Date.now() + st.waitlist.offerSec * 1000).toISOString() } });
+  if (r.modifiedCount === 1) {
+    // Their phone may be in a pocket: tell them it is their turn.
+    const a = (next.astrologer as { name?: string; slug?: string }) ?? {};
+    try {
+      const { pushEvents } = await import("@/modules/push");
+      await pushEvents.waitlistTurn({ id: String(next._id), customerId: next.customerId as string, astrologer: { name: a.name ?? "Your astrologer", slug: a.slug ?? "" }, offerSec: st.waitlist.offerSec });
+    } catch { /* best effort */ }
+  }
 }
 
 /** Sweep every astrologer with an open line (offers, timeouts). */

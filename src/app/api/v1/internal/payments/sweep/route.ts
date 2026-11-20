@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
   // Remedy commissions only read orders / bookings, so they run without Razorpay too.
   const { remedyService } = await import("@/modules/remedies");
   const remedies = await remedyService.sweep().catch(() => null);
-  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured", remedies });
+  // Push: send what is due, check receipts, and watch order / booking statuses.
+  const { pushService } = await import("@/modules/push");
+  const push = await pushService.sweep().catch(() => null);
+  if (!razorpayConfigured()) return jsonOk({ skipped: "razorpay not configured", remedies, push });
   const pooja = await poojaPaymentService.sweepExpiredHolds(fetchOrderPayments);
   const orders = await sweepExpiredOrderHolds(fetchOrderPayments);
   const consultations = await sweepConsultations().catch(() => ({ checked: -1 }));
@@ -43,5 +46,5 @@ export async function POST(request: NextRequest) {
   const ledger = await earningsService.reconcile().catch(() => null);
   const weeklyPayouts = await earningsService.runWeekly(false).catch(() => null);
   const referrals = await referralService.sweep().catch(() => null);
-  return jsonOk({ pooja, orders, consultations, lives, ledger, weeklyPayouts, referrals, remedies });
+  return jsonOk({ pooja, orders, consultations, lives, ledger, weeklyPayouts, referrals, remedies, push });
 }

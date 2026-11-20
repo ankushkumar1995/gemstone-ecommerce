@@ -11,6 +11,7 @@
 import { dataSourceFor } from "@/core/config/env";
 import type { Booking } from "./booking.types";
 import type { BookingDoc } from "./booking.model";
+import { nudgePush } from "@/modules/push/nudge";
 
 export interface BookingRepository {
   findAll(): Promise<Booking[]>;
@@ -218,6 +219,7 @@ const mongoBookingRepository: BookingRepository = {
       { $set: toDoc(patch) },
       { new: true, runValidators: true },
     ).lean<BookingDoc>();
+    if (doc) nudgePush(patch);
     return doc ? fromDoc(doc) : null;
   },
   async markPaidOnce(id, patch) {
